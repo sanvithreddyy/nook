@@ -7,6 +7,7 @@ final class NotchCoordinator {
     let model = NotchModel()
     let nowPlaying = NowPlayingModel()
     let calendar = CalendarModel()
+    let shelf = ShelfModel()
 
     private let lock = LockMonitor()
     private let battery = BatteryMonitor()
@@ -14,6 +15,7 @@ final class NotchCoordinator {
     private let volume = VolumeService()
     private let brightness = BrightnessService()
     private let keys = MediaKeyTap()
+    private let fileDrags = FileDragWatcher()
 
     private var window: NotchWindowController?
     private var observers: [NSObjectProtocol] = []
@@ -91,6 +93,13 @@ final class NotchCoordinator {
         observeSystem()
         applyPreferences()
 
+        // Dragging a file to the notch opens the shelf as a drop target.
+        fileDrags.onEnterNotch = { [weak self] in
+            guard let self, Prefs.bool(Prefs.shelf), !self.model.isSuppressed else { return }
+            self.model.expand(tab: .shelf)
+        }
+        fileDrags.start()
+
         #if DEBUG
         if DebugTour.isRequested { DebugTour.run(self) }
         if CommandLine.arguments.contains("-preview-playing") {
@@ -98,7 +107,13 @@ final class NotchCoordinator {
                 try? await Task.sleep(for: .seconds(1.5))
                 nowPlaying.previewPlaying()
                 debugRefresh()
-                if CommandLine.arguments.contains("-expand") { model.expand() }
+                let args = CommandLine.arguments
+                if args.contains("-preview-calendar") { calendar.debugPreview() }
+                if args.contains("-preview-shelf") {
+                    let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+                    shelf.debugPreview(["scripts/build.sh", "project.yml", "Nook/Info.plist"].map { root.appendingPathComponent($0) })
+                }
+                if args.contains("-expand") { model.expand(tab: args.contains("-shelf") ? .shelf : .home) }
                 if CommandLine.arguments.contains("-peek") { model.showPeek(.track, for: nil) }
                 if CommandLine.arguments.contains("-hud") {
                     try? await Task.sleep(for: .seconds(1))
@@ -135,7 +150,9 @@ final class NotchCoordinator {
                 .environment(model)
                 .environment(nowPlaying)
                 .environment(calendar)
+                .environment(shelf)
         }
+        fileDrags.isInsideNotch = { [weak window] point in window?.catchesDrag(at: point) ?? false }
         window.onSwipe = { [weak self] direction in self?.swiped(direction) }
         self.window = window
     }

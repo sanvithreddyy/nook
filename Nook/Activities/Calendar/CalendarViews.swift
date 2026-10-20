@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 struct CalendarActivitySide: View {
@@ -36,41 +37,169 @@ struct EventPeek: View {
     }
 }
 
-struct UpNextList: View {
+/// The calendar half of the expanded island: this week as a strip of days, the chosen day's events below.
+struct CalendarColumn: View {
     @Environment(CalendarModel.self) private var calendar
+    @State private var selected = Calendar.current.startOfDay(for: .now)
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 9) {
-            Text("Up next")
-                .font(.system(size: 11, weight: .semibold))
+        switch calendar.access {
+        case .granted:
+            VStack(alignment: .leading, spacing: 8) {
+                WeekStrip(selected: $selected)
+                Rectangle().fill(.white.opacity(0.08)).frame(height: 1)
+                DayEvents(day: selected)
+            }
+            // Roll the selection forward when the week moves past it (overnight).
+            .onChange(of: calendar.events.first?.id) {
+                let today = Calendar.current.startOfDay(for: .now)
+                if selected < today { selected = today }
+            }
+        case .notDetermined:
+            AccessPrompt(message: "See your week here", button: "Allow access") { calendar.requestAccess() }
+        case .denied:
+            AccessPrompt(message: "Calendar access is off", button: "Open Settings") {
+                NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Calendars")!)
+            }
+        }
+    }
+}
+
+private struct AccessPrompt: View {
+    let message: String
+    let button: String
+    let action: () -> Void
+
+    var body: some View {
+        VStack(spacing: 10) {
+            Text(message)
+                .font(.system(size: 13))
+                .foregroundStyle(.white.opacity(0.55))
+            Button(action: action) {
+                Text(button)
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 5)
+                    .background(Capsule().fill(.white.opacity(0.12)))
+            }
+            .buttonStyle(.plain)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+}
+
+private struct WeekStrip: View {
+    @Environment(CalendarModel.self) private var calendar
+    @Binding var selected: Date
+
+    private var days: [Date] {
+        let today = Calendar.current.startOfDay(for: .now)
+        return (0..<7).compactMap { Calendar.current.date(byAdding: .day, value: $0, to: today) }
+    }
+
+    var body: some View {
+        HStack(alignment: .firstTextBaseline) {
+            Text(selected.formatted(.dateTime.month(.wide)))
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(.white)
+            Spacer(minLength: 8)
+            HStack(spacing: 2) {
+                ForEach(days, id: \.self) { day in
+                    DayCell(day: day,
+                            isSelected: Calendar.current.isDate(day, inSameDayAs: selected),
+                            hasEvents: !calendar.events(on: day).isEmpty)
+                        .onTapGesture { withAnimation(.easeOut(duration: 0.15)) { selected = day } }
+                }
+            }
+        }
+    }
+}
+
+private struct DayCell: View {
+    let day: Date
+    let isSelected: Bool
+    let hasEvents: Bool
+
+    private var isToday: Bool { Calendar.current.isDateInToday(day) }
+
+    var body: some View {
+        VStack(spacing: 2) {
+            Text(day.formatted(.dateTime.weekday(.narrow)))
+                .font(.system(size: 9.5, weight: .medium))
+                .foregroundStyle(.white.opacity(0.4))
+            Text(day.formatted(.dateTime.day()))
+                .font(.system(size: 12.5, weight: isToday ? .bold : .medium).monospacedDigit())
+                .foregroundStyle(isSelected ? .black : .white.opacity(isToday ? 1 : 0.8))
+                .frame(width: 24, height: 24)
+                .background(Circle().fill(isSelected ? .white : .clear))
+            Circle()
+                .fill(.white.opacity(hasEvents && !isSelected ? 0.45 : 0))
+                .frame(width: 3, height: 3)
+        }
+        .frame(width: 26)
+        .contentShape(Rectangle())
+    }
+}
+
+private struct DayEvents: View {
+    @Environment(CalendarModel.self) private var calendar
+    let day: Date
+
+    var body: some View {
+        let events = calendar.events(on: day)
+        if events.isEmpty {
+            Text(Calendar.current.isDateInToday(day) ? "Nothing else today" : "No events")
+                .font(.system(size: 12))
                 .foregroundStyle(.white.opacity(0.45))
-            if !calendar.isAuthorized {
-                Text("Calendar access is off. Allow it in System Settings.")
-                    .font(.system(size: 12))
-                    .foregroundStyle(.white.opacity(0.55))
-            } else if calendar.upcoming.isEmpty {
-                Text("Nothing else today")
-                    .font(.system(size: 12))
-                    .foregroundStyle(.white.opacity(0.55))
-            } else {
-                ForEach(calendar.upcoming.prefix(3)) { event in
-                    HStack(alignment: .firstTextBaseline, spacing: 8) {
-                        Circle().fill(event.color).frame(width: 6, height: 6)
-                        VStack(alignment: .leading, spacing: 1) {
-                            Text(event.title)
-                                .font(.system(size: 12.5, weight: .medium))
-                                .foregroundStyle(.white)
-                                .lineLimit(1)
-                            Text(EventTiming.range(event))
-                                .font(.system(size: 11).monospacedDigit())
-                                .foregroundStyle(.white.opacity(0.5))
-                        }
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                .padding(.top, 2)
+        } else {
+            ScrollView(.vertical) {
+                VStack(alignment: .leading, spacing: 7) {
+                    ForEach(events) { event in
+                        EventRow(event: event)
                     }
                 }
             }
-            Spacer(minLength: 0)
+            .scrollIndicators(.never)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+private struct EventRow: View {
+    let event: CalendarEvent
+
+    var body: some View {
+        TimelineView(.everyMinute) { context in
+            let now = context.date
+            let isPast = event.end <= now
+            let isNow = event.start <= now && event.end > now && !event.isAllDay
+            HStack(spacing: 8) {
+                Circle().fill(event.color).frame(width: 6, height: 6)
+                Text(isNow ? "Now" : (event.isAllDay ? "All day" : event.start.formatted(date: .omitted, time: .shortened)))
+                    .font(.system(size: 11, weight: isNow ? .semibold : .regular).monospacedDigit())
+                    .foregroundStyle(.white.opacity(isNow ? 0.9 : 0.5))
+                    .frame(width: 58, alignment: .leading)
+                Text(event.title)
+                    .font(.system(size: 12.5, weight: .medium))
+                    .foregroundStyle(.white)
+                    .lineLimit(1)
+                Spacer(minLength: 4)
+                if let url = event.joinURL, !isPast {
+                    Button { NSWorkspace.shared.open(url) } label: {
+                        Text("Join")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 9)
+                            .padding(.vertical, 3)
+                            .background(Capsule().fill(.white.opacity(isNow ? 0.22 : 0.1)))
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .opacity(isPast ? 0.4 : 1)
+        }
     }
 }
 

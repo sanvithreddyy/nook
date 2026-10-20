@@ -60,6 +60,12 @@ enum Presentation: Equatable {
     case expanded
 }
 
+/// The two pages of the expanded island, switched from the strip beside the notch.
+enum ExpandedTab: String {
+    case home   // now playing + calendar
+    case shelf  // files kept for later, AirDrop
+}
+
 struct IslandLayout: Equatable {
     var size: CGSize
     var topRadius: CGFloat
@@ -74,10 +80,11 @@ final class NotchModel {
     private(set) var notification: NotchNotification?
     private(set) var peek: QuickPeek?
     private(set) var isExpanded = false
+    private(set) var tab: ExpandedTab = .home
 
     var isHovering = false
     var isPressed = false
-    /// The expanded island grows a column for upcoming events when Calendar is on.
+    /// Home shows the calendar beside the player when Calendar is on.
     var showsCalendarColumn = false
     /// False when nothing is playing, so the expanded island stays short instead of showing an empty panel.
     var hasPlayer = true
@@ -121,15 +128,22 @@ final class NotchModel {
             }
             return IslandLayout(size: CGSize(width: n.width + side * 2, height: n.height), topRadius: 6, bottomRadius: 11)
         case .expanded:
-            let width: CGFloat = showsCalendarColumn ? 640 : 500
-            let height: CGFloat = hasPlayer || showsCalendarColumn ? 150 : 64
-            return IslandLayout(size: CGSize(width: max(n.width + 300, width), height: n.height + height), topRadius: 12, bottomRadius: hasPlayer || showsCalendarColumn ? 32 : 22)
+            // Both tabs share one size when the calendar is on, so switching only crossfades content.
+            let wide = showsCalendarColumn || tab == .shelf
+            let compact = tab == .home && !hasPlayer && !showsCalendarColumn
+            let width: CGFloat = wide ? Self.expandedWidth : 500
+            let height: CGFloat = compact ? 64 : Self.expandedBodyHeight
+            return IslandLayout(size: CGSize(width: max(n.width + 300, width), height: n.height + height),
+                                topRadius: 12, bottomRadius: compact ? 22 : 32)
         }
     }
 
+    static let expandedWidth: CGFloat = 660
+    static let expandedBodyHeight: CGFloat = 160
+
     /// The biggest island the panel must hold, with room for its shadow.
     var maximumSize: CGSize {
-        CGSize(width: max(notch.size.width + 300, 640) + 80, height: notch.size.height + 150 + 40)
+        CGSize(width: max(notch.size.width + 300, Self.expandedWidth) + 80, height: notch.size.height + Self.expandedBodyHeight + 40)
     }
 
     // MARK: Live activity
@@ -184,15 +198,25 @@ final class NotchModel {
 
     // MARK: Expand
 
-    func expand() {
-        guard !isExpanded else { return }
+    /// Opens the island, optionally on a given tab (a file drag opens the shelf).
+    func expand(tab target: ExpandedTab? = nil) {
+        guard !isExpanded else {
+            if let target { select(target) }
+            return
+        }
         peekTask?.cancel()
         expandToken &+= 1
         withAnimation(Motion.expand) {
+            if let target { tab = target }
             isExpanded = true
             peek = nil
         }
         Haptics.tap()
+    }
+
+    func select(_ target: ExpandedTab) {
+        guard target != tab else { return }
+        withAnimation(Motion.expand) { tab = target }
     }
 
     func collapse() {

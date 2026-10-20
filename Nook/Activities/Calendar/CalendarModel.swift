@@ -8,12 +8,19 @@ struct CalendarEvent: Identifiable, Equatable {
     let end: Date
     let color: Color
     let isAllDay: Bool
+    /// A video-call link found in the event's URL, location or notes.
+    let joinURL: URL?
 }
 
 @Observable
 final class CalendarModel {
+    enum Access { case notDetermined, granted, denied }
+
+    /// Events from the start of today through the next six days.
     private(set) var events: [CalendarEvent] = []
-    private(set) var isAuthorized = false
+    private(set) var access: Access = .notDetermined
+
+    var isAuthorized: Bool { access == .granted }
 
     @ObservationIgnored var onChange: (() -> Void)?
     @ObservationIgnored private let store = EKEventStore()
@@ -22,37 +29,42 @@ final class CalendarModel {
 
     var isEnabled: Bool { Prefs.bool(Prefs.calendar) }
 
-    /// Starts reading events when Calendar is on; asks for access the first time.
+    /// Starts reading events when Calendar is on and access exists. Never prompts on its own:
+    /// the prompt comes from the Allow button in the island.
     func update() {
         guard isEnabled else {
             stop()
             return
         }
-        switch EKEventStore.authorizationStatus(for: .event) {
-        case .fullAccess:
-            isAuthorized = true
-            begin()
-        case .notDetermined:
-            Task {
-                let granted = (try? await store.requestFullAccessToEvents()) ?? false
-                isAuthorized = granted
-                // The toggle may have been turned off while the prompt was open.
-                if granted, isEnabled { begin() } else { onChange?() }
-            }
-        default:
-            isAuthorized = false
-            onChange?()
+        access = Self.currentAccess()
+        if access == .granted { begin() } else { onChange?() }
+    }
+
+    func requestAccess() {
+        Task {
+            let granted = (try? await store.requestFullAccessToEvents()) ?? false
+            access = granted ? .granted : .denied
+            // The setting may have been turned off while the prompt was open.
+            if granted, isEnabled { begin() } else { onChange?() }
         }
     }
 
     /// Picks up access granted later in System Settings.
     func recheckAuthorization() {
-        guard isEnabled, !isAuthorized, EKEventStore.authorizationStatus(for: .event) == .fullAccess else { return }
+        guard isEnabled, !isAuthorized, Self.currentAccess() == .granted else { return }
         update()
     }
 
     func event(id: String) -> CalendarEvent? {
         events.first { $0.id == id }
+    }
+
+    func events(on day: Date) -> [CalendarEvent] {
+        let calendar = Calendar.current
+        let start = calendar.startOfDay(for: day)
+        guard let end = calendar.date(byAdding: .day, value: 1, to: start) else { return [] }
+        return events.filter { $0.start < end && $0.end > start }
+            .sorted { ($0.isAllDay ? 0 : 1, $0.start) < ($1.isAllDay ? 0 : 1, $1.start) }
     }
 
     /// The timed event starting within the lead time, or one that started less than five minutes ago.
@@ -65,9 +77,33 @@ final class CalendarModel {
         }
     }
 
-    var upcoming: [CalendarEvent] {
+    #if DEBUG
+    /// Sample week for screenshots; never touches EventKit.
+    func debugPreview() {
+        let cal = Calendar.current
+        let today = cal.startOfDay(for: .now)
+        func at(_ day: Int, _ hour: Int, _ minute: Int = 0) -> Date {
+            cal.date(byAdding: .minute, value: day * 1440 + hour * 60 + minute, to: today)!
+        }
         let now = Date()
-        return events.filter { $0.end > now }
+        let soon = cal.date(bySetting: .second, value: 0, of: now.addingTimeInterval(20 * 60)) ?? now
+        events = [
+            CalendarEvent(id: "a", title: "Ops sync", start: now.addingTimeInterval(-40 * 60), end: now.addingTimeInterval(-10 * 60), color: .orange, isAllDay: false, joinURL: nil),
+            CalendarEvent(id: "b", title: "Design review", start: soon, end: soon.addingTimeInterval(45 * 60), color: .blue, isAllDay: false, joinURL: URL(string: "https://meet.google.com/abc")),
+            CalendarEvent(id: "c", title: "Dinner", start: now.addingTimeInterval(3 * 3600), end: now.addingTimeInterval(4.5 * 3600), color: .green, isAllDay: false, joinURL: nil),
+            CalendarEvent(id: "d", title: "Inventory audit", start: at(1, 10), end: at(1, 11), color: .purple, isAllDay: false, joinURL: nil),
+            CalendarEvent(id: "e", title: "Launch", start: at(3, 0), end: at(4, 0), color: .red, isAllDay: true, joinURL: nil),
+        ]
+        access = .granted
+    }
+    #endif
+
+    private static func currentAccess() -> Access {
+        switch EKEventStore.authorizationStatus(for: .event) {
+        case .fullAccess: .granted
+        case .notDetermined: .notDetermined
+        default: .denied
+        }
     }
 
     private func begin() {
@@ -78,7 +114,7 @@ final class CalendarModel {
         }
         reload()
         refreshTask?.cancel()
-        // A minute tick moves events in and out of the live-activity window.
+        // Moves events in and out of the live-activity window and rolls the week at midnight.
         refreshTask = Task { [weak self] in
             while !Task.isCancelled {
                 try? await Task.sleep(for: .seconds(30))
@@ -99,13 +135,14 @@ final class CalendarModel {
     }
 
     private func reload() {
-        let now = Date()
-        let end = Calendar.current.date(byAdding: .hour, value: 24, to: Calendar.current.startOfDay(for: now)) ?? now
-        let predicate = store.predicateForEvents(withStart: now.addingTimeInterval(-3600), end: end, calendars: nil)
+        let calendar = Calendar.current
+        let start = calendar.startOfDay(for: .now)
+        let end = calendar.date(byAdding: .day, value: 7, to: start) ?? start
+        let predicate = store.predicateForEvents(withStart: start, end: end, calendars: nil)
         let fetched = store.events(matching: predicate)
-            .filter { $0.status != .canceled && $0.endDate > now }
+            .filter { $0.status != .canceled }
             .sorted { $0.startDate < $1.startDate }
-            .prefix(12)
+            .prefix(120)
             .map { event in
                 // Occurrences of a recurring event share eventIdentifier; the start date tells them apart.
                 CalendarEvent(id: "\(event.eventIdentifier ?? "event")@\(Int(event.startDate.timeIntervalSince1970))",
@@ -113,9 +150,27 @@ final class CalendarModel {
                               start: event.startDate,
                               end: event.endDate,
                               color: Color(cgColor: event.calendar.cgColor),
-                              isAllDay: event.isAllDay)
+                              isAllDay: event.isAllDay,
+                              joinURL: Self.meetingLink(in: event))
             }
         if fetched != events { events = Array(fetched) }
         onChange?()
+    }
+
+    private static let meetingHosts = ["zoom.us", "meet.google.com", "teams.microsoft.com", "teams.live.com", "facetime.apple.com", "webex.com", "whereby.com"]
+
+    private static func meetingLink(in event: EKEvent) -> URL? {
+        if let url = event.url, isMeeting(url) { return url }
+        let text = [event.location, event.notes].compactMap { $0 }.joined(separator: "\n")
+        guard !text.isEmpty,
+              let detector = try? NSDataDetector(types: NSTextCheckingResult.CheckingType.link.rawValue)
+        else { return nil }
+        let range = NSRange(text.startIndex..., in: text)
+        return detector.matches(in: text, range: range).compactMap(\.url).first(where: isMeeting)
+    }
+
+    private static func isMeeting(_ url: URL) -> Bool {
+        guard let host = url.host()?.lowercased() else { return false }
+        return meetingHosts.contains { host == $0 || host.hasSuffix("." + $0) }
     }
 }

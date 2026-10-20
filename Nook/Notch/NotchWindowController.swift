@@ -101,6 +101,17 @@ final class NotchWindowController {
         return rect
     }
 
+    /// A generous catch area around the island for file drags, so you needn't hit the notch exactly.
+    func catchesDrag(at point: CGPoint) -> Bool {
+        guard !model.isSuppressed else { return false }
+        let island = hitRect()
+        let frame = panel.frame
+        let catchWidth = model.notch.size.width + 160
+        let catchHeight = model.notch.size.height + 30
+        let notchArea = CGRect(x: frame.midX - catchWidth / 2, y: frame.maxY - catchHeight, width: catchWidth, height: catchHeight)
+        return island.union(notchArea).contains(point)
+    }
+
     // MARK: Pointer
 
     private func installMonitors() {

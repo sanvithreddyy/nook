@@ -49,7 +49,7 @@ final class SettingsWindowController {
 }
 
 enum SettingsPane: String, CaseIterable, Identifiable {
-    case general, nowPlaying, huds, battery, connectivity, calendar, lock, about
+    case general, nowPlaying, calendar, shelf, huds, battery, connectivity, lock, about
     var id: String { rawValue }
 
     var title: String {
@@ -60,6 +60,7 @@ enum SettingsPane: String, CaseIterable, Identifiable {
         case .battery: "Battery"
         case .connectivity: "Connectivity"
         case .calendar: "Calendar"
+        case .shelf: "Shelf"
         case .lock: "Lock Screen"
         case .about: "About"
         }
@@ -73,6 +74,7 @@ enum SettingsPane: String, CaseIterable, Identifiable {
         case .battery: "battery.75percent"
         case .connectivity: "airpods"
         case .calendar: "calendar"
+        case .shelf: "tray"
         case .lock: "lock"
         case .about: "info.circle"
         }
@@ -105,6 +107,7 @@ struct SettingsView: View {
                 case .battery: BatteryPane()
                 case .connectivity: ConnectivityPane()
                 case .calendar: CalendarPane()
+                case .shelf: ShelfPane()
                 case .lock: LockPane()
                 case .about: AboutPane()
                 }
@@ -242,33 +245,52 @@ private struct ConnectivityPane: View {
 }
 
 private struct CalendarPane: View {
-    @AppStorage(Prefs.calendar) private var enabled = false
+    @AppStorage(Prefs.calendar) private var enabled = true
     @AppStorage(Prefs.calendarLeadMinutes) private var lead = 10
     @State private var status = EKEventStore.authorizationStatus(for: .event)
+    private let poll = Timer.publish(every: 1.5, on: .main, in: .common).autoconnect()
 
     var body: some View {
         Form {
             Section {
-                Toggle("Show upcoming events", isOn: $enabled)
-                Picker("Show an event", selection: $lead) {
+                Toggle("Show your week beside the player", isOn: $enabled)
+                Picker("Show an event in the notch", selection: $lead) {
                     ForEach([5, 10, 15, 30], id: \.self) { Text("\($0) minutes before").tag($0) }
                 }
                 .disabled(!enabled)
             }
-            if enabled, status == .denied || status == .restricted || status == .writeOnly {
+            if enabled {
                 Section {
                     LabeledContent("Calendar access") {
-                        Button("Open Privacy Settings…") {
-                            NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Calendars")!)
+                        switch status {
+                        case .fullAccess:
+                            Text("Allowed").foregroundStyle(.secondary)
+                        case .notDetermined:
+                            Button("Allow…") {
+                                Task { _ = try? await EKEventStore().requestFullAccessToEvents() }
+                            }
+                        default:
+                            Button("Open Privacy Settings…") {
+                                NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Calendars")!)
+                            }
                         }
                     }
                 }
             }
         }
-        .onChange(of: enabled) {
-            Task {
-                try? await Task.sleep(for: .seconds(1))
-                status = EKEventStore.authorizationStatus(for: .event)
+        .onReceive(poll) { _ in status = EKEventStore.authorizationStatus(for: .event) }
+    }
+}
+
+private struct ShelfPane: View {
+    @AppStorage(Prefs.shelf) private var enabled = true
+
+    var body: some View {
+        Form {
+            Section {
+                Toggle("Open the shelf when a file is dragged to the notch", isOn: $enabled)
+            } footer: {
+                Text("Files stay where they are; the shelf keeps a reference. Dropped text, links and images are saved in Application Support/Nook/Shelf until you remove them.")
             }
         }
     }

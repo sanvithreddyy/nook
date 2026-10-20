@@ -28,6 +28,8 @@ enum Prefs {
 
     static let lockActivity = "lockActivity"
 
+    static let shelf = "shelf"
+
     static func registerDefaults() {
         UserDefaults.standard.register(defaults: [
             hideMenuBarIcon: false,
@@ -47,9 +49,11 @@ enum Prefs {
             battery: true,
             lowBatteryThreshold: 20,
             connectivity: true,
-            calendar: false,
+            // On: the expanded island shows the week. Access is asked for from the island, not at launch.
+            calendar: true,
             calendarLeadMinutes: 10,
             lockActivity: true,
+            shelf: true,
         ])
     }
 

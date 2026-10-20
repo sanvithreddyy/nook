@@ -31,6 +31,9 @@ enum SnapshotRenderer {
             ("14-unlocked", { m.debugSetActivity(.unlocked) }),
             ("15-expanded-calendar", { c.nowPlaying.previewPlaying(); c.debugRefresh(); m.showsCalendarColumn = true; m.expand() }),
             ("16-expanded-empty", { c.nowPlaying.debugClear(); m.hasPlayer = false; m.debugSetActivity(nil); m.expand() }),
+            ("17-home-week", { c.nowPlaying.previewPlaying(); c.debugRefresh(); c.calendar.debugPreview(); m.showsCalendarColumn = true; m.expand(tab: .home) }),
+            ("18-shelf", { c.shelf.debugPreview(SnapshotRenderer.sampleFiles); m.showsCalendarColumn = true; m.expand(tab: .shelf) }),
+            ("19-shelf-empty", { c.shelf.debugPreview([]); m.showsCalendarColumn = true; m.expand(tab: .shelf) }),
         ]
         Task { @MainActor in
             // Let the now-playing stream deliver real metadata first.
@@ -46,8 +49,13 @@ enum SnapshotRenderer {
         }
     }
 
+    static var sampleFiles: [URL] {
+        let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+        return ["scripts/build.sh", "project.yml", "scripts/tour.sh"].map { root.appendingPathComponent($0) }
+    }
+
     private static func render(_ c: NotchCoordinator, wallpaper: NSImage?, to url: URL) {
-        let size = CGSize(width: 820, height: 250)
+        let size = CGSize(width: 820, height: 260)
         let view = ZStack(alignment: .top) {
             if let wallpaper {
                 Image(nsImage: wallpaper)
@@ -60,6 +68,7 @@ enum SnapshotRenderer {
                 .environment(c.model)
                 .environment(c.nowPlaying)
                 .environment(c.calendar)
+                .environment(c.shelf)
         }
         .frame(width: size.width, height: size.height)
         let renderer = ImageRenderer(content: view)

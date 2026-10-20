@@ -96,7 +96,10 @@ private struct TopRow: View {
             NotificationSide(note: note, edge: .leading)
                 .id("n-\(note.kind)")
                 .transition(.islandSide(.leading))
-        } else if let activity = model.liveActivity, !model.isExpanded {
+        } else if model.isExpanded {
+            ExpandedTabs()
+                .transition(.islandSide(.leading))
+        } else if let activity = model.liveActivity {
             ActivitySide(activity: activity, edge: .leading)
                 .id("a-\(activity.identity)")
                 .transition(.islandSide(.leading))
@@ -108,7 +111,10 @@ private struct TopRow: View {
             NotificationSide(note: note, edge: .trailing)
                 .id("n-\(note.kind)")
                 .transition(.islandSide(.trailing))
-        } else if let activity = model.liveActivity, !model.isExpanded {
+        } else if model.isExpanded {
+            ExpandedActions()
+                .transition(.islandSide(.trailing))
+        } else if let activity = model.liveActivity {
             ActivitySide(activity: activity, edge: .trailing)
                 .id("a-\(activity.identity)")
                 .transition(.islandSide(.trailing))
