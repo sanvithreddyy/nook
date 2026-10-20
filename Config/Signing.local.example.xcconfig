@@ -1,0 +1,4 @@
+// Copy to Signing.local.xcconfig (git-ignored). List identities with:
+//   security find-identity -v -p codesigning
+DEVELOPMENT_TEAM = YOUR_TEAM_ID
+CODE_SIGN_IDENTITY = Apple Development: you@example.com (XXXXXXXXXX)

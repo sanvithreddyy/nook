@@ -1,0 +1,4 @@
+build/
+*.xcodeproj/
+Config/Signing.local.xcconfig
+.DS_Store

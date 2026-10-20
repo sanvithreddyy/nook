@@ -1,0 +1,46 @@
+name: Nook
+options:
+  bundleIdPrefix: com.sanvith
+  deploymentTarget:
+    macOS: "15.0"
+  createIntermediateGroups: true
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    SWIFT_DEFAULT_ACTOR_ISOLATION: MainActor
+    SWIFT_APPROACHABLE_CONCURRENCY: YES
+targets:
+  Nook:
+    type: application
+    platform: macOS
+    sources:
+      - path: Nook
+      - path: Vendor/MediaRemoteAdapter/mediaremote-adapter.pl
+        buildPhase: resources
+    configFiles:
+      Debug: Config/Signing.xcconfig
+      Release: Config/Signing.xcconfig
+    dependencies:
+      - framework: Vendor/MediaRemoteAdapter/MediaRemoteAdapter.framework
+        embed: true
+        link: false
+        codeSign: true
+    info:
+      path: Nook/Info.plist
+      properties:
+        CFBundleDisplayName: Nook
+        CFBundleShortVersionString: "0.1"
+        CFBundleVersion: "1"
+        LSUIElement: true
+        LSMinimumSystemVersion: "15.0"
+        NSCalendarsFullAccessUsageDescription: Nook shows your next event in the notch.
+        NSBluetoothAlwaysUsageDescription: Nook shows a notice in the notch when headphones and other devices connect.
+    entitlements:
+      path: Nook/Nook.entitlements
+      properties:
+        com.apple.security.personal-information.calendars: true
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.sanvith.nook
+        MARKETING_VERSION: "0.1"
+        ENABLE_HARDENED_RUNTIME: YES
