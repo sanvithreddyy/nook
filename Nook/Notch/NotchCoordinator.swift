@@ -97,6 +97,10 @@ final class NotchCoordinator {
                 debugRefresh()
                 if CommandLine.arguments.contains("-expand") { model.expand() }
                 if CommandLine.arguments.contains("-peek") { model.showPeek(.track, for: nil) }
+                if CommandLine.arguments.contains("-hud") {
+                    try? await Task.sleep(for: .seconds(1))
+                    model.post(.volume(level: 0.62, muted: false), for: .seconds(30))
+                }
             }
         }
         #endif
