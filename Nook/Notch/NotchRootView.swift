@@ -92,13 +92,11 @@ private struct TopRow: View {
     }
 
     @ViewBuilder private var leading: some View {
-        if model.isExpanded {
-            EmptyView()
-        } else if let note = model.notification {
+        if let note = model.notification {
             NotificationSide(note: note, edge: .leading)
                 .id("n-\(note.kind)")
                 .transition(.islandSide(.leading))
-        } else if let activity = model.liveActivity {
+        } else if let activity = model.liveActivity, !model.isExpanded {
             ActivitySide(activity: activity, edge: .leading)
                 .id("a-\(activity.identity)")
                 .transition(.islandSide(.leading))
@@ -106,13 +104,11 @@ private struct TopRow: View {
     }
 
     @ViewBuilder private var trailing: some View {
-        if model.isExpanded {
-            EmptyView()
-        } else if let note = model.notification {
+        if let note = model.notification {
             NotificationSide(note: note, edge: .trailing)
                 .id("n-\(note.kind)")
                 .transition(.islandSide(.trailing))
-        } else if let activity = model.liveActivity {
+        } else if let activity = model.liveActivity, !model.isExpanded {
             ActivitySide(activity: activity, edge: .trailing)
                 .id("a-\(activity.identity)")
                 .transition(.islandSide(.trailing))

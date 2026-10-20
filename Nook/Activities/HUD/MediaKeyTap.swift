@@ -33,7 +33,10 @@ final class MediaKeyTap {
 
     @discardableResult
     func start() -> Bool {
-        guard tap == nil else { return true }
+        if let tap {
+            if CGEvent.tapIsEnabled(tap: tap) { return true }
+            stop()
+        }
         guard Self.isTrusted else { return false }
         let mask = CGEventMask(1 << 14) // NSEvent.EventType.systemDefined
         let refcon = Unmanaged.passUnretained(self).toOpaque()
@@ -64,12 +67,18 @@ final class MediaKeyTap {
     }
 
     fileprivate func reenable() {
+        // Re-enabling after Accessibility was revoked would fight the system; drop the tap instead.
+        guard Self.isTrusted else {
+            stop()
+            return
+        }
         if let tap { CGEvent.tapEnable(tap: tap, enable: true) }
     }
 
     /// Returns true when the event should be swallowed.
     fileprivate func handle(_ event: MediaKeyEvent) -> Bool {
-        guard let key = Key(rawValue: event.code), handles(key) else { return false }
+        // Option alone with these keys opens Sound or Displays settings; leave that to macOS.
+        guard !event.isOptionOnly, let key = Key(rawValue: event.code), handles(key) else { return false }
         if event.isDown { onKey?(key, event.isFine) }
         // Swallow both down and up so the system HUD never appears.
         return true
@@ -81,6 +90,7 @@ nonisolated struct MediaKeyEvent: Sendable {
     let code: Int
     let isDown: Bool
     let isFine: Bool
+    let isOptionOnly: Bool
 
     init?(_ event: CGEvent) {
         guard let nsEvent = NSEvent(cgEvent: event),
@@ -92,6 +102,7 @@ nonisolated struct MediaKeyEvent: Sendable {
         isDown = (data & 0xFF00) >> 8 == 0xA // 0xA down, 0xB up
         let flags = nsEvent.modifierFlags
         isFine = flags.contains(.option) && flags.contains(.shift)
+        isOptionOnly = flags.contains(.option) && !flags.contains(.shift)
     }
 }
 

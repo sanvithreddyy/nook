@@ -36,12 +36,19 @@ final class CalendarModel {
             Task {
                 let granted = (try? await store.requestFullAccessToEvents()) ?? false
                 isAuthorized = granted
-                if granted { begin() } else { onChange?() }
+                // The toggle may have been turned off while the prompt was open.
+                if granted, isEnabled { begin() } else { onChange?() }
             }
         default:
             isAuthorized = false
             onChange?()
         }
+    }
+
+    /// Picks up access granted later in System Settings.
+    func recheckAuthorization() {
+        guard isEnabled, !isAuthorized, EKEventStore.authorizationStatus(for: .event) == .fullAccess else { return }
+        update()
     }
 
     func event(id: String) -> CalendarEvent? {
@@ -100,7 +107,8 @@ final class CalendarModel {
             .sorted { $0.startDate < $1.startDate }
             .prefix(12)
             .map { event in
-                CalendarEvent(id: event.eventIdentifier ?? UUID().uuidString,
+                // Occurrences of a recurring event share eventIdentifier; the start date tells them apart.
+                CalendarEvent(id: "\(event.eventIdentifier ?? "event")@\(Int(event.startDate.timeIntervalSince1970))",
                               title: event.title ?? "Untitled",
                               start: event.startDate,
                               end: event.endDate,

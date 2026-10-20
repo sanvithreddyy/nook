@@ -19,7 +19,10 @@ final class NotchCoordinator {
     private var observers: [NSObjectProtocol] = []
     private var defaultsObserver: NSObjectProtocol?
     private var pauseGraceTask: Task<Void, Never>?
+    private var permissionTask: Task<Void, Never>?
     private var nowPlayingVisible = false
+    /// A low-battery warning raised while the island was hidden, shown once it's back.
+    private var pendingLowBattery: Int?
 
     func start() {
         nowPlaying.onTrackChange = { [weak self] in self?.trackChanged() }
@@ -36,8 +39,12 @@ final class NotchCoordinator {
             self?.model.post(reading.onAC ? .charging(level: reading.level) : .onBattery(level: reading.level), for: .seconds(2.6))
         }
         battery.onLowBattery = { [weak self] reading in
-            guard Prefs.bool(Prefs.battery) else { return }
-            self?.model.post(.lowBattery(level: reading.level), for: .seconds(4))
+            guard let self, Prefs.bool(Prefs.battery) else { return }
+            if self.model.isSuppressed {
+                self.pendingLowBattery = reading.level
+            } else {
+                self.model.post(.lowBattery(level: reading.level), for: .seconds(4))
+            }
         }
         battery.onLowPowerModeChange = { [weak self] on in
             guard Prefs.bool(Prefs.battery) else { return }
@@ -57,10 +64,14 @@ final class NotchCoordinator {
         }
         if Prefs.bool(Prefs.connectivity) { bluetooth.start() }
 
-        keys.handles = { key in
+        // Swallow a key only when Nook can both act on it and show the result;
+        // otherwise the system handles it as usual.
+        keys.handles = { [weak self] key in
+            guard let self, !self.model.isSuppressed else { return false }
             switch key {
-            case .volumeUp, .volumeDown, .mute: Prefs.bool(Prefs.volumeHUD)
-            case .brightnessUp, .brightnessDown: Prefs.bool(Prefs.brightnessHUD)
+            case .volumeUp, .volumeDown: return Prefs.bool(Prefs.volumeHUD) && self.volume.canSetVolume
+            case .mute: return Prefs.bool(Prefs.volumeHUD) && self.volume.canMute
+            case .brightnessUp, .brightnessDown: return Prefs.bool(Prefs.brightnessHUD) && self.brightness.isAvailable
             }
         }
         keys.onKey = { [weak self] key, fine in self?.mediaKey(key, fine: fine) }
@@ -89,6 +100,11 @@ final class NotchCoordinator {
             }
         }
         #endif
+    }
+
+    func stop() {
+        nowPlaying.stop()
+        keys.stop()
     }
 
     #if DEBUG
@@ -133,6 +149,8 @@ final class NotchCoordinator {
                     self?.updateFullscreen()
                     try? await Task.sleep(for: .milliseconds(450))
                     self?.updateFullscreen()
+                    try? await Task.sleep(for: .milliseconds(800))
+                    self?.updateFullscreen()
                 }
             })
         }
@@ -165,27 +183,58 @@ final class NotchCoordinator {
             }
             lastConnectivityEnabled = connectivityEnabled
         }
-        if Prefs.bool(Prefs.volumeHUD) || Prefs.bool(Prefs.brightnessHUD) {
+        if wantsKeyTap {
             keys.start()
         } else {
             keys.stop()
         }
+        let hasPlayer = Prefs.bool(Prefs.nowPlaying) && nowPlaying.hasTrack
+        if model.hasPlayer != hasPlayer { model.hasPlayer = hasPlayer }
+        watchPermissions()
         updateFullscreen()
         refreshActivity()
     }
 
-    /// Re-check Accessibility after the user grants it in System Settings.
-    func retryKeyTap() {
-        applyPreferences()
+    private var wantsKeyTap: Bool { Prefs.bool(Prefs.volumeHUD) || Prefs.bool(Prefs.brightnessHUD) }
+
+    /// Accessibility and Calendar access are granted in System Settings while Nook isn't frontmost.
+    /// Poll quietly until whatever is pending arrives, then stop.
+    private func watchPermissions() {
+        let keysPending = wantsKeyTap && !keys.isRunning
+        let calendarPending = calendar.isEnabled && !calendar.isAuthorized
+        guard keysPending || calendarPending else {
+            permissionTask?.cancel()
+            permissionTask = nil
+            return
+        }
+        guard permissionTask == nil else { return }
+        permissionTask = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(2))
+                guard let self else { return }
+                if self.wantsKeyTap, !self.keys.isRunning { self.keys.start() }
+                if self.calendar.isEnabled, !self.calendar.isAuthorized { self.calendar.recheckAuthorization() }
+                if !(self.wantsKeyTap && !self.keys.isRunning), !(self.calendar.isEnabled && !self.calendar.isAuthorized) {
+                    self.permissionTask = nil
+                    return
+                }
+            }
+        }
     }
 
     private func updateFullscreen() {
         guard let screen = window?.screen else { return }
-        let hide = Prefs.bool(Prefs.hideInFullscreen) && FullscreenDetector.hasFullscreenWindow(on: screen)
-        if hide != model.isSuppressed {
-            model.isSuppressed = hide
-            if hide { model.collapse() }
-            window?.pointerMoved()
+        let hide = Prefs.bool(Prefs.hideInFullscreen) && FullscreenDetector.isFullscreen(on: screen)
+        guard hide != model.isSuppressed else { return }
+        model.isSuppressed = hide
+        if hide {
+            model.collapse()
+            model.setHovering(false)
+        }
+        window?.setSuppressed(hide)
+        if !hide, let level = pendingLowBattery {
+            pendingLowBattery = nil
+            model.post(.lowBattery(level: level), for: .seconds(4))
         }
     }
 
@@ -232,8 +281,9 @@ final class NotchCoordinator {
     }
 
     private func trackChanged() {
-        if model.hasPlayer != nowPlaying.hasTrack {
-            withAnimation(model.isExpanded ? Motion.expand : nil) { model.hasPlayer = nowPlaying.hasTrack }
+        let hasPlayer = Prefs.bool(Prefs.nowPlaying) && nowPlaying.hasTrack
+        if model.hasPlayer != hasPlayer {
+            withAnimation(model.isExpanded ? Motion.expand : nil) { model.hasPlayer = hasPlayer }
         }
         guard nowPlaying.hasTrack, nowPlaying.isPlaying || nowPlayingVisible else {
             refreshActivity()
@@ -249,7 +299,7 @@ final class NotchCoordinator {
     // MARK: Input
 
     private func swiped(_ direction: SwipeDirection) {
-        guard nowPlaying.hasTrack else { return }
+        guard Prefs.bool(Prefs.nowPlaying), nowPlaying.hasTrack else { return }
         switch direction {
         case .left:
             nowPlaying.next()
@@ -278,8 +328,10 @@ final class NotchCoordinator {
 }
 
 enum FullscreenDetector {
-    /// True when another app's window covers the whole screen, which is how fullscreen spaces look.
-    static func hasFullscreenWindow(on screen: NSScreen) -> Bool {
+    /// A fullscreen space has no menu bar window on that display (unless the pointer reveals it)
+    /// and another app's window spans the screen's full width from the top of the usable area.
+    /// Both must hold, so an auto-hidden menu bar or a zoomed window alone doesn't hide the island.
+    static func isFullscreen(on screen: NSScreen) -> Bool {
         guard let primary = NSScreen.screens.first,
               let windows = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]]
         else { return false }
@@ -289,17 +341,25 @@ enum FullscreenDetector {
                             width: screen.frame.width,
                             height: screen.frame.height)
         let me = ProcessInfo.processInfo.processIdentifier
+        var menuBarVisible = false
+        var coveringWindow = false
         for info in windows {
-            guard (info[kCGWindowLayer as String] as? Int) == 0,
-                  (info[kCGWindowOwnerPID as String] as? pid_t) != me,
-                  let boundsDict = info[kCGWindowBounds as String] as? NSDictionary,
-                  let bounds = CGRect(dictionaryRepresentation: boundsDict as CFDictionary)
+            guard let boundsDict = info[kCGWindowBounds as String] as? NSDictionary,
+                  let bounds = CGRect(dictionaryRepresentation: boundsDict as CFDictionary),
+                  bounds.intersects(target)
             else { continue }
-            if abs(bounds.minX - target.minX) < 1, abs(bounds.minY - target.minY) < 1,
-               abs(bounds.width - target.width) < 1, abs(bounds.height - target.height) < 1 {
-                return true
+            let layer = info[kCGWindowLayer as String] as? Int ?? 0
+            let owner = info[kCGWindowOwnerName as String] as? String
+            if layer == Int(CGWindowLevelForKey(.mainMenuWindow)), owner == "Window Server", abs(bounds.minY - target.minY) < 1 {
+                menuBarVisible = true
+            }
+            if layer == 0, (info[kCGWindowOwnerPID as String] as? pid_t) != me,
+               abs(bounds.width - target.width) < 1,
+               bounds.minY - target.minY <= screen.safeAreaInsets.top + 1,
+               abs(bounds.maxY - target.maxY) < 1 {
+                coveringWindow = true
             }
         }
-        return false
+        return coveringWindow && !menuBarVisible
     }
 }

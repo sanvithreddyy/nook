@@ -35,6 +35,7 @@ final class MediaRemoteClient {
     private var readTask: Task<Void, Never>?
     private var stopped = false
     private var restartDelay: Duration = .seconds(1)
+    private var launchedAt = Date()
 
     private var scriptPath: String? {
         Bundle.main.url(forResource: "mediaremote-adapter", withExtension: "pl")?.path
@@ -46,6 +47,7 @@ final class MediaRemoteClient {
 
     func start() {
         stopped = false
+        Self.endOrphans(scriptPath: scriptPath)
         launchStream()
     }
 
@@ -79,7 +81,7 @@ final class MediaRemoteClient {
         guard !stopped, let scriptPath, let frameworkPath else { return }
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/perl")
-        process.arguments = [scriptPath, frameworkPath, "stream", "--debounce=40"]
+        process.arguments = [scriptPath, frameworkPath, "stream", "--micros", "--debounce=40"]
         let pipe = Pipe()
         process.standardOutput = pipe
         process.standardError = FileHandle.nullDevice
@@ -93,6 +95,7 @@ final class MediaRemoteClient {
             return
         }
         self.process = process
+        launchedAt = Date()
         let handle = pipe.fileHandleForReading
         readTask = Task.detached(priority: .userInitiated) { [weak self] in
             do {
@@ -105,13 +108,14 @@ final class MediaRemoteClient {
     }
 
     private func receive(_ update: NowPlayingUpdate) {
-        restartDelay = .seconds(1)
         onUpdate?(update)
     }
 
     private func streamEnded() {
         process = nil
         guard !stopped else { return }
+        // Only a stream that stayed up a while earns a fast restart.
+        if Date().timeIntervalSince(launchedAt) > 10 { restartDelay = .seconds(1) }
         let delay = restartDelay
         restartDelay = min(restartDelay * 2, .seconds(30))
         Task { [weak self] in
@@ -128,6 +132,25 @@ final class MediaRemoteClient {
         process.standardOutput = FileHandle.nullDevice
         process.standardError = FileHandle.nullDevice
         try? process.run()
+    }
+
+    /// A killed or crashed Nook leaves its perl stream running until its next write fails.
+    /// Clean up any of ours that launchd has adopted before starting a new one.
+    private static func endOrphans(scriptPath: String?) {
+        guard let scriptPath else { return }
+        let ps = Process()
+        ps.executableURL = URL(fileURLWithPath: "/bin/ps")
+        ps.arguments = ["-axo", "pid=,ppid=,command="]
+        let pipe = Pipe()
+        ps.standardOutput = pipe
+        guard (try? ps.run()) != nil else { return }
+        let output = String(data: pipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
+        ps.waitUntilExit()
+        for line in output.split(separator: "\n") where line.contains(scriptPath) {
+            let fields = line.split(separator: " ", maxSplits: 2, omittingEmptySubsequences: true)
+            guard fields.count == 3, let pid = Int32(fields[0]), fields[1] == "1" else { continue }
+            kill(pid, SIGTERM)
+        }
     }
 
     // MARK: Decoding

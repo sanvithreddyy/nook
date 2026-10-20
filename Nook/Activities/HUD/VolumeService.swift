@@ -21,6 +21,10 @@ final class VolumeService {
         set { write(kAudioHardwareServiceDeviceProperty_VirtualMainVolume, min(max(newValue, 0), 1)) }
     }
 
+    /// False for outputs macOS can't set a level on (many HDMI and digital outputs).
+    var canSetVolume: Bool { isSettable(kAudioHardwareServiceDeviceProperty_VirtualMainVolume) }
+    var canMute: Bool { isSettable(kAudioDevicePropertyMute) }
+
     var isMuted: Bool {
         get { (readUInt32(kAudioDevicePropertyMute) ?? 0) != 0 }
         set { writeUInt32(kAudioDevicePropertyMute, newValue ? 1 : 0) }
@@ -56,6 +60,13 @@ final class VolumeService {
 
     private func address(_ selector: AudioObjectPropertySelector) -> AudioObjectPropertyAddress {
         AudioObjectPropertyAddress(mSelector: selector, mScope: kAudioDevicePropertyScopeOutput, mElement: kAudioObjectPropertyElementMain)
+    }
+
+    private func isSettable(_ selector: AudioObjectPropertySelector) -> Bool {
+        var address = address(selector)
+        guard AudioObjectHasProperty(device, &address) else { return false }
+        var settable: DarwinBoolean = false
+        return AudioObjectIsPropertySettable(device, &address, &settable) == noErr && settable.boolValue
     }
 
     private func read(_ selector: AudioObjectPropertySelector) -> Float? {

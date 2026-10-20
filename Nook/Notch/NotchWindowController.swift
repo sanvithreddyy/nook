@@ -25,6 +25,31 @@ final class NotchWindowController {
         place(on: screen)
         panel.orderFrontRegardless()
         installMonitors()
+        observeLayout()
+    }
+
+    /// Hidden while a fullscreen app owns the screen: ordered out so nothing composites over it.
+    func setSuppressed(_ suppressed: Bool) {
+        if suppressed {
+            panel.ignoresMouseEvents = true
+            panel.orderOut(nil)
+        } else {
+            panel.orderFrontRegardless()
+            pointerMoved()
+        }
+    }
+
+    /// The island can grow or shrink under a still pointer (a HUD ends, a swipe collapses it),
+    /// so re-run hit testing whenever the layout changes, not only when the mouse moves.
+    private func observeLayout() {
+        withObservationTracking {
+            _ = model.layout
+        } onChange: { [weak self] in
+            Task { @MainActor in
+                self?.pointerMoved()
+                self?.observeLayout()
+            }
+        }
     }
 
     func place(on screen: NSScreen) {
@@ -95,7 +120,10 @@ final class NotchWindowController {
             return
         }
         let inside = hitRect().contains(NSEvent.mouseLocation)
-        panel.ignoresMouseEvents = !inside
+        // Keep taking events while a drag that began on the island is still held,
+        // so the scrubber gets its mouse-up even when released outside.
+        let dragging = !panel.ignoresMouseEvents && NSEvent.pressedMouseButtons & 1 != 0
+        panel.ignoresMouseEvents = !inside && !dragging
         if inside != model.isHovering { hoverChanged(inside) }
     }
 
@@ -111,7 +139,8 @@ final class NotchWindowController {
             }
         } else {
             model.setPressed(false)
-            if model.peek == .track, Prefs.bool(Prefs.peekOnHover) { model.hidePeek() }
+            // Whatever opened the track peek, leaving the island closes it.
+            if model.peek == .track { model.hidePeek() }
             if model.isExpanded {
                 collapseTask = Task { [weak self] in
                     try? await Task.sleep(for: .milliseconds(140))

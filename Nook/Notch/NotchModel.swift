@@ -142,8 +142,8 @@ final class NotchModel {
 
     // MARK: Notifications
 
+    /// Notifications also show while expanded, in the strip beside the notch.
     func post(_ note: NotchNotification, for duration: Duration = .seconds(2.2)) {
-        if isExpanded, note.isHUD == false { return }
         let sameKind = notification?.kind == note.kind
         withAnimation(sameKind ? Motion.level : Motion.notificationIn) { notification = note }
         notificationTask?.cancel()
@@ -187,12 +187,10 @@ final class NotchModel {
     func expand() {
         guard !isExpanded else { return }
         peekTask?.cancel()
-        notificationTask?.cancel()
         expandToken &+= 1
         withAnimation(Motion.expand) {
             isExpanded = true
             peek = nil
-            notification = nil
         }
         Haptics.tap()
     }

@@ -32,7 +32,8 @@ enum Prefs {
         UserDefaults.standard.register(defaults: [
             hideMenuBarIcon: false,
             display: DisplayChoice.builtIn.rawValue,
-            hideInFullscreen: true,
+            // Off by default: detection of other apps' fullscreen spaces is heuristic.
+            hideInFullscreen: false,
             enableHaptics: true,
             expandOnHover: false,
             swipeGestures: true,

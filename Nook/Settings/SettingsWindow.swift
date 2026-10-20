@@ -118,7 +118,7 @@ struct SettingsView: View {
 
 private struct GeneralPane: View {
     @AppStorage(Prefs.display) private var display = DisplayChoice.builtIn.rawValue
-    @AppStorage(Prefs.hideInFullscreen) private var hideInFullscreen = true
+    @AppStorage(Prefs.hideInFullscreen) private var hideInFullscreen = false
     @AppStorage(Prefs.expandOnHover) private var expandOnHover = false
     @AppStorage(Prefs.swipeGestures) private var swipeGestures = true
     @AppStorage(Prefs.enableHaptics) private var haptics = true
@@ -206,14 +206,7 @@ private struct HUDPane: View {
                 }
             }
         }
-        .onReceive(poll) { _ in
-            let now = MediaKeyTap.isTrusted
-            if now != trusted {
-                trusted = now
-                // Nudge the coordinator to start the key tap now that access exists.
-                UserDefaults.standard.set(Date().timeIntervalSince1970, forKey: "accessibilityCheckedAt")
-            }
-        }
+        .onReceive(poll) { _ in trusted = MediaKeyTap.isTrusted }
     }
 }
 

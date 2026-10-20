@@ -67,6 +67,9 @@ final class WaveformLayerView: NSView {
 
     required init?(coder: NSCoder) { fatalError("init(coder:) is not used") }
 
+    // Decorative: clicks go to the SwiftUI tap gesture around it.
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
+
     override func layout() {
         super.layout()
         CATransaction.begin()

@@ -6,6 +6,10 @@ out=build/tour; rm -rf $out; mkdir -p $out
 app=build/Build/Products/Debug/Nook.app/Contents/MacOS/Nook
 pkill -f "$app" 2>/dev/null || true
 # Recording happens over whatever is on screen, fullscreen apps included.
+# Keep the island visible over fullscreen apps for the run, then restore the user's setting.
+saved=$(defaults read com.sanvith.nook hideInFullscreen 2>/dev/null || echo unset)
+restore() { if [[ $saved == unset ]]; then defaults delete com.sanvith.nook hideInFullscreen 2>/dev/null; else defaults write com.sanvith.nook hideInFullscreen -bool $saved; fi; }
+trap restore EXIT
 defaults write com.sanvith.nook hideInFullscreen -bool false
 screen_w=$(osascript -l JavaScript -e 'ObjC.import("AppKit"); $.NSScreen.screens.objectAtIndex(0).frame.size.width' 2>/dev/null || echo 1512)
 w=820; h=260; x=$(( (${screen_w%.*} - w) / 2 ))
@@ -18,7 +22,6 @@ $app -tour > $out/tour.log 2>&1 &
 appPID=$!
 wait $rec
 kill $appPID 2>/dev/null || true
-defaults delete com.sanvith.nook hideInFullscreen 2>/dev/null || true
 # One still 1.2 s into each step.
 grep '^TOUR' $out/tour.log | while read -r _ name ts; do
   offset=$(python3 -c "print(max(0, $ts - $start + 1.2))")

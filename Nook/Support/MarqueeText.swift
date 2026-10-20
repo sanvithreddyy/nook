@@ -70,6 +70,9 @@ final class MarqueeScrollView: NSView {
 
     required init?(coder: NSCoder) { fatalError("init(coder:) is not used") }
 
+    // Display only: clicks go to the island underneath.
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
+
     override func layout() {
         super.layout()
         let size = host.fittingSize

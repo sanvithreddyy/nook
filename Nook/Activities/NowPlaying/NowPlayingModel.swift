@@ -50,7 +50,7 @@ final class NowPlayingModel {
 
     func elapsed(at date: Date) -> Double {
         guard duration > 0 else { return 0 }
-        let rate = isPlaying ? max(playbackRate, 1) : 0
+        let rate = isPlaying ? (playbackRate > 0 ? playbackRate : 1) : 0
         let value = elapsedAtTimestamp + date.timeIntervalSince(elapsedTimestamp) * rate
         return min(max(value, 0), duration)
     }
@@ -112,54 +112,62 @@ final class NowPlayingModel {
 
     // MARK: Stream
 
+    /// Applies one stream line. A diff only changes the fields it carries, so local changes made
+    /// a moment ago (seek, shuffle, play/pause) survive unrelated updates until the player confirms.
     private func apply(_ update: NowPlayingUpdate) {
-        if !update.isDiff { state.removeAll() }
+        let full = !update.isDiff
+        if full { state.removeAll() }
         for (key, value) in update.values {
             if case .null = value { state.removeValue(forKey: key) } else { state[key] = value }
         }
+        func carries(_ keys: String...) -> Bool { full || keys.contains { update.values[$0] != nil } }
 
-        let newTitle = string("title")
-        let newArtist = string("artist")
-        let newAlbum = string("album")
-        let newID = [newTitle, newArtist, newAlbum].joined(separator: "\u{1F}")
-        let trackChanged = newID != trackID
+        var trackChanged = false
+        if carries("title", "artist", "album") {
+            title = string("title")
+            artist = string("artist")
+            album = string("album")
+            let newID = [title, artist, album].joined(separator: "\u{1F}")
+            trackChanged = newID != trackID
+            if trackChanged { trackID = newID }
+        }
+        if carries("durationMicros") { duration = micros("durationMicros") ?? 0 }
+        if carries("playbackRate") { playbackRate = number("playbackRate") ?? 0 }
+        if carries("parentApplicationBundleIdentifier", "bundleIdentifier") {
+            bundleIdentifier = string("parentApplicationBundleIdentifier").nilIfEmpty ?? string("bundleIdentifier").nilIfEmpty
+        }
+        if carries("shuffleMode"), let shuffle = number("shuffleMode") { isShuffled = shuffle != 1 }
+        if carries("repeatMode"), let mode = number("repeatMode") { repeatMode = Int(mode) }
 
-        title = newTitle
-        artist = newArtist
-        album = newAlbum
-        duration = number("duration") ?? 0
-        playbackRate = number("playbackRate") ?? 0
-        bundleIdentifier = string("parentApplicationBundleIdentifier").nilIfEmpty ?? string("bundleIdentifier").nilIfEmpty
-        if let shuffle = number("shuffleMode") { isShuffled = shuffle != 1 }
-        if let mode = number("repeatMode") { repeatMode = Int(mode) }
-
-        if let elapsed = number("elapsedTime") {
+        let carriesElapsed = carries("elapsedTimeMicros") && micros("elapsedTimeMicros") != nil
+        if carriesElapsed, let elapsed = micros("elapsedTimeMicros") {
             elapsedAtTimestamp = elapsed
-            elapsedTimestamp = date("timestamp") ?? Date()
+            elapsedTimestamp = micros("timestampEpochMicros").map { Date(timeIntervalSince1970: $0) } ?? Date()
         }
 
         if let data = update.artwork {
             loadArtwork(data)
-        } else if state["artworkData"] == nil, artwork != nil {
+        } else if carries("artworkData"), state["artworkData"] == nil, artwork != nil {
             artworkGeneration += 1
             artwork = nil
             tint = .white
         }
 
-        let playing = bool("playing") ?? (playbackRate > 0)
-        if trackChanged {
-            trackID = newID
-            onTrackChange?()
+        if trackChanged { onTrackChange?() }
+        if carries("playing", "playbackRate") {
+            // The player's own elapsed time is exact; only extrapolate when the update lacks it.
+            setPlaying(bool("playing") ?? (playbackRate > 0), freezeClock: !carriesElapsed)
         }
-        setPlaying(playing)
     }
 
-    private func setPlaying(_ playing: Bool) {
+    private func setPlaying(_ playing: Bool, freezeClock: Bool = true) {
         guard playing != isPlaying else { return }
-        // Freeze the clock at the moment playback stops so the scrubber doesn't jump.
-        let now = Date()
-        elapsedAtTimestamp = elapsed(at: now)
-        elapsedTimestamp = now
+        if freezeClock {
+            // Freeze the clock at the moment playback stops so the scrubber doesn't jump.
+            let now = Date()
+            elapsedAtTimestamp = elapsed(at: now)
+            elapsedTimestamp = now
+        }
         isPlaying = playing
         onPlaybackChange?()
     }
@@ -187,15 +195,16 @@ final class NowPlayingModel {
         return nil
     }
 
+    /// The stream runs with --micros: times arrive as integer microseconds.
+    private func micros(_ key: String) -> Double? {
+        number(key).map { $0 / 1_000_000 }
+    }
+
     private func bool(_ key: String) -> Bool? {
         if case .bool(let b) = state[key] { return b }
         return nil
     }
 
-    private func date(_ key: String) -> Date? {
-        guard case .string(let s) = state[key] else { return nil }
-        return try? Date(s, strategy: .iso8601)
-    }
 }
 
 extension String {

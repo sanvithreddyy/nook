@@ -18,6 +18,7 @@ struct NowPlayingArtworkThumb: View {
 
 struct NowPlayingWaveformSlot: View {
     @Environment(NowPlayingModel.self) private var nowPlaying
+    @Environment(NotchModel.self) private var model
     @AppStorage(Prefs.showWaveform) private var showWaveform = true
     @AppStorage(Prefs.tintWaveform) private var tintWaveform = true
     @State private var hovering = false
@@ -26,9 +27,8 @@ struct NowPlayingWaveformSlot: View {
         ZStack {
             if showWaveform {
                 Waveform(isPlaying: nowPlaying.isPlaying, tint: tintWaveform ? nowPlaying.tint : .white)
-                    .blur(radius: hovering ? 3 : 0)
                     .scaleEffect(hovering ? 1.2 : 1)
-                    .opacity(hovering ? 0.35 : 1)
+                    .opacity(hovering ? 0.25 : 1)
             }
             Image(systemName: nowPlaying.isPlaying ? "pause.fill" : "play.fill")
                 .font(.system(size: 13, weight: .semibold))
@@ -40,6 +40,8 @@ struct NowPlayingWaveformSlot: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .contentShape(Rectangle())
         .onHover { inside in withAnimation(.easeOut(duration: 0.18)) { hovering = inside } }
+        // A fast exit can skip the slot's own exit event once the panel stops taking the mouse.
+        .onChange(of: model.isHovering) { _, island in if !island { hovering = false } }
         .onTapGesture { nowPlaying.togglePlayPause() }
     }
 }

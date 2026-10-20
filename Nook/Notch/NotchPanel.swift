@@ -21,6 +21,9 @@ final class NotchPanel: NSPanel {
         level = NSWindow.Level(rawValue: NSWindow.Level.mainMenu.rawValue + 3)
         collectionBehavior = [.canJoinAllSpaces, .stationary, .fullScreenAuxiliary, .ignoresCycle]
         animationBehavior = .none
+        // Clicks on buttons and the scrubber work through acceptsFirstMouse; only views that
+        // need typing would take key, so the app you're typing in keeps focus.
+        becomesKeyOnlyIfNeeded = true
     }
 
     // Becoming key lets sliders and buttons track drags without activating the app.

@@ -5,12 +5,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var coordinator: NotchCoordinator?
     private var statusItem: NSStatusItem?
     private var hideIconObserver: NSKeyValueObservation?
+    private var terminationSource: DispatchSourceSignal?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         Prefs.registerDefaults()
         let coordinator = NotchCoordinator()
         coordinator.start()
         self.coordinator = coordinator
+        // `kill` and logout send SIGTERM, which skips applicationWillTerminate; stop the adapter first.
+        signal(SIGTERM, SIG_IGN)
+        let source = DispatchSource.makeSignalSource(signal: SIGTERM, queue: .main)
+        source.setEventHandler { [weak self] in
+            MainActor.assumeIsolated { self?.coordinator?.stop() }
+            exit(0)
+        }
+        source.resume()
+        terminationSource = source
         installStatusItem()
         #if DEBUG
         if CommandLine.arguments.contains("-settings-capture") { SettingsWindowController.shared.runCapture() }
@@ -18,6 +28,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         hideIconObserver = UserDefaults.standard.observe(\.hideMenuBarIcon, options: [.new]) { [weak self] _, _ in
             Task { @MainActor in self?.installStatusItem() }
         }
+    }
+
+    func applicationWillTerminate(_ notification: Notification) {
+        coordinator?.stop()
     }
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
