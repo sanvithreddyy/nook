@@ -93,7 +93,7 @@ private struct DropArea: View {
                 .strokeBorder(.white.opacity(shelf.isTargeted ? 0.45 : 0.08),
                               style: StrokeStyle(lineWidth: shelf.isTargeted ? 1.5 : 1, dash: shelf.isTargeted ? [6, 4] : []))
             if shelf.isEmpty {
-                Text("Drop files here to keep them")
+                Text("Drop files here, or click to choose")
                     .font(.system(size: 13))
                     .foregroundStyle(.white.opacity(0.45))
             } else {
@@ -110,6 +110,9 @@ private struct DropArea: View {
                 .scrollIndicators(.never)
             }
         }
+        .contentShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        // Tiles handle their own clicks; a click on the empty space picks files.
+        .onTapGesture { shelf.chooseFiles() }
         .animation(Motion.peekIn, value: shelf.items.map(\.id))
         .animation(.easeOut(duration: 0.15), value: shelf.isTargeted)
         .onDrop(of: shelfDropTypes, isTargeted: $shelf.isTargeted) { providers in
@@ -155,6 +158,8 @@ private struct ShelfTile: View {
         .contentShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
         .onHover { inside in withAnimation(.easeOut(duration: 0.15)) { hovering = inside } }
         .onTapGesture(count: 2) { shelf.open(item) }
+        // Absorb single clicks so they don't reach the drop area's click-to-choose.
+        .onTapGesture {}
         .onDrag { NSItemProvider(contentsOf: item.url) ?? NSItemProvider() }
         .contextMenu {
             Button("Open") { shelf.open(item) }

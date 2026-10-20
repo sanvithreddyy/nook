@@ -75,6 +75,17 @@ final class ShelfModel {
     }
     #endif
 
+    /// Click-to-add: a standard open panel for files and folders.
+    func chooseFiles() {
+        let panel = NSOpenPanel()
+        panel.allowsMultipleSelection = true
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = true
+        panel.prompt = "Add to Shelf"
+        NSApp.activate()
+        if panel.runModal() == .OK { add(panel.urls) }
+    }
+
     // MARK: Removing
 
     func remove(_ item: ShelfItem) {
