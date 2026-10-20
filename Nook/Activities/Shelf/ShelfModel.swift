@@ -24,11 +24,12 @@ final class ShelfModel {
     /// A drag is over the shelf's drop area.
     var isTargeted = false
 
-    @ObservationIgnored private let directory: URL
+    @ObservationIgnored let directory: URL
     @ObservationIgnored private let indexURL: URL
 
-    init() {
-        let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+    /// `root` is Application Support/Nook; tests pass a temporary folder.
+    init(root: URL? = nil) {
+        let support = root ?? FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("Nook", isDirectory: true)
         directory = support.appendingPathComponent("Shelf", isDirectory: true)
         indexURL = support.appendingPathComponent("shelf.json")
@@ -62,7 +63,7 @@ final class ShelfModel {
         Task {
             var urls: [URL] = []
             for provider in providers {
-                if let url = await Self.load(provider) { urls.append(url) }
+                if let url = await Self.load(provider, into: directory) { urls.append(url) }
             }
             add(urls)
         }
@@ -109,7 +110,7 @@ final class ShelfModel {
         try? FileManager.default.trashItem(at: item.url, resultingItemURL: nil)
     }
 
-    private func isInShelfFolder(_ url: URL) -> Bool {
+    func isInShelfFolder(_ url: URL) -> Bool {
         url.resolvingSymlinksInPath().deletingLastPathComponent().standardizedFileURL.path
             == directory.resolvingSymlinksInPath().standardizedFileURL.path
     }
@@ -159,13 +160,11 @@ final class ShelfModel {
     // MARK: Drop decoding
 
     /// Turns one dropped item into a file URL: the file itself, or a file written for a link, text or image.
-    private static func load(_ provider: NSItemProvider) async -> URL? {
+    private static func load(_ provider: NSItemProvider, into folder: URL) async -> URL? {
         if provider.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier),
            let url = await loadObject(URL.self, from: provider) {
             return url
         }
-        let folder = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("Nook/Shelf", isDirectory: true)
         // Images before links: a web image also carries its URL, but the picture is what was dragged.
         if let imageType = provider.registeredTypeIdentifiers.compactMap(UTType.init).first(where: { $0.conforms(to: .image) }),
            let data = await loadData(imageType.identifier, from: provider) {
@@ -199,7 +198,7 @@ final class ShelfModel {
         }
     }
 
-    private static func write(_ data: Data, named name: String, in folder: URL) -> URL? {
+    static func write(_ data: Data, named name: String, in folder: URL) -> URL? {
         let safe = name.replacingOccurrences(of: "/", with: "-")
         var url = folder.appendingPathComponent(safe)
         let base = url.deletingPathExtension().lastPathComponent

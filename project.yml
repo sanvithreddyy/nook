@@ -20,6 +20,8 @@ targets:
     configFiles:
       Debug: Config/Signing.xcconfig
       Release: Config/Signing.xcconfig
+    scheme:
+      testTargets: [NookTests]
     dependencies:
       - framework: Vendor/MediaRemoteAdapter/MediaRemoteAdapter.framework
         embed: true
@@ -44,3 +46,18 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: com.sanvith.nook
         MARKETING_VERSION: "0.1"
         ENABLE_HARDENED_RUNTIME: YES
+  NookTests:
+    type: bundle.unit-test
+    platform: macOS
+    # Compiles the app's code directly, so tests never launch the notch app.
+    sources:
+      - NookTests
+      - path: Nook
+        excludes: [App/NookApp.swift, Info.plist, Nook.entitlements]
+    configFiles:
+      Debug: Config/Signing.xcconfig
+      Release: Config/Signing.xcconfig
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        PRODUCT_BUNDLE_IDENTIFIER: com.sanvith.nook.tests
