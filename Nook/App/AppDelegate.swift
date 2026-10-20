@@ -12,6 +12,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         coordinator.start()
         self.coordinator = coordinator
         installStatusItem()
+        #if DEBUG
+        if CommandLine.arguments.contains("-settings-capture") { SettingsWindowController.shared.runCapture() }
+        #endif
         hideIconObserver = UserDefaults.standard.observe(\.hideMenuBarIcon, options: [.new]) { [weak self] _, _ in
             Task { @MainActor in self?.installStatusItem() }
         }

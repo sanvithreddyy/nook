@@ -115,8 +115,12 @@ final class NotchWindowController {
             if model.isExpanded {
                 collapseTask = Task { [weak self] in
                     try? await Task.sleep(for: .milliseconds(140))
-                    guard !Task.isCancelled else { return }
-                    self?.model.collapse()
+                    // Dragging the scrubber past the edge shouldn't close the island mid-drag.
+                    while NSEvent.pressedMouseButtons & 1 != 0, !Task.isCancelled {
+                        try? await Task.sleep(for: .milliseconds(50))
+                    }
+                    guard !Task.isCancelled, let self, !self.model.isHovering else { return }
+                    self.model.collapse()
                 }
             }
         }

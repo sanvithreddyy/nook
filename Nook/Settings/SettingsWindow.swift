@@ -8,7 +8,7 @@ final class SettingsWindowController {
     static let shared = SettingsWindowController()
     private var window: NSWindow?
 
-    func show() {
+    func show(activate: Bool = true) {
         if window == nil {
             let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 720, height: 500),
                                   styleMask: [.titled, .closable, .miniaturizable, .fullSizeContentView],
@@ -22,9 +22,30 @@ final class SettingsWindowController {
             window.center()
             self.window = window
         }
-        NSApp.activate()
-        window?.makeKeyAndOrderFront(nil)
+        if activate {
+            NSApp.activate()
+            window?.makeKeyAndOrderFront(nil)
+        } else {
+            window?.orderFrontRegardless()
+        }
     }
+
+    #if DEBUG
+    /// Steps through every pane without taking focus, printing the window number for screencapture.
+    func runCapture() {
+        show(activate: false)
+        Task { @MainActor in
+            for pane in SettingsPane.allCases {
+                SettingsNavigation.shared.pane = pane
+                try? await Task.sleep(for: .milliseconds(900))
+                print("PANE \(pane.rawValue) \(window?.windowNumber ?? 0)")
+                fflush(stdout)
+                try? await Task.sleep(for: .milliseconds(600))
+            }
+            NSApp.terminate(nil)
+        }
+    }
+    #endif
 }
 
 enum SettingsPane: String, CaseIterable, Identifiable {
@@ -58,12 +79,20 @@ enum SettingsPane: String, CaseIterable, Identifiable {
     }
 }
 
+/// Which settings pane is showing, so other parts of the app can open a specific one.
+@Observable
+final class SettingsNavigation {
+    static let shared = SettingsNavigation()
+    var pane: SettingsPane = .general
+}
+
 struct SettingsView: View {
-    @State private var pane: SettingsPane = .general
+    @Bindable private var navigation = SettingsNavigation.shared
+    private var pane: SettingsPane { navigation.pane }
 
     var body: some View {
         NavigationSplitView {
-            List(SettingsPane.allCases, selection: $pane) { pane in
+            List(SettingsPane.allCases, selection: $navigation.pane) { pane in
                 Label(pane.title, systemImage: pane.symbol).tag(pane)
             }
             .navigationSplitViewColumnWidth(196)
