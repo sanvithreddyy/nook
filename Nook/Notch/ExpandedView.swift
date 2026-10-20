@@ -55,7 +55,8 @@ struct ExpandedTabs: View {
         .padding(2)
         .background(Capsule().fill(.white.opacity(0.06)))
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.leading, 16)
+        // Same inset as the content below, so the capsule lines up with the artwork and tiles.
+        .padding(.leading, 22)
     }
 }
 
