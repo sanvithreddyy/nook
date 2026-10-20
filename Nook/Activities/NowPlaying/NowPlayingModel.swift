@@ -139,7 +139,8 @@ final class NowPlayingModel {
         if carries("shuffleMode"), let shuffle = number("shuffleMode") { isShuffled = shuffle != 1 }
         if carries("repeatMode"), let mode = number("repeatMode") { repeatMode = Int(mode) }
 
-        let carriesElapsed = carries("elapsedTimeMicros") && micros("elapsedTimeMicros") != nil
+        // A restart (Previous, repeat-one) leaves elapsed at 0 → 0, so its diff carries only a new timestamp.
+        let carriesElapsed = carries("elapsedTimeMicros", "timestampEpochMicros") && micros("elapsedTimeMicros") != nil
         if carriesElapsed, let elapsed = micros("elapsedTimeMicros") {
             elapsedAtTimestamp = elapsed
             elapsedTimestamp = micros("timestampEpochMicros").map { Date(timeIntervalSince1970: $0) } ?? Date()

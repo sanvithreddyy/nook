@@ -88,6 +88,8 @@ final class MediaRemoteClient {
         process.terminationHandler = { [weak self] _ in
             Task { @MainActor in self?.streamEnded() }
         }
+        // Stamp before run() so a launch that keeps throwing still backs off.
+        launchedAt = Date()
         do {
             try process.run()
         } catch {
@@ -95,7 +97,6 @@ final class MediaRemoteClient {
             return
         }
         self.process = process
-        launchedAt = Date()
         let handle = pipe.fileHandleForReading
         readTask = Task.detached(priority: .userInitiated) { [weak self] in
             do {

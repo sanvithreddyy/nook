@@ -63,10 +63,12 @@ struct TrackPeek: View {
 
 struct ExpandedPlayer: View {
     @Environment(NowPlayingModel.self) private var nowPlaying
+    @Environment(NotchModel.self) private var model
     @AppStorage(Prefs.tintWaveform) private var tintWaveform = true
 
     var body: some View {
-        if nowPlaying.hasTrack {
+        // hasPlayer folds in the Now Playing setting; the island is sized from it too.
+        if model.hasPlayer {
             VStack(spacing: 0) {
                 HStack(alignment: .center, spacing: 12) {
                     ArtworkImage(image: nowPlaying.artwork, cornerRadius: 11)

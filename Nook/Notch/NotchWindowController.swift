@@ -9,6 +9,9 @@ final class NotchWindowController {
     private var monitors: [Any] = []
     private var collapseTask: Task<Void, Never>?
     private var hoverIntentTask: Task<Void, Never>?
+    /// A press that started on the island keeps the panel taking events until release,
+    /// so the scrubber gets its mouse-up even when released outside.
+    private var dragBeganOnIsland = false
     private(set) var screen: NSScreen
 
     var onSwipe: ((SwipeDirection) -> Void)?
@@ -31,6 +34,7 @@ final class NotchWindowController {
     /// Hidden while a fullscreen app owns the screen: ordered out so nothing composites over it.
     func setSuppressed(_ suppressed: Bool) {
         if suppressed {
+            if model.isHovering { hoverChanged(false) }
             panel.ignoresMouseEvents = true
             panel.orderOut(nil)
         } else {
@@ -46,7 +50,7 @@ final class NotchWindowController {
             _ = model.layout
         } onChange: { [weak self] in
             Task { @MainActor in
-                self?.pointerMoved()
+                self?.pointerMoved(fromLayoutChange: true)
                 self?.observeLayout()
             }
         }
@@ -108,23 +112,38 @@ final class NotchWindowController {
             self?.pointerMoved()
             return event
         }) { monitors.append(local) }
+        if let press = NSEvent.addLocalMonitorForEvents(matching: .leftMouseDown, handler: { [weak self] event in
+            if let self, event.window === self.panel { self.dragBeganOnIsland = true }
+            return event
+        }) { monitors.append(press) }
+        let release: (NSEvent) -> Void = { [weak self] _ in
+            guard let self, self.dragBeganOnIsland else { return }
+            self.dragBeganOnIsland = false
+            self.pointerMoved()
+        }
+        if let globalUp = NSEvent.addGlobalMonitorForEvents(matching: .leftMouseUp, handler: release) { monitors.append(globalUp) }
+        if let localUp = NSEvent.addLocalMonitorForEvents(matching: .leftMouseUp, handler: { event in
+            release(event)
+            return event
+        }) { monitors.append(localUp) }
         // A click anywhere else closes the expanded island.
         if let outside = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown], handler: { [weak self] _ in
             self?.model.collapse()
         }) { monitors.append(outside) }
     }
 
-    func pointerMoved() {
+    /// `fromLayoutChange`: the island resized under a still pointer. That can end a hover
+    /// but never starts one, so a peek growing under a parked cursor doesn't hold itself open.
+    func pointerMoved(fromLayoutChange: Bool = false) {
         guard !model.isSuppressed else {
             panel.ignoresMouseEvents = true
             return
         }
         let inside = hitRect().contains(NSEvent.mouseLocation)
-        // Keep taking events while a drag that began on the island is still held,
-        // so the scrubber gets its mouse-up even when released outside.
-        let dragging = !panel.ignoresMouseEvents && NSEvent.pressedMouseButtons & 1 != 0
-        panel.ignoresMouseEvents = !inside && !dragging
-        if inside != model.isHovering { hoverChanged(inside) }
+        panel.ignoresMouseEvents = !inside && !dragBeganOnIsland
+        guard inside != model.isHovering else { return }
+        if inside, fromLayoutChange { return }
+        hoverChanged(inside)
     }
 
     private func hoverChanged(_ inside: Bool) {

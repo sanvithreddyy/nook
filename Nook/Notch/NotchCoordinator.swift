@@ -67,7 +67,8 @@ final class NotchCoordinator {
         // Swallow a key only when Nook can both act on it and show the result;
         // otherwise the system handles it as usual.
         keys.handles = { [weak self] key in
-            guard let self, !self.model.isSuppressed else { return false }
+            // Nook's panel isn't drawn on the lock screen or while suppressed.
+            guard let self, !self.model.isSuppressed, self.lock.state != .locked else { return false }
             switch key {
             case .volumeUp, .volumeDown: return Prefs.bool(Prefs.volumeHUD) && self.volume.canSetVolume
             case .mute: return Prefs.bool(Prefs.volumeHUD) && self.volume.canMute
@@ -75,6 +76,8 @@ final class NotchCoordinator {
             }
         }
         keys.onKey = { [weak self] key, fine in self?.mediaKey(key, fine: fine) }
+        // Accessibility revoked mid-session: wait for it to come back.
+        keys.onRevoked = { [weak self] in self?.watchPermissions() }
 
         #if DEBUG
         if let dir = SnapshotRenderer.outputDirectory {
@@ -231,14 +234,14 @@ final class NotchCoordinator {
         let hide = Prefs.bool(Prefs.hideInFullscreen) && FullscreenDetector.isFullscreen(on: screen)
         guard hide != model.isSuppressed else { return }
         model.isSuppressed = hide
-        if hide {
-            model.collapse()
-            model.setHovering(false)
-        }
+        if hide { model.collapse() }
         window?.setSuppressed(hide)
         if !hide, let level = pendingLowBattery {
             pendingLowBattery = nil
-            model.post(.lowBattery(level: level), for: .seconds(4))
+            // Skip it if the Mac was plugged in while the island was hidden.
+            if battery.reading?.onAC == false {
+                model.post(.lowBattery(level: level), for: .seconds(4))
+            }
         }
     }
 
@@ -359,7 +362,9 @@ enum FullscreenDetector {
             }
             if layer == 0, (info[kCGWindowOwnerPID as String] as? pid_t) != me,
                abs(bounds.width - target.width) < 1,
-               bounds.minY - target.minY <= screen.safeAreaInsets.top + 1,
+               // A maximized window starts under the menu bar (33 pt on a 14" MBP, notch 32 pt);
+               // a fullscreen one starts at or above the notch line.
+               bounds.minY - target.minY <= screen.safeAreaInsets.top,
                abs(bounds.maxY - target.maxY) < 1 {
                 coveringWindow = true
             }

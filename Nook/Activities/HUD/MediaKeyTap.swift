@@ -17,6 +17,8 @@ final class MediaKeyTap {
     var handles: (Key) -> Bool = { _ in false }
     /// Called on key down (and auto-repeat) for a handled key. `fine` is Option-Shift.
     var onKey: ((Key, _ fine: Bool) -> Void)?
+    /// Called after the tap was dropped because Accessibility access went away.
+    var onRevoked: (() -> Void)?
 
     private var tap: CFMachPort?
     private var source: CFRunLoopSource?
@@ -70,6 +72,7 @@ final class MediaKeyTap {
         // Re-enabling after Accessibility was revoked would fight the system; drop the tap instead.
         guard Self.isTrusted else {
             stop()
+            onRevoked?()
             return
         }
         if let tap { CGEvent.tapEnable(tap: tap, enable: true) }
