@@ -9,7 +9,11 @@ final class NowPlayingModel {
     private(set) var duration: Double = 0
     private(set) var isPlaying = false
     private(set) var playbackRate: Double = 0
-    private(set) var bundleIdentifier: String?
+    private(set) var bundleIdentifier: String? {
+        didSet { if bundleIdentifier != oldValue { appIcon = Self.icon(for: bundleIdentifier) } }
+    }
+    /// Icon of the app that is playing, resolved once per app change.
+    private(set) var appIcon: NSImage?
     private(set) var artwork: NSImage?
     /// Average artwork color, lifted so it reads on black.
     private(set) var tint: Color = .white
@@ -30,7 +34,7 @@ final class NowPlayingModel {
 
     var hasTrack: Bool { !title.isEmpty }
 
-    var appIcon: NSImage? {
+    private static func icon(for bundleIdentifier: String?) -> NSImage? {
         guard let bundleIdentifier,
               let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleIdentifier)
         else { return nil }
