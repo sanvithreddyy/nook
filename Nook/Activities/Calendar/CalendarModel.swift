@@ -19,6 +19,8 @@ final class CalendarModel {
     /// Events from the start of today through the next six days.
     private(set) var events: [CalendarEvent] = []
     private(set) var access: Access = .notDetermined
+    /// Start of the day the 7-day window begins on; changes at midnight.
+    private(set) var weekStart = Calendar.current.startOfDay(for: .now)
 
     var isAuthorized: Bool { access == .granted }
 
@@ -26,6 +28,8 @@ final class CalendarModel {
     @ObservationIgnored private let store = EKEventStore()
     @ObservationIgnored private var refreshTask: Task<Void, Never>?
     @ObservationIgnored private var storeObserver: NSObjectProtocol?
+    /// Join links by occurrence and edit date, so link detection runs once per event edit.
+    @ObservationIgnored private var linkCache: [String: URL?] = [:]
 
     var isEnabled: Bool { Prefs.bool(Prefs.calendar) }
 
@@ -72,6 +76,7 @@ final class CalendarModel {
         let lead = TimeInterval(max(Prefs.int(Prefs.calendarLeadMinutes), 1) * 60)
         return events.first { event in
             !event.isAllDay
+                && event.end > now
                 && event.start.timeIntervalSince(now) <= lead
                 && now.timeIntervalSince(event.start) < 5 * 60
         }
@@ -114,11 +119,13 @@ final class CalendarModel {
         }
         reload()
         refreshTask?.cancel()
-        // Moves events in and out of the live-activity window and rolls the week at midnight.
+        // Event edits arrive through EKEventStoreChanged. The tick only re-evaluates the live
+        // activity, and refetches when the day rolls over.
         refreshTask = Task { [weak self] in
             while !Task.isCancelled {
                 try? await Task.sleep(for: .seconds(30))
-                self?.reload()
+                guard let self else { return }
+                if Calendar.current.startOfDay(for: .now) != self.weekStart { self.reload() } else { self.onChange?() }
             }
         }
     }
@@ -138,11 +145,13 @@ final class CalendarModel {
         let calendar = Calendar.current
         let start = calendar.startOfDay(for: .now)
         let end = calendar.date(byAdding: .day, value: 7, to: start) ?? start
+        if weekStart != start { weekStart = start }
         let predicate = store.predicateForEvents(withStart: start, end: end, calendars: nil)
+        var seenLinks: [String: URL?] = [:]
         let fetched = store.events(matching: predicate)
             .filter { $0.status != .canceled }
             .sorted { $0.startDate < $1.startDate }
-            .prefix(120)
+            .prefix(500)
             .map { event in
                 // Occurrences of a recurring event share eventIdentifier; the start date tells them apart.
                 CalendarEvent(id: "\(event.eventIdentifier ?? "event")@\(Int(event.startDate.timeIntervalSince1970))",
@@ -151,20 +160,28 @@ final class CalendarModel {
                               end: event.endDate,
                               color: Color(cgColor: event.calendar.cgColor),
                               isAllDay: event.isAllDay,
-                              joinURL: Self.meetingLink(in: event))
+                              joinURL: cachedMeetingLink(for: event, into: &seenLinks))
             }
+        linkCache = seenLinks
         if fetched != events { events = Array(fetched) }
         onChange?()
     }
+
+    private func cachedMeetingLink(for event: EKEvent, into seen: inout [String: URL?]) -> URL? {
+        let key = "\(event.eventIdentifier ?? "")@\(event.startDate.timeIntervalSince1970)|\(event.lastModifiedDate?.timeIntervalSince1970 ?? 0)"
+        let link = linkCache[key] ?? Self.meetingLink(in: event)
+        seen[key] = link
+        return link
+    }
+
+    private static let linkDetector = try? NSDataDetector(types: NSTextCheckingResult.CheckingType.link.rawValue)
 
     private static let meetingHosts = ["zoom.us", "meet.google.com", "teams.microsoft.com", "teams.live.com", "facetime.apple.com", "webex.com", "whereby.com"]
 
     private static func meetingLink(in event: EKEvent) -> URL? {
         if let url = event.url, isMeeting(url) { return url }
         let text = [event.location, event.notes].compactMap { $0 }.joined(separator: "\n")
-        guard !text.isEmpty,
-              let detector = try? NSDataDetector(types: NSTextCheckingResult.CheckingType.link.rawValue)
-        else { return nil }
+        guard !text.isEmpty, let detector = linkDetector else { return nil }
         let range = NSRange(text.startIndex..., in: text)
         return detector.matches(in: text, range: range).compactMap(\.url).first(where: isMeeting)
     }

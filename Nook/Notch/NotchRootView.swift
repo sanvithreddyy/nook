@@ -14,6 +14,7 @@ struct NotchRootView: View {
 
 private struct IslandView: View {
     @Environment(NotchModel.self) private var model
+    @Environment(ShelfModel.self) private var shelf
     @AppStorage(Prefs.peekOnHover) private var peekOnHover = true
 
     var body: some View {
@@ -39,7 +40,19 @@ private struct IslandView: View {
         .scaleEffect(scale, anchor: .top)
         .contentShape(shape)
         .onTapGesture { if !model.isExpanded { model.expand() } }
+        // The whole island takes drops for the shelf (the AirDrop tile inside takes its own),
+        // so letting go right at the notch works too.
+        .onDrop(of: shelfDropTypes, isTargeted: shelfTargeted) { providers in
+            guard Prefs.bool(Prefs.shelf) else { return false }
+            shelf.add(providers)
+            model.expand(tab: .shelf)
+            return true
+        }
         .simultaneousGesture(pressGesture)
+    }
+
+    private var shelfTargeted: Binding<Bool> {
+        Binding(get: { shelf.isTargeted }, set: { shelf.isTargeted = $0 })
     }
 
     private var scale: CGFloat {

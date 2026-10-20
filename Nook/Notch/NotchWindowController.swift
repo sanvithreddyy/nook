@@ -15,6 +15,8 @@ final class NotchWindowController {
     private(set) var screen: NSScreen
 
     var onSwipe: ((SwipeDirection) -> Void)?
+    /// A file, link or text drag from another app is in progress.
+    var isFileDragActive: () -> Bool = { false }
 
     init<Content: View>(screen: NSScreen, model: NotchModel, @ViewBuilder content: () -> Content) {
         self.screen = screen
@@ -101,15 +103,20 @@ final class NotchWindowController {
         return rect
     }
 
-    /// A generous catch area around the island for file drags, so you needn't hit the notch exactly.
+    /// Where a file drag opens the shelf: the island, or the menu-bar strip a little either side of
+    /// the notch. Kept out of app windows below, so drags into a browser's tab bar don't trigger it.
     func catchesDrag(at point: CGPoint) -> Bool {
         guard !model.isSuppressed else { return false }
-        let island = hitRect()
         let frame = panel.frame
-        let catchWidth = model.notch.size.width + 160
-        let catchHeight = model.notch.size.height + 30
-        let notchArea = CGRect(x: frame.midX - catchWidth / 2, y: frame.maxY - catchHeight, width: catchWidth, height: catchHeight)
-        return island.union(notchArea).contains(point)
+        let width = model.notch.size.width + 120
+        let strip = CGRect(x: frame.midX - width / 2, y: frame.maxY - model.notch.size.height,
+                           width: width, height: model.notch.size.height)
+        return hitRect().union(strip).contains(point)
+    }
+
+    /// Within reach of the island: a file drag may wander this far without the shelf closing.
+    private func isNearIsland(_ point: CGPoint) -> Bool {
+        hitRect().insetBy(dx: -60, dy: -60).contains(point)
     }
 
     // MARK: Pointer
@@ -150,6 +157,8 @@ final class NotchWindowController {
             panel.ignoresMouseEvents = true
             return
         }
+        // A drag out of a tile or a context menu runs its own event loop and eats the mouse-up.
+        if dragBeganOnIsland, NSEvent.pressedMouseButtons & 1 == 0 { dragBeganOnIsland = false }
         let inside = hitRect().contains(NSEvent.mouseLocation)
         panel.ignoresMouseEvents = !inside && !dragBeganOnIsland
         guard inside != model.isHovering else { return }
@@ -174,8 +183,11 @@ final class NotchWindowController {
             if model.isExpanded {
                 collapseTask = Task { [weak self] in
                     try? await Task.sleep(for: .milliseconds(140))
-                    // Dragging the scrubber past the edge shouldn't close the island mid-drag.
-                    while NSEvent.pressedMouseButtons & 1 != 0, !Task.isCancelled {
+                    // Stay open while the scrubber is dragged past the edge, or while a file drag
+                    // lingers near the island looking for the drop area.
+                    while !Task.isCancelled, let self,
+                          (self.dragBeganOnIsland && NSEvent.pressedMouseButtons & 1 != 0)
+                            || (self.isFileDragActive() && self.isNearIsland(NSEvent.mouseLocation)) {
                         try? await Task.sleep(for: .milliseconds(50))
                     }
                     guard !Task.isCancelled, let self, !self.model.isHovering else { return }

@@ -15,6 +15,8 @@ final class FileDragWatcher {
     private var carryingContent = false
     private var entered = false
 
+    var isActive: Bool { pressed && carryingContent }
+
     func start() {
         guard monitors.isEmpty else { return }
         if let down = NSEvent.addGlobalMonitorForEvents(matching: .leftMouseDown, handler: { [weak self] _ in

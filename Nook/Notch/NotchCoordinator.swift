@@ -153,6 +153,7 @@ final class NotchCoordinator {
                 .environment(shelf)
         }
         fileDrags.isInsideNotch = { [weak window] point in window?.catchesDrag(at: point) ?? false }
+        window.isFileDragActive = { [weak self] in self?.fileDrags.isActive ?? false }
         window.onSwipe = { [weak self] direction in self?.swiped(direction) }
         self.window = window
     }
@@ -221,12 +222,12 @@ final class NotchCoordinator {
 
     private var wantsKeyTap: Bool { Prefs.bool(Prefs.volumeHUD) || Prefs.bool(Prefs.brightnessHUD) }
 
-    /// Accessibility and Calendar access are granted in System Settings while Nook isn't frontmost.
-    /// Poll quietly until whatever is pending arrives, then stop.
+    /// Accessibility is granted in System Settings while Nook isn't frontmost, after the user turned
+    /// a HUD on; poll quietly until it arrives, then stop. (Calendar access is re-checked when the
+    /// island opens instead, so nobody who skips it gets a poll forever.)
     private func watchPermissions() {
         let keysPending = wantsKeyTap && !keys.isRunning
-        let calendarPending = calendar.isEnabled && !calendar.isAuthorized
-        guard keysPending || calendarPending else {
+        guard keysPending else {
             permissionTask?.cancel()
             permissionTask = nil
             return
@@ -237,8 +238,7 @@ final class NotchCoordinator {
                 try? await Task.sleep(for: .seconds(2))
                 guard let self else { return }
                 if self.wantsKeyTap, !self.keys.isRunning { self.keys.start() }
-                if self.calendar.isEnabled, !self.calendar.isAuthorized { self.calendar.recheckAuthorization() }
-                if !(self.wantsKeyTap && !self.keys.isRunning), !(self.calendar.isEnabled && !self.calendar.isAuthorized) {
+                if !(self.wantsKeyTap && !self.keys.isRunning) {
                     self.permissionTask = nil
                     return
                 }

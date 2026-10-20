@@ -62,10 +62,11 @@ private struct AirDropTile: View {
         // Click sends everything on the shelf; a drop sends just what was dropped.
         .onTapGesture { AirDrop.send(shelf.urls) }
         .help(shelf.isEmpty ? "Drop files here to AirDrop them" : "AirDrop everything on the shelf")
-        .onDrop(of: shelfDropTypes, isTargeted: $targeted) { providers in
+        // AirDrop sends files, so only file drops are offered here.
+        .onDrop(of: [.fileURL], isTargeted: $targeted) { providers in
             Task {
                 var urls: [URL] = []
-                for provider in providers where provider.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier) {
+                for provider in providers {
                     if let url = await loadFileURL(provider) { urls.append(url) }
                 }
                 AirDrop.send(urls)
@@ -85,7 +86,6 @@ private struct DropArea: View {
     @Environment(ShelfModel.self) private var shelf
 
     var body: some View {
-        @Bindable var shelf = shelf
         ZStack {
             RoundedRectangle(cornerRadius: 14, style: .continuous)
                 .fill(.white.opacity(shelf.isTargeted ? 0.07 : 0.03))
@@ -115,10 +115,6 @@ private struct DropArea: View {
         .onTapGesture { shelf.chooseFiles() }
         .animation(Motion.peekIn, value: shelf.items.map(\.id))
         .animation(.easeOut(duration: 0.15), value: shelf.isTargeted)
-        .onDrop(of: shelfDropTypes, isTargeted: $shelf.isTargeted) { providers in
-            shelf.add(providers)
-            return true
-        }
     }
 }
 
@@ -157,7 +153,8 @@ private struct ShelfTile: View {
         .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(.white.opacity(hovering ? 0.07 : 0)))
         .contentShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
         .onHover { inside in withAnimation(.easeOut(duration: 0.15)) { hovering = inside } }
-        .onTapGesture(count: 2) { shelf.open(item) }
+        .opacity(item.isMissing ? 0.4 : 1)
+        .onTapGesture(count: 2) { if !item.isMissing { shelf.open(item) } }
         // Absorb single clicks so they don't reach the drop area's click-to-choose.
         .onTapGesture {}
         .onDrag { NSItemProvider(contentsOf: item.url) ?? NSItemProvider() }

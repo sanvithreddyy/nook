@@ -51,16 +51,18 @@ struct CalendarColumn: View {
                 DayEvents(day: selected)
             }
             // Roll the selection forward when the week moves past it (overnight).
-            .onChange(of: calendar.events.first?.id) {
-                let today = Calendar.current.startOfDay(for: .now)
-                if selected < today { selected = today }
+            .onChange(of: calendar.weekStart) { _, start in
+                if selected < start { selected = start }
             }
         case .notDetermined:
             AccessPrompt(message: "See your week here", button: "Allow access") { calendar.requestAccess() }
+                // Access granted from Settings or System Settings shows up the next time the island opens.
+                .onAppear { calendar.recheckAuthorization() }
         case .denied:
             AccessPrompt(message: "Calendar access is off", button: "Open Settings") {
                 NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Calendars")!)
             }
+            .onAppear { calendar.recheckAuthorization() }
         }
     }
 }
@@ -158,7 +160,7 @@ private struct DayEvents: View {
             ScrollView(.vertical) {
                 VStack(alignment: .leading, spacing: 7) {
                     ForEach(events) { event in
-                        EventRow(event: event)
+                        EventRow(event: event, day: day)
                     }
                 }
             }
@@ -169,6 +171,16 @@ private struct DayEvents: View {
 
 private struct EventRow: View {
     let event: CalendarEvent
+    let day: Date
+
+    /// A timed event that began on an earlier day shows when it ends instead.
+    private var timeLabel: String {
+        if event.isAllDay { return "All day" }
+        if event.start < Calendar.current.startOfDay(for: day) {
+            return "→ " + event.end.formatted(date: .omitted, time: .shortened)
+        }
+        return event.start.formatted(date: .omitted, time: .shortened)
+    }
 
     var body: some View {
         TimelineView(.everyMinute) { context in
@@ -177,7 +189,7 @@ private struct EventRow: View {
             let isNow = event.start <= now && event.end > now && !event.isAllDay
             HStack(spacing: 8) {
                 Circle().fill(event.color).frame(width: 6, height: 6)
-                Text(isNow ? "Now" : (event.isAllDay ? "All day" : event.start.formatted(date: .omitted, time: .shortened)))
+                Text(isNow ? "Now" : timeLabel)
                     .font(.system(size: 11, weight: isNow ? .semibold : .regular).monospacedDigit())
                     .foregroundStyle(.white.opacity(isNow ? 0.9 : 0.5))
                     .frame(width: 58, alignment: .leading)

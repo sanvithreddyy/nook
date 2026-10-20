@@ -14,6 +14,8 @@ struct ShelfItem: Identifiable, Codable, Equatable {
 
     var url: URL { URL(fileURLWithPath: path) }
     var name: String { url.lastPathComponent }
+    /// The file couldn't be found at launch (an unplugged disk, a deleted file). Kept, shown dimmed.
+    var isMissing: Bool { !FileManager.default.fileExists(atPath: path) }
 }
 
 @Observable
@@ -46,7 +48,7 @@ final class ShelfModel {
             guard !items.contains(where: { $0.path == path }),
                   let bookmark = try? url.bookmarkData()
             else { continue }
-            items.append(ShelfItem(id: UUID(), bookmark: bookmark, path: path, isOwned: url.path.hasPrefix(directory.path), addedAt: .now))
+            items.append(ShelfItem(id: UUID(), bookmark: bookmark, path: path, isOwned: isInShelfFolder(url), addedAt: .now))
             changed = true
         }
         if changed {
@@ -90,14 +92,26 @@ final class ShelfModel {
 
     func remove(_ item: ShelfItem) {
         items.removeAll { $0.id == item.id }
-        if item.isOwned { try? FileManager.default.removeItem(at: item.url) }
+        discardIfOwned(item)
         save()
     }
 
     func clear() {
-        for item in items where item.isOwned { try? FileManager.default.removeItem(at: item.url) }
+        items.forEach(discardIfOwned)
         items.removeAll()
         save()
+    }
+
+    /// Only a file Nook wrote that still sits directly in the shelf folder is discarded, and it
+    /// goes to the Trash. Anything moved out of the folder is the user's now and is left alone.
+    private func discardIfOwned(_ item: ShelfItem) {
+        guard item.isOwned, isInShelfFolder(item.url) else { return }
+        try? FileManager.default.trashItem(at: item.url, resultingItemURL: nil)
+    }
+
+    private func isInShelfFolder(_ url: URL) -> Bool {
+        url.resolvingSymlinksInPath().deletingLastPathComponent().standardizedFileURL.path
+            == directory.resolvingSymlinksInPath().standardizedFileURL.path
     }
 
     // MARK: Actions
@@ -114,17 +128,23 @@ final class ShelfModel {
     // MARK: Persistence
 
     private func load() {
-        guard let data = try? Data(contentsOf: indexURL),
-              let stored = try? JSONDecoder().decode([ShelfItem].self, from: data)
-        else { return }
-        // Follow files that moved; drop ones that are gone.
-        items = stored.compactMap { item in
+        guard let data = try? Data(contentsOf: indexURL) else { return }
+        guard let stored = try? JSONDecoder().decode([ShelfItem].self, from: data) else {
+            // Keep an unreadable index rather than overwriting it on the next save.
+            let aside = indexURL.deletingPathExtension().appendingPathExtension("unreadable.json")
+            try? FileManager.default.removeItem(at: aside)
+            try? FileManager.default.moveItem(at: indexURL, to: aside)
+            return
+        }
+        // Follow files that moved. Items that can't be found right now stay, so an unplugged
+        // disk doesn't empty the shelf.
+        items = stored.map { item in
             var stale = false
-            guard let url = try? URL(resolvingBookmarkData: item.bookmark, options: [.withoutUI], bookmarkDataIsStale: &stale),
-                  FileManager.default.fileExists(atPath: url.path)
-            else { return nil }
+            guard let url = try? URL(resolvingBookmarkData: item.bookmark, options: [.withoutUI, .withoutMounting], bookmarkDataIsStale: &stale)
+            else { return item }
             var updated = item
             updated.path = url.path
+            if item.isOwned, !isInShelfFolder(url) { updated.isOwned = false }
             if stale, let fresh = try? url.bookmarkData() { updated.bookmark = fresh }
             return updated
         }
@@ -146,17 +166,17 @@ final class ShelfModel {
         }
         let folder = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("Nook/Shelf", isDirectory: true)
+        // Images before links: a web image also carries its URL, but the picture is what was dragged.
+        if let imageType = provider.registeredTypeIdentifiers.compactMap(UTType.init).first(where: { $0.conforms(to: .image) }),
+           let data = await loadData(imageType.identifier, from: provider) {
+            return write(data, named: "Image." + (imageType.preferredFilenameExtension ?? "png"), in: folder)
+        }
         if provider.hasItemConformingToTypeIdentifier(UTType.url.identifier),
            let link = await loadObject(URL.self, from: provider), !link.isFileURL {
             let name = (link.host() ?? "Link") + ".webloc"
             let plist: [String: String] = ["URL": link.absoluteString]
             guard let data = try? PropertyListSerialization.data(fromPropertyList: plist, format: .xml, options: 0) else { return nil }
             return write(data, named: name, in: folder)
-        }
-        if provider.hasItemConformingToTypeIdentifier(UTType.image.identifier) {
-            var data = await loadData(UTType.png.identifier, from: provider)
-            if data == nil { data = await loadData(UTType.image.identifier, from: provider) }
-            if let data { return write(data, named: "Image.png", in: folder) }
         }
         if provider.hasItemConformingToTypeIdentifier(UTType.plainText.identifier),
            let text = await loadObject(String.self, from: provider) {

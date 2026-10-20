@@ -128,10 +128,9 @@ final class NotchModel {
             }
             return IslandLayout(size: CGSize(width: n.width + side * 2, height: n.height), topRadius: 6, bottomRadius: 11)
         case .expanded:
-            // Both tabs share one size when the calendar is on, so switching only crossfades content.
-            let wide = showsCalendarColumn || tab == .shelf
+            // One width for every tab, so the tab buttons never fall outside the island when switching.
             let compact = tab == .home && !hasPlayer && !showsCalendarColumn
-            let width: CGFloat = wide ? Self.expandedWidth : 500
+            let width = Self.expandedWidth
             let height: CGFloat = compact ? 64 : Self.expandedBodyHeight
             return IslandLayout(size: CGSize(width: max(n.width + 300, width), height: n.height + height),
                                 topRadius: 12, bottomRadius: compact ? 22 : 32)
