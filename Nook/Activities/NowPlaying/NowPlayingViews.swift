@@ -44,37 +44,6 @@ struct NowPlayingWaveformSlot: View {
     }
 }
 
-/// Bars that move while audio plays and settle to dots when paused.
-/// Only this leaf view redraws per frame.
-struct Waveform: View {
-    let isPlaying: Bool
-    let tint: Color
-
-    private static let speeds: [Double] = [5.1, 7.3, 6.2, 8.4]
-    private static let phases: [Double] = [0, 1.7, 3.1, 4.4]
-
-    var body: some View {
-        TimelineView(.animation(minimumInterval: 1.0 / 30, paused: !isPlaying)) { context in
-            let t = context.date.timeIntervalSinceReferenceDate
-            HStack(spacing: 2) {
-                ForEach(0..<4, id: \.self) { i in
-                    Capsule()
-                        .fill(tint)
-                        .frame(width: 2.5, height: isPlaying ? height(i, t) : 2.5)
-                }
-            }
-        }
-        .frame(height: 16)
-        .animation(.spring(duration: 0.4, bounce: 0.1), value: isPlaying)
-    }
-
-    private func height(_ i: Int, _ t: Double) -> CGFloat {
-        let a = 0.5 + 0.5 * sin(t * Self.speeds[i] + Self.phases[i])
-        let b = 0.6 + 0.4 * sin(t * Self.speeds[(i + 2) % 4] * 0.53 + Self.phases[(i + 1) % 4])
-        return 3 + 13 * a * b
-    }
-}
-
 // MARK: Peek
 
 struct TrackPeek: View {
@@ -152,7 +121,7 @@ struct Scrubber: View {
     @State private var hovering = false
 
     var body: some View {
-        TimelineView(.animation(minimumInterval: 1.0 / 15, paused: !nowPlaying.isPlaying || dragElapsed != nil)) { context in
+        TimelineView(.animation(minimumInterval: 1.0 / 10, paused: !nowPlaying.isPlaying || dragElapsed != nil)) { context in
             let duration = nowPlaying.duration
             let elapsed = dragElapsed ?? nowPlaying.elapsed(at: context.date)
             let fraction = duration > 0 ? min(max(elapsed / duration, 0), 1) : 0

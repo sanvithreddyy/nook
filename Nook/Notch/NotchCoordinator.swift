@@ -79,6 +79,15 @@ final class NotchCoordinator {
 
         #if DEBUG
         if DebugTour.isRequested { DebugTour.run(self) }
+        if CommandLine.arguments.contains("-preview-playing") {
+            Task {
+                try? await Task.sleep(for: .seconds(1.5))
+                nowPlaying.previewPlaying()
+                debugRefresh()
+                if CommandLine.arguments.contains("-expand") { model.expand() }
+                if CommandLine.arguments.contains("-peek") { model.showPeek(.track, for: nil) }
+            }
+        }
         #endif
     }
 
