@@ -35,12 +35,10 @@ private struct AirDropTile: View {
     @State private var hovering = false
 
     var body: some View {
-        VStack(spacing: 8) {
-            if let image = AirDrop.service?.image {
-                Image(nsImage: image)
-                    .resizable()
-                    .frame(width: 34, height: 34)
-            }
+        VStack(spacing: 10) {
+            AirDropGlyph()
+                .fill(.white.opacity(hovering || targeted ? 0.95 : 0.8))
+                .frame(width: 28, height: 28)
             Text("AirDrop")
                 .font(.system(size: 12, weight: .medium))
                 .foregroundStyle(.white.opacity(0.85))
@@ -76,6 +74,32 @@ private struct AirDropTile: View {
     }
 }
 
+/// The AirDrop mark as one monochrome shape: a dot inside two rings, cut open by a wedge below.
+/// The system's AirDrop image is a colored app icon and there is no public symbol for it.
+nonisolated private struct AirDropGlyph: Shape {
+    func path(in rect: CGRect) -> Path {
+        let r = min(rect.width, rect.height) / 2
+        let c = CGPoint(x: rect.midX, y: rect.midY)
+        // Angles run clockwise from the right with y pointing down, so 90° is straight down.
+        let gap = 27.0
+        let start = Angle.degrees(90 + gap), sweep = Angle.degrees(360 - gap * 2)
+        func point(_ radius: CGFloat, _ angle: Angle) -> CGPoint {
+            CGPoint(x: c.x + radius * cos(angle.radians), y: c.y + radius * sin(angle.radians))
+        }
+
+        var p = Path()
+        p.addEllipse(in: CGRect(x: c.x - r * 0.2, y: c.y - r * 0.2, width: r * 0.4, height: r * 0.4))
+        for (inner, outer) in [(r * 0.4, r * 0.6), (r * 0.78, r)] {
+            p.move(to: point(outer, start))
+            p.addRelativeArc(center: c, radius: outer, startAngle: start, delta: sweep)
+            p.addLine(to: point(inner, start + sweep))
+            p.addRelativeArc(center: c, radius: inner, startAngle: start + sweep, delta: -sweep)
+            p.closeSubpath()
+        }
+        return p
+    }
+}
+
 nonisolated private func loadFileURL(_ provider: NSItemProvider) async -> URL? {
     await withCheckedContinuation { continuation in
         _ = provider.loadObject(ofClass: URL.self) { url, _ in continuation.resume(returning: url) }
@@ -98,7 +122,8 @@ private struct DropArea: View {
                     .foregroundStyle(.white.opacity(0.45))
             } else {
                 ScrollView(.horizontal) {
-                    HStack(spacing: 6) {
+                    // Thumbnails line up along the top; the row as a whole is centered.
+                    HStack(alignment: .top, spacing: 6) {
                         ForEach(shelf.items) { item in
                             ShelfTile(item: item)
                                 .transition(.scale(scale: 0.8).combined(with: .opacity))
@@ -146,7 +171,7 @@ private struct ShelfTile: View {
                 .lineLimit(2)
                 .multilineTextAlignment(.center)
                 .truncationMode(.middle)
-                .frame(width: 76, height: 28, alignment: .top)
+                .frame(width: 76)
         }
         .padding(.vertical, 8)
         .padding(.horizontal, 2)
