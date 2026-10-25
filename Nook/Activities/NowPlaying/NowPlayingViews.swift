@@ -61,60 +61,82 @@ struct TrackPeek: View {
 
 // MARK: Expanded
 
+/// Large artwork, title, three buttons and the scrubber. Shuffle and repeat are in the right-click menu.
 struct ExpandedPlayer: View {
     @Environment(NowPlayingModel.self) private var nowPlaying
-    @Environment(NotchModel.self) private var model
     @AppStorage(Prefs.tintWaveform) private var tintWaveform = true
 
     var body: some View {
-        // hasPlayer folds in the Now Playing setting; the island is sized from it too.
-        if model.hasPlayer {
-            VStack(spacing: 0) {
-                HStack(alignment: .center, spacing: 12) {
-                    ArtworkImage(image: nowPlaying.artwork, cornerRadius: 11)
-                        .frame(width: 54, height: 54)
-                        .overlay(alignment: .bottomTrailing) { AppBadge() }
-                        .id(nowPlaying.trackID)
-                        .transition(.artworkFlip)
-                    VStack(alignment: .leading, spacing: 2) {
-                        MarqueeText(id: nowPlaying.trackID + "t") {
-                            Text(nowPlaying.title)
-                                .font(.system(size: 14, weight: .semibold))
-                                .foregroundStyle(.white)
-                        }
-                        Text(nowPlaying.artist)
-                            .font(.system(size: 13))
-                            .foregroundStyle(.white.opacity(0.55))
-                            .lineLimit(1)
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(spacing: 16) {
+                ArtworkImage(image: nowPlaying.artwork, cornerRadius: 16)
+                    .frame(width: 88, height: 88)
+                    .shadow(color: .black.opacity(0.45), radius: 12, y: 8)
+                    .id(nowPlaying.trackID)
+                    .transition(.artworkFlip)
+                VStack(alignment: .leading, spacing: 2) {
+                    MarqueeText(id: nowPlaying.trackID + "t") {
+                        Text(nowPlaying.title)
+                            .font(.system(size: 16, weight: .bold))
+                            .foregroundStyle(.white)
                     }
-                    Waveform(isPlaying: nowPlaying.isPlaying, tint: tintWaveform ? nowPlaying.tint : .white)
-                        .frame(width: 22)
+                    Text(nowPlaying.artist)
+                        .font(.system(size: 13))
+                        .foregroundStyle(.white.opacity(0.72))
+                        .lineLimit(1)
+                    HStack(spacing: 6) {
+                        ControlButton(symbol: "backward.fill", size: 17) { nowPlaying.previous() }
+                        ControlButton(symbol: nowPlaying.isPlaying ? "pause.fill" : "play.fill", size: 24) { nowPlaying.togglePlayPause() }
+                        ControlButton(symbol: "forward.fill", size: 17) { nowPlaying.next() }
+                        Spacer(minLength: 0)
+                        Waveform(isPlaying: nowPlaying.isPlaying, tint: tintWaveform ? nowPlaying.tint : .white)
+                            .frame(width: 22)
+                    }
+                    // The buttons' hit areas reach past their glyphs; line the first glyph up with the text.
+                    .padding(.leading, -10)
+                    .padding(.top, 8)
                 }
-                Scrubber()
-                    .padding(.top, 14)
-                PlaybackControls()
-                    .padding(.top, 2)
             }
-            .animation(Motion.peekIn, value: nowPlaying.trackID)
-        } else {
-            Text("Nothing playing")
-                .font(.system(size: 13))
-                .foregroundStyle(.white.opacity(0.45))
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            Scrubber()
+        }
+        .animation(Motion.peekIn, value: nowPlaying.trackID)
+        .contextMenu {
+            Toggle("Shuffle", isOn: Binding(get: { nowPlaying.isShuffled }, set: { _ in nowPlaying.toggleShuffle() }))
+            Picker("Repeat", selection: Binding(get: { nowPlaying.repeatMode }, set: { nowPlaying.setRepeat($0) })) {
+                Text("Off").tag(1)
+                Text("All").tag(3)
+                Text("One").tag(2)
+            }
         }
     }
 }
 
-private struct AppBadge: View {
+/// A blurred copy of the artwork that lights the left of the expanded island and fades out before
+/// the calendar. Kept clear of the top strip, where the hardware notch would show as a black block.
+struct CoverBackdrop: View {
     @Environment(NowPlayingModel.self) private var nowPlaying
+    let notchHeight: CGFloat
 
     var body: some View {
-        if let icon = nowPlaying.appIcon {
-            Image(nsImage: icon)
+        if let image = nowPlaying.backdrop {
+            Image(nsImage: image)
                 .resizable()
-                .frame(width: 20, height: 20)
-                .shadow(color: .black.opacity(0.4), radius: 2, y: 1)
-                .offset(x: 5, y: 5)
+                .aspectRatio(contentMode: .fill)
+                .frame(width: 420, height: 280)
+                .clipped()
+                .mask(LinearGradient(stops: [.init(color: .black, location: 0.35), .init(color: .clear, location: 0.9)],
+                                     startPoint: .leading, endPoint: .trailing))
+                .mask(alignment: .top) {
+                    VStack(spacing: 0) {
+                        Color.clear.frame(height: notchHeight - 6)
+                        LinearGradient(colors: [.clear, .black], startPoint: .top, endPoint: .bottom).frame(height: 48)
+                        Color.black
+                    }
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                .id(nowPlaying.trackID)
+                .transition(.opacity.animation(.easeInOut(duration: 0.4)))
+                .allowsHitTesting(false)
         }
     }
 }
@@ -129,14 +151,14 @@ struct Scrubber: View {
             let duration = nowPlaying.duration
             let elapsed = dragElapsed ?? nowPlaying.elapsed(at: context.date)
             let fraction = duration > 0 ? min(max(elapsed / duration, 0), 1) : 0
-            VStack(spacing: 4) {
+            VStack(spacing: 3) {
                 GeometryReader { geo in
                     let thick = hovering || dragElapsed != nil
                     ZStack(alignment: .leading) {
-                        Capsule().fill(.white.opacity(0.16))
-                        Capsule().fill(.white).frame(width: max(geo.size.width * fraction, thick ? 6 : 4))
+                        Capsule().fill(.white.opacity(0.22))
+                        Capsule().fill(.white).frame(width: max(geo.size.width * fraction, thick ? 6 : 3))
                     }
-                    .frame(height: thick ? 7 : 4)
+                    .frame(height: thick ? 6 : 3)
                     .frame(maxHeight: .infinity)
                     .contentShape(Rectangle())
                     .gesture(
@@ -161,7 +183,7 @@ struct Scrubber: View {
                     Text("-" + Self.format(max(duration - elapsed, 0)))
                 }
                 .font(.system(size: 10.5, weight: .medium).monospacedDigit())
-                .foregroundStyle(.white.opacity(0.45))
+                .foregroundStyle(.white.opacity(0.55))
             }
         }
     }
@@ -170,25 +192,6 @@ struct Scrubber: View {
         let total = Int(seconds.rounded(.down))
         let h = total / 3600, m = (total % 3600) / 60, s = total % 60
         return h > 0 ? String(format: "%d:%02d:%02d", h, m, s) : String(format: "%d:%02d", m, s)
-    }
-}
-
-private struct PlaybackControls: View {
-    @Environment(NowPlayingModel.self) private var nowPlaying
-
-    var body: some View {
-        HStack(spacing: 0) {
-            ControlButton(symbol: "shuffle", size: 13, active: nowPlaying.isShuffled) { nowPlaying.toggleShuffle() }
-            Spacer(minLength: 0)
-            ControlButton(symbol: "backward.fill", size: 17) { nowPlaying.previous() }
-            Spacer(minLength: 0)
-            ControlButton(symbol: nowPlaying.isPlaying ? "pause.fill" : "play.fill", size: 24) { nowPlaying.togglePlayPause() }
-            Spacer(minLength: 0)
-            ControlButton(symbol: "forward.fill", size: 17) { nowPlaying.next() }
-            Spacer(minLength: 0)
-            ControlButton(symbol: nowPlaying.repeatMode == 2 ? "repeat.1" : "repeat", size: 13, active: nowPlaying.repeatMode != 1) { nowPlaying.cycleRepeat() }
-        }
-        .frame(height: 30)
     }
 }
 

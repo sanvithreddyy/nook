@@ -35,7 +35,14 @@ private struct IslandView: View {
             }
         }
         .frame(width: layout.size.width, height: layout.size.height, alignment: .top)
-        .background(shape.fill(.black))
+        .background {
+            ZStack {
+                shape.fill(.black)
+                if model.isExpanded, model.tab == .home, model.hasPlayer {
+                    CoverBackdrop(notchHeight: model.notch.size.height)
+                }
+            }
+        }
         .clipShape(shape)
         .background(alignment: .top) { Shadow(shape: shape, visible: model.presentation != .idle) }
         .scaleEffect(scale, anchor: .top)

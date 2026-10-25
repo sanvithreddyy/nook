@@ -37,181 +37,196 @@ struct EventPeek: View {
     }
 }
 
-/// The calendar half of the expanded island: this week as a strip of days, the chosen day's events below.
-struct CalendarColumn: View {
+/// Beside the player: the event under way or next, then the two after it.
+struct AgendaColumn: View {
     @Environment(CalendarModel.self) private var calendar
-    @State private var selected = Calendar.current.startOfDay(for: .now)
 
     var body: some View {
-        switch calendar.access {
-        case .granted:
-            VStack(alignment: .leading, spacing: 8) {
-                WeekStrip(selected: $selected)
-                Rectangle().fill(.white.opacity(0.08)).frame(height: 1)
-                DayEvents(day: selected)
+        if calendar.access == .granted {
+            TimelineView(.everyMinute) { context in
+                let upcoming = calendar.upcoming(now: context.date)
+                VStack(alignment: .leading, spacing: 0) {
+                    if let next = upcoming.first {
+                        HStack(spacing: 12) {
+                            UpNext(event: next, now: context.date, titleSize: 16)
+                            Spacer(minLength: 0)
+                            JoinButton(url: next.joinURL)
+                        }
+                        Rectangle().fill(.white.opacity(0.09)).frame(height: 1)
+                            .padding(.top, 12).padding(.bottom, 5)
+                        ForEach(upcoming.dropFirst().prefix(2)) { event in
+                            LaterRow(event: event, time: EventTiming.dayAndTime(event, now: context.date))
+                        }
+                    }
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             }
-            // Roll the selection forward when the week moves past it (overnight).
-            .onChange(of: calendar.weekStart) { _, start in
-                if selected < start { selected = start }
+        } else {
+            AccessPrompt()
+        }
+    }
+}
+
+/// Nothing playing: the next event takes the player's place, and the rest of the week sits beside it.
+struct AgendaSpread: View {
+    @Environment(CalendarModel.self) private var calendar
+
+    var body: some View {
+        if calendar.access == .granted {
+            TimelineView(.everyMinute) { context in
+                let upcoming = calendar.upcoming(now: context.date)
+                HStack(alignment: .top, spacing: 40) {
+                    if let next = upcoming.first {
+                        VStack(alignment: .leading, spacing: 14) {
+                            UpNext(event: next, now: context.date, titleSize: 22)
+                            JoinButton(url: next.joinURL)
+                        }
+                        .frame(width: 300, alignment: .leading)
+                    }
+                    LaterByDay(events: Array(upcoming.dropFirst().prefix(3)), now: context.date)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             }
-        case .notDetermined:
-            AccessPrompt(message: "See your week here", button: "Allow access") { calendar.requestAccess() }
-                // Access granted from Settings or System Settings shows up the next time the island opens.
-                .onAppear { calendar.recheckAuthorization() }
-        case .denied:
-            AccessPrompt(message: "Calendar access is off", button: "Open Settings") {
-                NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Calendars")!)
+        } else {
+            AccessPrompt()
+        }
+    }
+}
+
+/// When, what and where for one event: "In 20 min", the title, "2:00 – 2:45 PM · Google Meet".
+private struct UpNext: View {
+    let event: CalendarEvent
+    let now: Date
+    let titleSize: CGFloat
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Caption(EventTiming.relative(event, now: now), bright: event.start <= now)
+            Text(event.title)
+                .font(.system(size: titleSize, weight: .bold))
+                .foregroundStyle(.white)
+                .lineLimit(1)
+                .padding(.top, titleSize > 18 ? 6 : 4)
+            Text([EventTiming.range(event), event.meetingService].compactMap { $0 }.joined(separator: " · "))
+                .font(.system(size: 12.5).monospacedDigit())
+                .foregroundStyle(.white.opacity(0.5))
+                .lineLimit(1)
+                .padding(.top, 3)
+        }
+    }
+}
+
+private struct LaterByDay: View {
+    let events: [CalendarEvent]
+    let now: Date
+
+    var body: some View {
+        let days = Dictionary(grouping: events) { Calendar.current.startOfDay(for: $0.start) }.sorted { $0.key < $1.key }
+        VStack(alignment: .leading, spacing: 0) {
+            ForEach(Array(days.enumerated()), id: \.element.key) { index, day in
+                Caption(EventTiming.dayName(day.key, now: now), bright: false)
+                    .padding(.top, index == 0 ? 0 : 10)
+                    .padding(.bottom, 3)
+                ForEach(day.value) { event in
+                    LaterRow(event: event, time: event.start.formatted(date: .omitted, time: .shortened))
+                }
             }
-            .onAppear { calendar.recheckAuthorization() }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+private struct LaterRow: View {
+    let event: CalendarEvent
+    let time: String
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Text(event.title)
+                .foregroundStyle(.white.opacity(0.82))
+                .lineLimit(1)
+            Spacer(minLength: 0)
+            Text(time)
+                .foregroundStyle(.white.opacity(0.45))
+        }
+        .font(.system(size: 12.5).monospacedDigit())
+        .frame(height: 22)
+    }
+}
+
+/// Small capitals above a value: "NOW · 20 MIN LEFT", "TOMORROW". `bright` lifts the first part.
+private struct Caption: View {
+    let text: String
+    let bright: Bool
+
+    init(_ text: String, bright: Bool) {
+        self.text = text
+        self.bright = bright
+    }
+
+    var body: some View {
+        let parts = text.split(separator: " · ", maxSplits: 1).map(String.init)
+        Group {
+            if bright, let head = parts.first {
+                Text("\(Text(head.uppercased()).foregroundStyle(.white))\(Text(parts.count > 1 ? " · " + parts[1].uppercased() : ""))")
+            } else {
+                Text(text.uppercased())
+            }
+        }
+        .font(.system(size: 10.5, weight: .semibold))
+        .tracking(0.6)
+        .foregroundStyle(.white.opacity(0.45))
+        .lineLimit(1)
+    }
+}
+
+/// The only filled button in the island.
+private struct JoinButton: View {
+    let url: URL?
+
+    var body: some View {
+        if let url {
+            Button { NSWorkspace.shared.open(url) } label: {
+                Text("Join")
+                    .font(.system(size: 12.5, weight: .semibold))
+                    .foregroundStyle(.black)
+                    .padding(.horizontal, 14)
+                    .frame(height: 26)
+                    .background(Capsule().fill(.white))
+            }
+            .buttonStyle(IslandButtonStyle())
         }
     }
 }
 
 private struct AccessPrompt: View {
-    let message: String
-    let button: String
-    let action: () -> Void
-
-    var body: some View {
-        VStack(spacing: 10) {
-            Text(message)
-                .font(.system(size: 13))
-                .foregroundStyle(.white.opacity(0.55))
-            Button(action: action) {
-                Text(button)
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 5)
-                    .background(Capsule().fill(.white.opacity(0.12)))
-            }
-            .buttonStyle(.plain)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-    }
-}
-
-private struct WeekStrip: View {
     @Environment(CalendarModel.self) private var calendar
-    @Binding var selected: Date
-
-    private var days: [Date] {
-        let today = Calendar.current.startOfDay(for: .now)
-        return (0..<7).compactMap { Calendar.current.date(byAdding: .day, value: $0, to: today) }
-    }
 
     var body: some View {
-        HStack(alignment: .firstTextBaseline) {
-            Text(selected.formatted(.dateTime.month(.wide)))
-                .font(.system(size: 13, weight: .semibold))
-                .foregroundStyle(.white)
-            Spacer(minLength: 8)
-            HStack(spacing: 2) {
-                ForEach(days, id: \.self) { day in
-                    DayCell(day: day,
-                            isSelected: Calendar.current.isDate(day, inSameDayAs: selected),
-                            hasEvents: !calendar.events(on: day).isEmpty)
-                        .onTapGesture { withAnimation(.easeOut(duration: 0.15)) { selected = day } }
+        let denied = calendar.access == .denied
+        VStack(alignment: .leading, spacing: 12) {
+            Text(denied ? "Calendar access is off" : "See what's coming up")
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(.white.opacity(0.9))
+            Button {
+                if denied {
+                    NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Calendars")!)
+                } else {
+                    calendar.requestAccess()
                 }
+            } label: {
+                Text(denied ? "Open Settings" : "Allow access")
+                    .font(.system(size: 12.5, weight: .semibold))
+                    .foregroundStyle(.black)
+                    .padding(.horizontal, 14)
+                    .frame(height: 26)
+                    .background(Capsule().fill(.white))
             }
+            .buttonStyle(IslandButtonStyle())
         }
-    }
-}
-
-private struct DayCell: View {
-    let day: Date
-    let isSelected: Bool
-    let hasEvents: Bool
-
-    private var isToday: Bool { Calendar.current.isDateInToday(day) }
-
-    var body: some View {
-        VStack(spacing: 2) {
-            Text(day.formatted(.dateTime.weekday(.narrow)))
-                .font(.system(size: 9.5, weight: .medium))
-                .foregroundStyle(.white.opacity(0.4))
-            Text(day.formatted(.dateTime.day()))
-                .font(.system(size: 12.5, weight: isToday ? .bold : .medium).monospacedDigit())
-                .foregroundStyle(isSelected ? .black : .white.opacity(isToday ? 1 : 0.8))
-                .frame(width: 24, height: 24)
-                .background(Circle().fill(isSelected ? .white : .clear))
-            Circle()
-                .fill(.white.opacity(hasEvents && !isSelected ? 0.45 : 0))
-                .frame(width: 3, height: 3)
-        }
-        .frame(width: 26)
-        .contentShape(Rectangle())
-    }
-}
-
-private struct DayEvents: View {
-    @Environment(CalendarModel.self) private var calendar
-    let day: Date
-
-    var body: some View {
-        let events = calendar.events(on: day)
-        if events.isEmpty {
-            Text(Calendar.current.isDateInToday(day) ? "Nothing else today" : "No events")
-                .font(.system(size: 12))
-                .foregroundStyle(.white.opacity(0.45))
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-                .padding(.top, 2)
-        } else {
-            ScrollView(.vertical) {
-                VStack(alignment: .leading, spacing: 7) {
-                    ForEach(events) { event in
-                        EventRow(event: event, day: day)
-                    }
-                }
-            }
-            .scrollIndicators(.never)
-        }
-    }
-}
-
-private struct EventRow: View {
-    let event: CalendarEvent
-    let day: Date
-
-    /// A timed event that began on an earlier day shows when it ends instead.
-    private var timeLabel: String {
-        if event.isAllDay { return "All day" }
-        if event.start < Calendar.current.startOfDay(for: day) {
-            return "→ " + event.end.formatted(date: .omitted, time: .shortened)
-        }
-        return event.start.formatted(date: .omitted, time: .shortened)
-    }
-
-    var body: some View {
-        TimelineView(.everyMinute) { context in
-            let now = context.date
-            let isPast = event.end <= now
-            let isNow = event.start <= now && event.end > now && !event.isAllDay
-            HStack(spacing: 8) {
-                Circle().fill(event.color).frame(width: 6, height: 6)
-                Text(isNow ? "Now" : timeLabel)
-                    .font(.system(size: 11, weight: isNow ? .semibold : .regular).monospacedDigit())
-                    .foregroundStyle(.white.opacity(isNow ? 0.9 : 0.5))
-                    .frame(width: 58, alignment: .leading)
-                Text(event.title)
-                    .font(.system(size: 12.5, weight: .medium))
-                    .foregroundStyle(.white)
-                    .lineLimit(1)
-                Spacer(minLength: 4)
-                if let url = event.joinURL, !isPast {
-                    Button { NSWorkspace.shared.open(url) } label: {
-                        Text("Join")
-                            .font(.system(size: 11, weight: .semibold))
-                            .foregroundStyle(.white)
-                            .padding(.horizontal, 9)
-                            .padding(.vertical, 3)
-                            .background(Capsule().fill(.white.opacity(isNow ? 0.22 : 0.1)))
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-            .opacity(isPast ? 0.4 : 1)
-        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+        // Access granted in System Settings shows up the next time the island opens.
+        .onAppear { calendar.recheckAuthorization() }
     }
 }
 
@@ -223,10 +238,40 @@ enum EventTiming {
         return event.start.formatted(date: .omitted, time: .shortened)
     }
 
+    /// "10:00 – 10:45 AM": the shared AM/PM is written once.
     static func range(_ event: CalendarEvent) -> String {
         if event.isAllDay { return "All day" }
-        let start = event.start.formatted(date: .omitted, time: .shortened)
-        let end = event.end.formatted(date: .omitted, time: .shortened)
-        return "\(start) – \(end)"
+        return timeRange.string(from: event.start, to: event.end)
+    }
+
+    private static let timeRange: DateIntervalFormatter = {
+        let formatter = DateIntervalFormatter()
+        formatter.dateStyle = .none
+        formatter.timeStyle = .short
+        return formatter
+    }()
+
+    /// "Now · 20 min left", "In 25 min", "Today", "Tomorrow", "Monday".
+    static func relative(_ event: CalendarEvent, now: Date) -> String {
+        if event.start <= now {
+            let left = Int((event.end.timeIntervalSince(now) / 60).rounded(.up))
+            return left <= 60 ? "Now · \(left) min left" : "Now · until " + event.end.formatted(date: .omitted, time: .shortened)
+        }
+        let minutes = Int((event.start.timeIntervalSince(now) / 60).rounded(.up))
+        if minutes <= 60 { return "In \(minutes) min" }
+        return dayName(event.start, now: now)
+    }
+
+    static func dayName(_ date: Date, now: Date) -> String {
+        let calendar = Calendar.current
+        if calendar.isDate(date, inSameDayAs: now) { return "Today" }
+        if let tomorrow = calendar.date(byAdding: .day, value: 1, to: now), calendar.isDate(date, inSameDayAs: tomorrow) { return "Tomorrow" }
+        return date.formatted(.dateTime.weekday(.wide))
+    }
+
+    /// The time alone for today, with the weekday otherwise: "2:00 PM", "Sun 4:00 PM".
+    static func dayAndTime(_ event: CalendarEvent, now: Date) -> String {
+        let time = event.start.formatted(date: .omitted, time: .shortened)
+        return Calendar.current.isDate(event.start, inSameDayAs: now) ? time : event.start.formatted(.dateTime.weekday(.abbreviated)) + " " + time
     }
 }

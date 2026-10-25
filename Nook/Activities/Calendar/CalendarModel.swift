@@ -10,6 +10,14 @@ struct CalendarEvent: Identifiable, Equatable {
     let isAllDay: Bool
     /// A video-call link found in the event's URL, location or notes.
     let joinURL: URL?
+
+    /// "Google Meet", "Zoom"… for the join link's host.
+    var meetingService: String? {
+        guard let host = joinURL?.host()?.lowercased() else { return nil }
+        let names = ["zoom.us": "Zoom", "meet.google.com": "Google Meet", "teams.microsoft.com": "Teams", "teams.live.com": "Teams",
+                     "facetime.apple.com": "FaceTime", "webex.com": "Webex", "whereby.com": "Whereby"]
+        return names.first { host == $0.key || host.hasSuffix("." + $0.key) }?.value
+    }
 }
 
 @Observable
@@ -63,12 +71,10 @@ final class CalendarModel {
         events.first { $0.id == id }
     }
 
-    func events(on day: Date) -> [CalendarEvent] {
-        let calendar = Calendar.current
-        let start = calendar.startOfDay(for: day)
-        guard let end = calendar.date(byAdding: .day, value: 1, to: start) else { return [] }
-        return events.filter { $0.start < end && $0.end > start }
-            .sorted { ($0.isAllDay ? 0 : 1, $0.start) < ($1.isAllDay ? 0 : 1, $1.start) }
+    /// Timed events under way or still to come this week, soonest first. All-day events are left
+    /// out: "up next" is about where to be, and a holiday or a birthday would always lead.
+    func upcoming(now: Date = .now) -> [CalendarEvent] {
+        events.filter { !$0.isAllDay && $0.end > now }
     }
 
     /// The timed event starting within the lead time, or one that started less than five minutes ago.
@@ -100,6 +106,7 @@ final class CalendarModel {
             CalendarEvent(id: "e", title: "Launch", start: at(3, 0), end: at(4, 0), color: .red, isAllDay: true, joinURL: nil),
         ]
         access = .granted
+        onChange?()
     }
     #endif
 

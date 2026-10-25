@@ -84,8 +84,8 @@ final class NotchModel {
 
     var isHovering = false
     var isPressed = false
-    /// Home shows the calendar beside the player when Calendar is on.
-    var showsCalendarColumn = false
+    /// Calendar is on and has something to show on Home: events still to come, or the access prompt.
+    var showsAgenda = false
     /// False when nothing is playing, so the expanded island stays short instead of showing an empty panel.
     var hasPlayer = true
     /// Hidden while a fullscreen app owns the notch screen.
@@ -129,15 +129,20 @@ final class NotchModel {
             return IslandLayout(size: CGSize(width: n.width + side * 2, height: n.height), topRadius: 6, bottomRadius: 11)
         case .expanded:
             // One width for every tab, so the tab buttons never fall outside the island when switching.
-            let compact = tab == .home && !hasPlayer && !showsCalendarColumn
-            let width = Self.expandedWidth
-            let height: CGFloat = compact ? 64 : Self.expandedBodyHeight
-            return IslandLayout(size: CGSize(width: max(n.width + 300, width), height: n.height + height),
-                                topRadius: 12, bottomRadius: compact ? 22 : 32)
+            // The height follows what Home shows, so there is never an empty panel.
+            let body: CGFloat = switch tab {
+            case .shelf: Self.expandedBodyHeight
+            case .home where hasPlayer: 146
+            case .home where showsAgenda: 128
+            case .home: 40
+            }
+            return IslandLayout(size: CGSize(width: max(n.width + 300, Self.expandedWidth), height: n.height + body),
+                                topRadius: 12, bottomRadius: body < 60 ? 22 : 32)
         }
     }
 
     static let expandedWidth: CGFloat = 660
+    /// The tallest page (the shelf); the panel is sized for it.
     static let expandedBodyHeight: CGFloat = 160
 
     /// The biggest island the panel must hold, with room for its shadow.

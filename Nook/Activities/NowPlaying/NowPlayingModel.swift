@@ -15,6 +15,8 @@ final class NowPlayingModel {
     /// Icon of the app that is playing, resolved once per app change.
     private(set) var appIcon: NSImage?
     private(set) var artwork: NSImage?
+    /// The artwork blurred for the expanded island's backdrop.
+    private(set) var backdrop: NSImage?
     /// Average artwork color, lifted so it reads on black.
     private(set) var tint: Color = .white
     private(set) var isShuffled = false
@@ -77,9 +79,10 @@ final class NowPlayingModel {
         client.setShuffle(isShuffled)
     }
 
-    func cycleRepeat() {
-        repeatMode = repeatMode == 1 ? 3 : (repeatMode == 3 ? 2 : 1)
-        client.setRepeat(repeatMode)
+    /// 1 off, 2 one, 3 all.
+    func setRepeat(_ mode: Int) {
+        repeatMode = mode
+        client.setRepeat(mode)
     }
 
     #if DEBUG
@@ -91,6 +94,9 @@ final class NowPlayingModel {
             artist = "Miami Horror"
             duration = 241
             trackID = "preview"
+            // A system wallpaper stands in for cover art.
+            let sample = "/System/Library/Desktop Pictures/.thumbnails/Big Sur Night Grasses.heic"
+            if let data = FileManager.default.contents(atPath: sample) { loadArtwork(data) }
         }
         elapsedAtTimestamp = duration * 0.3
         elapsedTimestamp = Date()
@@ -106,6 +112,7 @@ final class NowPlayingModel {
         title = ""
         artist = ""
         artwork = nil
+        backdrop = nil
         isPlaying = false
     }
     #endif
@@ -151,6 +158,7 @@ final class NowPlayingModel {
         } else if carries("artworkData"), state["artworkData"] == nil, artwork != nil {
             artworkGeneration += 1
             artwork = nil
+            backdrop = nil
             tint = .white
         }
 
@@ -178,9 +186,11 @@ final class NowPlayingModel {
         let generation = artworkGeneration
         Task.detached(priority: .userInitiated) { [weak self] in
             let tint = ArtworkTint.average(of: data)
+            let blurred = BlurredArtwork.render(data)
             await MainActor.run {
                 guard let self, generation == self.artworkGeneration else { return }
                 self.artwork = NSImage(data: data)
+                self.backdrop = blurred.map { NSImage(cgImage: $0.cgImage, size: .zero) }
                 self.tint = tint.map { Color(red: $0.r, green: $0.g, blue: $0.b) } ?? .white
             }
         }

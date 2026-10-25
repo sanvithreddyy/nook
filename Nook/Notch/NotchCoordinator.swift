@@ -109,6 +109,13 @@ final class NotchCoordinator {
                 debugRefresh()
                 let args = CommandLine.arguments
                 if args.contains("-preview-calendar") { calendar.debugPreview() }
+                // -preview-silent: what the island shows when nothing is playing.
+                if args.contains("-preview-silent") {
+                    nowPlaying.debugClear()
+                    model.hasPlayer = false
+                    nowPlayingVisible = false
+                    refreshActivity()
+                }
                 if args.contains("-preview-shelf") {
                     let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
                     shelf.debugPreview(["scripts/build.sh", "project.yml", "Nook/Info.plist"].map { root.appendingPathComponent($0) })
@@ -199,7 +206,6 @@ final class NotchCoordinator {
         if calendarEnabled != lastCalendarEnabled {
             lastCalendarEnabled = calendarEnabled
             calendar.update()
-            model.showsCalendarColumn = calendarEnabled
         }
         let connectivityEnabled = Prefs.bool(Prefs.connectivity)
         if connectivityEnabled != lastConnectivityEnabled {
@@ -282,6 +288,12 @@ final class NotchCoordinator {
         }
         model.setLiveActivity(activity)
         if activity != .nowPlaying, model.peek == .track { model.hidePeek() }
+
+        // Runs on every calendar change and on the 30 s tick, so the last event ending shrinks the island.
+        let agenda = Prefs.bool(Prefs.calendar) && (calendar.access != .granted || !calendar.upcoming().isEmpty)
+        if model.showsAgenda != agenda {
+            withAnimation(model.isExpanded ? Motion.expand : nil) { model.showsAgenda = agenda }
+        }
     }
 
     private func playbackChanged() {

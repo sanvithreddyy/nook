@@ -18,24 +18,28 @@ struct ExpandedView: View {
     }
 }
 
-/// Player on the left, the week on the right.
+/// The player with what's next beside it; the next event alone when nothing plays; one line when neither has anything.
 private struct HomeView: View {
     @Environment(NotchModel.self) private var model
+    @Environment(CalendarModel.self) private var calendar
 
     var body: some View {
-        HStack(spacing: 0) {
-            ExpandedPlayer()
-                .frame(width: model.showsCalendarColumn ? 256 : nil)
-                .frame(maxWidth: model.showsCalendarColumn ? nil : .infinity)
-            if model.showsCalendarColumn {
-                Rectangle()
-                    .fill(.white.opacity(0.08))
-                    .frame(width: 1)
-                    .padding(.horizontal, 20)
-                    .padding(.vertical, 2)
-                CalendarColumn()
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+        if model.hasPlayer {
+            HStack(alignment: .top, spacing: 40) {
+                ExpandedPlayer()
+                    .frame(width: model.showsAgenda ? 300 : nil)
+                    .frame(maxWidth: model.showsAgenda ? nil : .infinity, alignment: .leading)
+                if model.showsAgenda {
+                    AgendaColumn()
+                }
             }
+        } else if model.showsAgenda {
+            AgendaSpread()
+        } else {
+            Text(calendar.isEnabled && calendar.isAuthorized ? "Nothing playing · No events this week" : "Nothing playing")
+                .font(.system(size: 12.5))
+                .foregroundStyle(.white.opacity(0.45))
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
         }
     }
 }
@@ -48,12 +52,12 @@ struct ExpandedTabs: View {
     @Environment(ShelfModel.self) private var shelf
 
     var body: some View {
-        HStack(spacing: 2) {
+        HStack(spacing: 4) {
             TabButton(symbol: "house.fill", tab: .home)
             TabButton(symbol: "tray.fill", tab: .shelf, count: shelf.items.count)
         }
-        .padding(2)
-        .background(Capsule().fill(.white.opacity(0.06)))
+        // The first glyph lines up with the content below; its hit area reaches left of it.
+        .padding(.leading, -8)
         .frame(maxWidth: .infinity, alignment: .leading)
         // Same inset as the content below, so the capsule lines up with the artwork and tiles.
         .padding(.leading, 22)
@@ -77,11 +81,10 @@ private struct TabButton: View {
                         .font(.system(size: 11, weight: .semibold).monospacedDigit())
                 }
             }
-            .foregroundStyle(.white.opacity(selected ? 1 : 0.45))
-            .padding(.horizontal, 9)
-            .frame(height: 22)
-            .background(Capsule().fill(.white.opacity(selected ? 0.14 : 0)))
-            .contentShape(Capsule())
+            .foregroundStyle(.white.opacity(selected ? 1 : 0.4))
+            .padding(.horizontal, 8)
+            .frame(height: 24)
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .animation(.easeOut(duration: 0.15), value: selected)
