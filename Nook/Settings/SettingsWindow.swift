@@ -122,7 +122,7 @@ struct SettingsView: View {
 private struct GeneralPane: View {
     @AppStorage(Prefs.display) private var display = DisplayChoice.builtIn.rawValue
     @AppStorage(Prefs.hideInFullscreen) private var hideInFullscreen = false
-    @AppStorage(Prefs.expandOnHover) private var expandOnHover = false
+    @AppStorage(Prefs.expandOnHover) private var expandOnHover = true
     @AppStorage(Prefs.swipeGestures) private var swipeGestures = true
     @AppStorage(Prefs.enableHaptics) private var haptics = true
     @AppStorage(Prefs.hideMenuBarIcon) private var hideMenuBarIcon = false
@@ -165,6 +165,7 @@ private struct NowPlayingPane: View {
     @AppStorage(Prefs.nowPlaying) private var enabled = true
     @AppStorage(Prefs.peekOnTrackChange) private var peekOnTrackChange = true
     @AppStorage(Prefs.peekOnHover) private var peekOnHover = true
+    @AppStorage(Prefs.expandOnHover) private var expandOnHover = true
     @AppStorage(Prefs.showWaveform) private var showWaveform = true
     @AppStorage(Prefs.tintWaveform) private var tintWaveform = true
 
@@ -176,6 +177,9 @@ private struct NowPlayingPane: View {
             Section {
                 Toggle("Show the title when the track changes", isOn: $peekOnTrackChange)
                 Toggle("Show the title on hover", isOn: $peekOnHover)
+                    // Hovering opens the whole island instead.
+                    .disabled(expandOnHover)
+                    .help(expandOnHover ? "Turn off Expand on hover in General to use this." : "")
                 Toggle("Waveform", isOn: $showWaveform)
                 Toggle("Color waveform from artwork", isOn: $tintWaveform)
                     .disabled(!showWaveform)

@@ -37,7 +37,8 @@ enum Prefs {
             // Off by default: detection of other apps' fullscreen spaces is heuristic.
             hideInFullscreen: false,
             enableHaptics: true,
-            expandOnHover: false,
+            // On: pointing at the notch opens it.
+            expandOnHover: true,
             swipeGestures: true,
             nowPlaying: true,
             peekOnTrackChange: true,

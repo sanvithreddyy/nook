@@ -16,6 +16,7 @@ private struct IslandView: View {
     @Environment(NotchModel.self) private var model
     @Environment(ShelfModel.self) private var shelf
     @AppStorage(Prefs.peekOnHover) private var peekOnHover = true
+    @AppStorage(Prefs.expandOnHover) private var expandOnHover = true
 
     var body: some View {
         let layout = model.layout
@@ -58,9 +59,9 @@ private struct IslandView: View {
     private var scale: CGFloat {
         guard !model.isExpanded else { return 1 }
         var scale: CGFloat = 1
-        // A hover that is about to open the track peek grows into it instead of bumping first.
-        let hoverPeeks = peekOnHover && model.liveActivity == .nowPlaying && model.notification == nil
-        if model.isHovering, model.peek == nil, !hoverPeeks { scale *= 1.045 }
+        // A hover that is about to open the island or the track peek grows into it instead of bumping first.
+        let hoverOpens = expandOnHover || (peekOnHover && model.liveActivity == .nowPlaying && model.notification == nil)
+        if model.isHovering, model.peek == nil, !hoverOpens { scale *= 1.045 }
         if model.isPressed { scale *= 0.96 }
         return scale
     }

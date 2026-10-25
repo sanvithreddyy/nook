@@ -77,15 +77,17 @@ final class NotchWindowController {
 
     // MARK: Hit testing
 
-    /// The island's target rect in screen coordinates, padded so the notch is easy to hit.
     private func hitRect() -> CGRect {
-        let layout = model.layout
-        let frame = panel.frame
+        Self.hitRect(for: model.layout, presentation: model.presentation, in: panel.frame)
+    }
+
+    /// The island's target rect in screen coordinates, padded so the notch is easy to hit.
+    static func hitRect(for layout: IslandLayout, presentation: Presentation, in frame: CGRect) -> CGRect {
         var rect = CGRect(x: frame.midX - layout.size.width / 2,
                           y: frame.maxY - layout.size.height,
                           width: layout.size.width,
                           height: layout.size.height)
-        switch model.presentation {
+        switch presentation {
         case .idle:
             rect = rect.insetBy(dx: -10, dy: 0)
             rect.origin.y -= 6
@@ -100,6 +102,9 @@ final class NotchWindowController {
             rect.origin.y -= 4
             rect.size.height += 4
         }
+        // The pointer pushed into the notch sits on the screen's top edge (y == maxY), which
+        // `contains` leaves out. Reach one point past it so that edge counts as inside.
+        rect.size.height += 1
         return rect
     }
 
