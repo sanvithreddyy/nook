@@ -37,7 +37,7 @@ struct EventPeek: View {
     }
 }
 
-/// Beside the player: the event under way or next, then the two after it.
+/// Beside the player: the event under way or next, then the rest of the month to scroll through.
 struct AgendaColumn: View {
     @Environment(CalendarModel.self) private var calendar
 
@@ -53,10 +53,8 @@ struct AgendaColumn: View {
                             JoinButton(url: next.joinURL)
                         }
                         Rectangle().fill(.white.opacity(0.09)).frame(height: 1)
-                            .padding(.top, 12).padding(.bottom, 5)
-                        ForEach(upcoming.dropFirst().prefix(2)) { event in
-                            LaterRow(event: event, time: EventTiming.dayAndTime(event, now: context.date))
-                        }
+                            .padding(.top, 12)
+                        LaterByDay(events: Array(upcoming.dropFirst()), now: context.date)
                     }
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
@@ -67,7 +65,7 @@ struct AgendaColumn: View {
     }
 }
 
-/// Nothing playing: the next event takes the player's place, and the rest of the week sits beside it.
+/// Nothing playing: the next event takes the player's place, and the rest of the month scrolls beside it.
 struct AgendaSpread: View {
     @Environment(CalendarModel.self) private var calendar
 
@@ -83,7 +81,7 @@ struct AgendaSpread: View {
                         }
                         .frame(width: 300, alignment: .leading)
                     }
-                    LaterByDay(events: Array(upcoming.dropFirst().prefix(3)), now: context.date)
+                    LaterByDay(events: Array(upcoming.dropFirst()), now: context.date, topInset: 0)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             }
@@ -116,23 +114,36 @@ private struct UpNext: View {
     }
 }
 
+/// Everything after the next event, under a caption per day. Scrolls; the bottom edge fades so it's clear there's more.
 private struct LaterByDay: View {
     let events: [CalendarEvent]
     let now: Date
+    /// Space above the first day: room below the divider, or none beside the next event.
+    var topInset: CGFloat = 8
 
     var body: some View {
         let days = Dictionary(grouping: events) { Calendar.current.startOfDay(for: $0.start) }.sorted { $0.key < $1.key }
-        VStack(alignment: .leading, spacing: 0) {
-            ForEach(Array(days.enumerated()), id: \.element.key) { index, day in
-                Caption(EventTiming.dayName(day.key, now: now), bright: false)
-                    .padding(.top, index == 0 ? 0 : 10)
-                    .padding(.bottom, 3)
-                ForEach(day.value) { event in
-                    LaterRow(event: event, time: event.start.formatted(date: .omitted, time: .shortened))
+        ScrollView(.vertical) {
+            LazyVStack(alignment: .leading, spacing: 0) {
+                ForEach(days, id: \.key) { day in
+                    Caption(EventTiming.dayName(day.key, now: now), bright: false)
+                        .padding(.top, day.key == days.first?.key ? topInset : 10)
+                        .padding(.bottom, 2)
+                    ForEach(day.value) { event in
+                        LaterRow(event: event, time: event.start.formatted(date: .omitted, time: .shortened))
+                    }
                 }
             }
+            .padding(.bottom, 14)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .scrollIndicators(.never)
+        .mask {
+            VStack(spacing: 0) {
+                Color.black
+                LinearGradient(colors: [.black, .clear], startPoint: .top, endPoint: .bottom).frame(height: 16)
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 }
 
@@ -262,16 +273,12 @@ enum EventTiming {
         return dayName(event.start, now: now)
     }
 
+    /// "Today", "Tomorrow", "Monday" within the week, then "Mon, Nov 2".
     static func dayName(_ date: Date, now: Date) -> String {
         let calendar = Calendar.current
         if calendar.isDate(date, inSameDayAs: now) { return "Today" }
         if let tomorrow = calendar.date(byAdding: .day, value: 1, to: now), calendar.isDate(date, inSameDayAs: tomorrow) { return "Tomorrow" }
-        return date.formatted(.dateTime.weekday(.wide))
-    }
-
-    /// The time alone for today, with the weekday otherwise: "2:00 PM", "Sun 4:00 PM".
-    static func dayAndTime(_ event: CalendarEvent, now: Date) -> String {
-        let time = event.start.formatted(date: .omitted, time: .shortened)
-        return Calendar.current.isDate(event.start, inSameDayAs: now) ? time : event.start.formatted(.dateTime.weekday(.abbreviated)) + " " + time
+        let days = calendar.dateComponents([.day], from: calendar.startOfDay(for: now), to: calendar.startOfDay(for: date)).day ?? 0
+        return days < 7 ? date.formatted(.dateTime.weekday(.wide)) : date.formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day())
     }
 }

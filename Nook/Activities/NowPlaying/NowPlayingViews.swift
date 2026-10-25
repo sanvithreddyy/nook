@@ -111,36 +111,6 @@ struct ExpandedPlayer: View {
     }
 }
 
-/// A blurred copy of the artwork that lights the left of the expanded island and fades out before
-/// the calendar. Kept clear of the top strip, where the hardware notch would show as a black block.
-struct CoverBackdrop: View {
-    @Environment(NowPlayingModel.self) private var nowPlaying
-    let notchHeight: CGFloat
-
-    var body: some View {
-        if let image = nowPlaying.backdrop {
-            Image(nsImage: image)
-                .resizable()
-                .aspectRatio(contentMode: .fill)
-                .frame(width: 420, height: 280)
-                .clipped()
-                .mask(LinearGradient(stops: [.init(color: .black, location: 0.35), .init(color: .clear, location: 0.9)],
-                                     startPoint: .leading, endPoint: .trailing))
-                .mask(alignment: .top) {
-                    VStack(spacing: 0) {
-                        Color.clear.frame(height: notchHeight - 6)
-                        LinearGradient(colors: [.clear, .black], startPoint: .top, endPoint: .bottom).frame(height: 48)
-                        Color.black
-                    }
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-                .id(nowPlaying.trackID)
-                .transition(.opacity.animation(.easeInOut(duration: 0.4)))
-                .allowsHitTesting(false)
-        }
-    }
-}
-
 struct Scrubber: View {
     @Environment(NowPlayingModel.self) private var nowPlaying
     @State private var dragElapsed: Double?

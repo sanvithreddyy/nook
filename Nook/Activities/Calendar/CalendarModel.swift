@@ -24,10 +24,10 @@ struct CalendarEvent: Identifiable, Equatable {
 final class CalendarModel {
     enum Access { case notDetermined, granted, denied }
 
-    /// Events from the start of today through the next six days.
+    /// Events from the start of today through the next 30 days.
     private(set) var events: [CalendarEvent] = []
     private(set) var access: Access = .notDetermined
-    /// Start of the day the 7-day window begins on; changes at midnight.
+    /// Start of the day the window begins on; changes at midnight.
     private(set) var weekStart = Calendar.current.startOfDay(for: .now)
 
     var isAuthorized: Bool { access == .granted }
@@ -71,7 +71,7 @@ final class CalendarModel {
         events.first { $0.id == id }
     }
 
-    /// Timed events under way or still to come this week, soonest first. All-day events are left
+    /// Timed events under way or still to come in the window, soonest first. All-day events are left
     /// out: "up next" is about where to be, and a holiday or a birthday would always lead.
     func upcoming(now: Date = .now) -> [CalendarEvent] {
         events.filter { !$0.isAllDay && $0.end > now }
@@ -104,6 +104,9 @@ final class CalendarModel {
             CalendarEvent(id: "c", title: "Dinner", start: now.addingTimeInterval(3 * 3600), end: now.addingTimeInterval(4.5 * 3600), color: .green, isAllDay: false, joinURL: nil),
             CalendarEvent(id: "d", title: "Inventory audit", start: at(1, 10), end: at(1, 11), color: .purple, isAllDay: false, joinURL: nil),
             CalendarEvent(id: "e", title: "Launch", start: at(3, 0), end: at(4, 0), color: .red, isAllDay: true, joinURL: nil),
+            CalendarEvent(id: "f", title: "Payroll review", start: at(2, 11), end: at(2, 12), color: .blue, isAllDay: false, joinURL: nil),
+            CalendarEvent(id: "g", title: "Product demo", start: at(5, 14), end: at(5, 15), color: .blue, isAllDay: false, joinURL: URL(string: "https://zoom.us/j/1")),
+            CalendarEvent(id: "h", title: "Quarterly planning", start: at(9, 10), end: at(9, 12), color: .purple, isAllDay: false, joinURL: nil),
         ]
         access = .granted
         onChange?()
@@ -151,7 +154,7 @@ final class CalendarModel {
     private func reload() {
         let calendar = Calendar.current
         let start = calendar.startOfDay(for: .now)
-        let end = calendar.date(byAdding: .day, value: 7, to: start) ?? start
+        let end = calendar.date(byAdding: .day, value: Self.windowDays, to: start) ?? start
         if weekStart != start { weekStart = start }
         let predicate = store.predicateForEvents(withStart: start, end: end, calendars: nil)
         var seenLinks: [String: URL?] = [:]
@@ -180,6 +183,9 @@ final class CalendarModel {
         seen[key] = link
         return link
     }
+
+    /// How far ahead the island's list reaches.
+    static let windowDays = 30
 
     private static let linkDetector = try? NSDataDetector(types: NSTextCheckingResult.CheckingType.link.rawValue)
 

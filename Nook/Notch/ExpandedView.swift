@@ -36,7 +36,7 @@ private struct HomeView: View {
         } else if model.showsAgenda {
             AgendaSpread()
         } else {
-            Text(calendar.isEnabled && calendar.isAuthorized ? "Nothing playing · No events this week" : "Nothing playing")
+            Text(calendar.isEnabled && calendar.isAuthorized ? "Nothing playing · No upcoming events" : "Nothing playing")
                 .font(.system(size: 12.5))
                 .foregroundStyle(.white.opacity(0.45))
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
