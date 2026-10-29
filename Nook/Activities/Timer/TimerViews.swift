@@ -11,9 +11,8 @@ struct TimerActivitySide: View {
         if edge == .leading {
             Image(systemName: "timer")
                 .font(.system(size: 14, weight: .semibold))
-                .foregroundStyle(.orange)
-                .frame(width: model.notch.size.height, height: model.notch.size.height)
-                .frame(maxWidth: .infinity, alignment: .leading)
+                .foregroundStyle(Color.status(.orange))
+                .concentric(.leading, height: model.notch.size.height)
         } else {
             TimerText(size: Compact.fontSize)
                 .frame(maxWidth: .infinity, alignment: .trailing)
@@ -55,21 +54,23 @@ struct TimerDropContent: View {
     @Environment(TimerModel.self) private var timer
 
     var body: some View {
-        // Ticks on whole seconds from a date in the past, so the first frame draws straight away.
-        TimelineView(.periodic(from: .distantPast, by: 1)) { context in
-            let left = timer.remaining(at: context.date)
+        // Redraws once a second, reading the clock itself: a tick's own date can trail the real time
+        // by up to a second, which would show a second too many.
+        TimelineView(.periodic(from: .now, by: 1)) { _ in
+            let now = Date.now
+            let left = timer.remaining(at: now)
             ZStack {
                 Circle().stroke(Color.orange.opacity(0.28), lineWidth: 2.4)
                 Circle()
-                    .trim(from: 0, to: timer.state == .done ? 1 : timer.fraction(at: context.date))
+                    .trim(from: 0, to: timer.state == .done ? 1 : timer.fraction(at: now))
                     .stroke(Color.orange, style: StrokeStyle(lineWidth: 2.4, lineCap: .round))
                     .rotationEffect(.degrees(-90))
-                    .animation(.linear(duration: 1), value: timer.fraction(at: context.date))
                 Group {
                     if timer.state == .done {
                         Image(systemName: "bell.fill").font(.system(size: 9, weight: .bold))
                     } else {
-                        Text(left >= 60 ? "\(Int((left / 60).rounded(.up)))" : "\(Int(left.rounded(.up)))")
+                        // Hours, minutes or seconds, whichever fits three characters.
+                        Text(left >= 3600 ? "\(Int(left / 3600))h" : left >= 60 ? "\(Int((left / 60).rounded(.up)))" : "\(Int(left.rounded(.up)))")
                             .font(.system(size: 10, weight: .bold).monospacedDigit())
                     }
                 }
@@ -148,17 +149,12 @@ private struct RoundButton: View {
     let label: String
     let tint: Color
     let action: () -> Void
-    @State private var clicks = 0
 
     var body: some View {
-        Button {
-            clicks += 1
-            action()
-        } label: {
+        Button(action: action) {
             Image(systemName: symbol)
                 .font(.system(size: 16, weight: .bold))
                 .contentTransition(.symbolEffect(.replace))
-                .symbolEffect(.bounce, options: .speed(1.5), value: clicks)
                 .foregroundStyle(tint)
                 .frame(width: 42, height: 42)
                 .background(Circle().fill(tint.opacity(tint == .white ? 0.14 : 0.24)))
@@ -202,7 +198,8 @@ struct TimerMenu: View {
 /// Turns two-finger scrolling over a view into whole steps, with a trackpad detent for each,
 /// like turning a crown. Fingers up adds; momentum is ignored so it stops where the fingers do.
 struct ScrollDial: NSViewRepresentable {
-    let onStep: (Int) -> Void
+    /// Returns whether the step did anything; only those get a detent.
+    let onStep: (Int) -> Bool
 
     func makeNSView(context: Context) -> DialView {
         let view = DialView()
@@ -215,7 +212,7 @@ struct ScrollDial: NSViewRepresentable {
     }
 
     final class DialView: NSView {
-        var onStep: ((Int) -> Void)?
+        var onStep: ((Int) -> Bool)?
         private var travel: CGFloat = 0
         private static let detent: CGFloat = 16
 
@@ -228,8 +225,7 @@ struct ScrollDial: NSViewRepresentable {
             while abs(travel) >= Self.detent {
                 let step = travel > 0 ? 1 : -1
                 travel -= CGFloat(step) * Self.detent
-                onStep?(step)
-                if Prefs.bool(Prefs.enableHaptics) {
+                if onStep?(step) == true, Prefs.bool(Prefs.enableHaptics) {
                     NSHapticFeedbackManager.defaultPerformer.perform(.levelChange, performanceTime: .now)
                 }
             }

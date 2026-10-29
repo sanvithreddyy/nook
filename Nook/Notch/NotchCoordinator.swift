@@ -132,7 +132,9 @@ final class NotchCoordinator {
                 if args.contains("-preview-drag") { model.setDraggingFile(true) }
                 if args.contains("-preview-timer") {
                     // -later: the drop splits off after a pause and merges back, for recording the motion.
-                    if args.contains("-later") {
+                    if args.contains("-short") {
+                        timer.debugStart(seconds: 4)
+                    } else if args.contains("-later") {
                         try? await Task.sleep(for: .seconds(2))
                         timer.start(minutes: 5)
                         try? await Task.sleep(for: .seconds(2.5))
@@ -147,6 +149,13 @@ final class NotchCoordinator {
                 }
                 if args.contains("-expand") {
                     model.expand(card: args.contains("-shelf") ? .shelf : args.contains("-timer-card") ? .timer : nil)
+                }
+                // -expand-later: open from the closed island after a pause, then close, for recording the motion.
+                if args.contains("-expand-later") {
+                    try? await Task.sleep(for: .seconds(2))
+                    model.expand()
+                    try? await Task.sleep(for: .seconds(2))
+                    model.collapse()
                 }
                 if CommandLine.arguments.contains("-peek") { model.showPeek(.track, for: nil) }
                 if CommandLine.arguments.contains("-hud") {
@@ -214,7 +223,7 @@ final class NotchCoordinator {
                 }
             })
         }
-        defaultsObserver = center.addObserver(forName: UserDefaults.didChangeNotification, object: nil, queue: .main) { [weak self] _ in
+        defaultsObserver = center.addObserver(forName: UserDefaults.didChangeNotification, object: UserDefaults.standard, queue: .main) { [weak self] _ in
             Task { @MainActor in self?.applyPreferences() }
         }
     }
@@ -247,6 +256,8 @@ final class NotchCoordinator {
         } else {
             keys.stop()
         }
+        let style = HUDStyle.current
+        if model.hudStyle != style { model.hudStyle = style }
         watchPermissions()
         updateFullscreen()
         refreshActivity()
@@ -320,9 +331,11 @@ final class NotchCoordinator {
         default:
             activity = live.first
         }
+        let hours = timer.remaining() >= 3600
+        if model.timerShowsHours != hours { withAnimation(Motion.activityIn) { model.timerShowsHours = hours } }
         model.setLiveActivity(activity)
         // The next thing going on gets its own drop beside the island.
-        model.setCompanion(activity == live.first ? live.dropFirst().first : nil)
+        model.setCompanion(activity == live.first && Prefs.bool(Prefs.showCompanion) ? live.dropFirst().first : nil)
         if activity != .nowPlaying, model.peek == .track { model.hidePeek() }
         refreshCards(live: live)
     }
@@ -409,9 +422,17 @@ final class NotchCoordinator {
     /// Like a ringing timer on iPhone: a sound, the island opens on the finished timer for a few
     /// seconds, then the notch keeps showing "Done" until it's stopped (or for ten minutes).
     private func timerDone() {
-        NSSound(named: "Glass")?.play()
+        #if DEBUG
+        let previewing = CommandLine.arguments.contains("-preview-timer")
+        #else
+        let previewing = false
+        #endif
+        // Preview timers stay quiet, so testing doesn't chime on the Mac.
+        let sound = UserDefaults.standard.string(forKey: Prefs.timerSound) ?? ""
+        if !previewing, !sound.isEmpty { NSSound(named: sound)?.play() }
         Haptics.tap()
-        if !model.isSuppressed { model.expand(card: .timer) }
+        // A file drag holding the shelf open keeps it; the notch shows "Done" until it's stopped.
+        if !model.isSuppressed, !model.isDraggingFile { model.expand(card: .timer) }
         doneTask?.cancel()
         doneTask = Task { [weak self] in
             try? await Task.sleep(for: .seconds(8))
@@ -454,7 +475,7 @@ final class NotchCoordinator {
             let up = key == .volumeUp
             let before = volume.volume
             let result = volume.step(up: up, fine: fine)
-            bumpIfAtEnd(before: before, after: result.level, up: up)
+            bumpIfAtEnd(kind: "volume", before: before, after: result.level, up: up)
             model.post(.volume(level: result.level, muted: result.muted, output: volume.headphones), for: .seconds(1.6))
         case .mute:
             let result = volume.toggleMute()
@@ -463,14 +484,17 @@ final class NotchCoordinator {
             let up = key == .brightnessUp
             let before = brightness.level
             let level = brightness.step(up: up, fine: fine)
-            bumpIfAtEnd(before: before, after: level, up: up)
+            bumpIfAtEnd(kind: "brightness", before: before, after: level, up: up)
             model.post(.brightness(level: level), for: .seconds(1.6))
         }
     }
 
     /// Pressing on at the top or bottom stretches the bar that's already showing, instead of nothing.
-    private func bumpIfAtEnd(before: Float, after: Float, up: Bool) {
-        guard model.notification?.isHUD == true, after == before, after == (up ? 1 : 0) else { return }
+    /// Only that HUD's own bar (brightness showing doesn't stretch for a volume press), and with a
+    /// little slack, since a display can read back a hair off 1.
+    private func bumpIfAtEnd(kind: String, before: Float, after: Float, up: Bool) {
+        let end: Float = up ? 1 : 0
+        guard model.notification?.kind == kind, abs(after - before) < 0.001, abs(after - end) < 0.001 else { return }
         model.bumpHUD(up: up)
     }
 }

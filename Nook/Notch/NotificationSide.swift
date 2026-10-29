@@ -10,36 +10,17 @@ struct NotificationSide: View {
     var body: some View {
         Group {
             switch note {
-            case .volume(let level, let muted, let output):
-                if edge == .leading {
-                    // Sound going to AirPods shows the AirPods, as the iPhone's volume does.
-                    Group {
-                        if let output, !muted {
-                            Image(systemName: output)
-                                .symbolRenderingMode(.hierarchical)
-                                .font(.system(size: 17, weight: .medium))
-                        } else {
-                            Image(systemName: muted || level == 0 ? "speaker.slash.fill" : "speaker.wave.3.fill", variableValue: Double(level))
-                                .font(.system(size: 14, weight: .semibold))
-                        }
+            case .volume, .brightness:
+                if model.hudStyle.usesSides {
+                    if edge == .leading {
+                        HUDGlyph(note: note)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.leading, Compact.outer)
+                    } else {
+                        HUDValue(note: note, style: model.hudStyle)
+                            .frame(maxWidth: .infinity, alignment: .trailing)
+                            .padding(.trailing, Compact.outer)
                     }
-                    .contentTransition(.symbolEffect(.replace))
-                    .foregroundStyle(.white.opacity(muted ? 0.55 : 1))
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.leading, Compact.outer)
-                } else {
-                    LevelValue(level: level, dimmed: muted)
-                }
-            case .brightness(let level):
-                if edge == .leading {
-                    Image(systemName: level < 0.5 ? "sun.min.fill" : "sun.max.fill")
-                        .contentTransition(.symbolEffect(.replace))
-                        .font(.system(size: 15, weight: .semibold))
-                        .foregroundStyle(.white)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.leading, Compact.outer)
-                } else {
-                    LevelValue(level: level, dimmed: false)
                 }
             case .charging(let level):
                 battery(level: level, style: .charging)
@@ -51,7 +32,7 @@ struct NotificationSide: View {
                 if edge == .leading {
                     words(note.title)
                 } else {
-                    words(on ? "On" : "Off", color: on ? .yellow : .white.opacity(0.6), edge: .trailing)
+                    words(on ? "On" : "Off", color: on ? .status(.yellow) : .white.opacity(0.6), edge: .trailing)
                 }
             case .device(_, let symbol, let battery):
                 if edge == .leading {
@@ -107,11 +88,12 @@ struct NotificationSide: View {
     }
 }
 
-private extension View {
-    /// Centres a glyph on the island's round end, the way Apple places compact content
-    /// concentric with the pill's outer edge.
+extension View {
+    /// Centres a glyph on the island's round end, the way Apple places compact content concentric
+    /// with the pill's outer edge. The side's frame includes the island's ear, so that comes off first.
     func concentric(_ edge: HorizontalEdge, height: CGFloat) -> some View {
         frame(width: height, height: height)
+            .padding(edge == .leading ? .leading : .trailing, Compact.ear)
             .frame(maxWidth: .infinity, alignment: edge == .leading ? .leading : .trailing)
     }
 }
@@ -124,58 +106,12 @@ private struct SwitchBadge: View {
         Image(systemName: "arrow.uturn.backward")
             .font(.system(size: 10, weight: .bold))
             .foregroundStyle(.white)
-            .rotationEffect(.degrees(shown ? 0 : 50))
+            .rotationEffect(.degrees(shown || Motion.reduceMotion ? 0 : 40))
             .frame(width: 20, height: 20)
-            .background(Circle().fill(.blue))
-            .scaleEffect(shown ? 1 : 0.5)
-            .onAppear { withAnimation(Motion.ease(.spring(duration: 0.45, bounce: 0.35).delay(0.08))) { shown = true } }
+            .background(Circle().fill(Color.status(.blue, white: .white.opacity(0.22))))
+            .scaleEffect(shown || Motion.reduceMotion ? 1 : 0.85)
+            .onAppear { withAnimation(Motion.ease(.spring(duration: 0.4, bounce: 0.15))) { shown = true } }
             .accessibilityLabel("Audio switched")
-    }
-}
-
-/// Volume or brightness as a number on the trailing side: "62".
-private struct LevelValue: View {
-    let level: Float
-    let dimmed: Bool
-
-    var body: some View {
-        let value = Int((level * 100).rounded())
-        Text("\(value)")
-            .font(.system(size: Compact.fontSize, weight: .semibold).monospacedDigit())
-            .foregroundStyle(.white.opacity(dimmed ? 0.45 : 1))
-            .contentTransition(.numericText(value: Double(value)))
-            .animation(Motion.level, value: value)
-            .frame(maxWidth: .infinity, alignment: .trailing)
-            .padding(.trailing, Compact.outer)
-    }
-}
-
-/// The level on a ledge under the notch. Pressing past either end stretches the bar a little and lets
-/// it spring back, as the iPhone's volume does; muted keeps the level but dims it.
-struct HUDLedge: View {
-    let level: Float
-    let muted: Bool
-    /// Counts presses past an end; `bumpUp` says which end.
-    let bump: Int
-    let bumpUp: Bool
-
-    var body: some View {
-        GeometryReader { geo in
-            ZStack(alignment: .leading) {
-                Capsule().fill(.white.opacity(muted ? 0.1 : 0.18))
-                Capsule().fill(.white.opacity(muted ? 0.3 : 1))
-                    .frame(width: max(geo.size.width * CGFloat(min(max(level, 0), 1)), 5))
-            }
-            .keyframeAnimator(initialValue: 1.0, trigger: bump) { bar, stretch in
-                bar.scaleEffect(x: stretch, y: 2 - stretch, anchor: bumpUp ? .leading : .trailing)
-            } keyframes: { _ in
-                SpringKeyframe(1.045, duration: 0.12, spring: .snappy)
-                SpringKeyframe(1, duration: 0.45, spring: .bouncy)
-            }
-        }
-        .frame(height: 5)
-        .animation(Motion.level, value: level)
-        .animation(Motion.level, value: muted)
     }
 }
 
@@ -187,9 +123,10 @@ struct BatteryGlyph: View {
         var tint: Color {
             switch self {
             case .normal: .white
-            case .charging: .green
+            case .charging: .status(.green)
+            // A warning, so red whichever colours are chosen.
             case .low: .red
-            case .lowPower: .yellow
+            case .lowPower: .status(.yellow)
             }
         }
 
@@ -230,7 +167,7 @@ struct BatteryRing: View {
 
     var body: some View {
         ZStack {
-            Circle().stroke(Color.green.opacity(0.3), lineWidth: Self.line)
+            Circle().stroke(Color.status(.green).opacity(0.3), lineWidth: Self.line)
             if let level {
                 FillingArc(level: min(max(level, 0), 1))
                     .transition(.opacity)
@@ -254,7 +191,7 @@ private struct FillingArc: View {
     var body: some View {
         Circle()
             .trim(from: 0, to: shown)
-            .stroke(Color.green, style: BatteryRing.style)
+            .stroke(Color.status(.green), style: BatteryRing.style)
             .rotationEffect(.degrees(-90))
             .onAppear { withAnimation(Motion.ease(.spring(duration: 0.7, bounce: 0.1))) { shown = level } }
             .onChange(of: level) { _, new in withAnimation(Motion.level) { shown = new } }
@@ -267,9 +204,19 @@ private struct TurningArc: View {
     var body: some View {
         Circle()
             .trim(from: 0, to: 0.28)
-            .stroke(Color.green, style: BatteryRing.style)
+            .stroke(Color.status(.green), style: BatteryRing.style)
             .rotationEffect(.degrees(turning ? 270 : -90))
             .animation(.linear(duration: 0.9).repeatForever(autoreverses: false), value: turning)
-            .onAppear { turning = true }
+            // Reduce Motion: the short arc stands still until the level arrives.
+            .onAppear { turning = !Motion.reduceMotion }
     }
 }
+
+extension Color {
+    /// A status colour as Apple uses it (green charging, orange timer…), or white when Settings asks
+    /// for white. Read when drawn, so a change shows the next time something appears.
+    static func status(_ color: Color, white: Color = .white) -> Color {
+        Prefs.bool(Prefs.statusColors) ? color : white
+    }
+}
+

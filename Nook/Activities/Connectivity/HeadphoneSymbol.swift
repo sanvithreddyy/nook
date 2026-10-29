@@ -14,14 +14,17 @@ nonisolated enum HeadphoneSymbol {
         0x200A: ["airpods.max"], 0x201F: ["airpods.max"],
     ]
 
-    static func symbol(productID: Int?, name: String) -> String {
+    /// Nil for Bluetooth outputs that aren't recognisably headphones (speakers, car stereos), which
+    /// keep the speaker.
+    static func symbol(productID: Int?, name: String) -> String? {
         if let productID, let candidates = byProduct[productID] { return firstAvailable(candidates) }
         let name = name.lowercased()
         if name.contains("airpods max") { return "airpods.max" }
         if name.contains("airpods pro") { return "airpods.pro" }
         if name.contains("airpods") { return "airpods" }
         if name.contains("beats") { return "beats.headphones" }
-        return "headphones"
+        if name.contains("headphone") || name.contains("buds") { return "headphones" }
+        return nil
     }
 
     /// "2024 4c" → 0x2024.

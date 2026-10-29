@@ -49,7 +49,7 @@ final class SettingsWindowController {
 }
 
 enum SettingsPane: String, CaseIterable, Identifiable {
-    case general, nowPlaying, calendar, shelf, huds, battery, connectivity, lock, about
+    case general, nowPlaying, calendar, timer, shelf, huds, battery, connectivity, lock, about
     var id: String { rawValue }
 
     var title: String {
@@ -60,6 +60,7 @@ enum SettingsPane: String, CaseIterable, Identifiable {
         case .battery: "Battery"
         case .connectivity: "Connectivity"
         case .calendar: "Calendar"
+        case .timer: "Timer"
         case .shelf: "Shelf"
         case .lock: "Lock Screen"
         case .about: "About"
@@ -74,6 +75,7 @@ enum SettingsPane: String, CaseIterable, Identifiable {
         case .battery: "battery.75percent"
         case .connectivity: "airpods"
         case .calendar: "calendar"
+        case .timer: "timer"
         case .shelf: "tray"
         case .lock: "lock"
         case .about: "info.circle"
@@ -107,6 +109,7 @@ struct SettingsView: View {
                 case .battery: BatteryPane()
                 case .connectivity: ConnectivityPane()
                 case .calendar: CalendarPane()
+                case .timer: TimerPane()
                 case .shelf: ShelfPane()
                 case .lock: LockPane()
                 case .about: AboutPane()
@@ -126,6 +129,8 @@ private struct GeneralPane: View {
     @AppStorage(Prefs.swipeGestures) private var swipeGestures = true
     @AppStorage(Prefs.enableHaptics) private var haptics = true
     @AppStorage(Prefs.hideMenuBarIcon) private var hideMenuBarIcon = false
+    @AppStorage(Prefs.statusColors) private var statusColors = true
+    @AppStorage(Prefs.showCompanion) private var showCompanion = true
     @State private var launchAtLogin = SMAppService.mainApp.status == .enabled
 
     var body: some View {
@@ -137,9 +142,19 @@ private struct GeneralPane: View {
                 Toggle("Hide when an app is fullscreen", isOn: $hideInFullscreen)
             }
             Section {
+                Picker("Status colors", selection: $statusColors) {
+                    Text("Apple's").tag(true)
+                    Text("White").tag(false)
+                }
+                .pickerStyle(.segmented)
+                Toggle("Show a second activity beside the island", isOn: $showCompanion)
+            } footer: {
+                Text("Green for charging and AirPods, orange for timers, blue when sound switches; low battery is always red. A second activity, like a timer while music plays, gets its own drop.")
+            }
+            Section {
                 Toggle("Expand on hover", isOn: $expandOnHover)
                 Toggle("Swipe gestures", isOn: $swipeGestures)
-                    .help("Two fingers down opens, up closes, left and right skip tracks.")
+                    .help("Two fingers down opens, up closes. Sideways skips tracks, or turns cards when the island is open.")
                 Toggle("Haptic feedback", isOn: $haptics)
             }
             Section {
@@ -192,11 +207,17 @@ private struct NowPlayingPane: View {
 private struct HUDPane: View {
     @AppStorage(Prefs.volumeHUD) private var volumeHUD = false
     @AppStorage(Prefs.brightnessHUD) private var brightnessHUD = false
+    @AppStorage(Prefs.hudStyle) private var style = HUDStyle.ledge.rawValue
     @State private var trusted = MediaKeyTap.isTrusted
     private let poll = Timer.publish(every: 1.5, on: .main, in: .common).autoconnect()
 
     var body: some View {
         Form {
+            Section("Style") {
+                HUDStylePicker(selection: $style)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 4)
+            }
             Section {
                 Toggle("Replace the volume HUD", isOn: $volumeHUD)
                 Toggle("Replace the brightness HUD", isOn: $brightnessHUD)
@@ -325,3 +346,103 @@ private struct AboutPane: View {
         }
     }
 }
+
+/// Volume and brightness styles as thumbnails, like macOS's own appearance picker.
+private struct HUDStylePicker: View {
+    @Binding var selection: String
+
+    var body: some View {
+        HStack(spacing: 12) {
+            ForEach(HUDStyle.allCases) { style in
+                let selected = selection == style.rawValue
+                Button { selection = style.rawValue } label: {
+                    VStack(spacing: 6) {
+                        HUDStyleThumbnail(style: style)
+                            .frame(width: 118, height: 46)
+                            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                    .strokeBorder(selected ? Color.accentColor : Color.primary.opacity(0.12), lineWidth: selected ? 3 : 1)
+                            )
+                        Text(style.title)
+                            .font(.callout)
+                            .foregroundStyle(selected ? .primary : .secondary)
+                    }
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityAddTraits(selected ? .isSelected : [])
+            }
+        }
+    }
+}
+
+/// One style drawn at real size on a sample island, scaled down.
+private struct HUDStyleThumbnail: View {
+    let style: HUDStyle
+
+    var body: some View {
+        let note = NotchNotification.volume(level: 0.62, muted: false, output: nil)
+        let notch = NotchMetrics.simulated.size
+        let side = notch.height + 4 + (style == .slider ? 13 : 8)
+        let size = CGSize(width: notch.width + side * 2, height: notch.height + style.below)
+        let layout = IslandLayout(size: size, topRadius: 6, bottomRadius: Compact.bottomRadius)
+        ZStack(alignment: .top) {
+            LinearGradient(colors: [Color(red: 0.27, green: 0.35, blue: 0.49), Color(red: 0.62, green: 0.69, blue: 0.81)],
+                           startPoint: .topLeading, endPoint: .bottomTrailing)
+            ZStack(alignment: .top) {
+                VStack(spacing: 0) {
+                    HStack(spacing: 0) {
+                        if style.usesSides {
+                            HUDGlyph(note: note)
+                                .frame(width: side, alignment: .leading)
+                                .padding(.leading, Compact.outer)
+                            Spacer(minLength: 0)
+                            HUDValue(note: note, style: style)
+                                .frame(width: side - Compact.outer, alignment: .trailing)
+                                .padding(.trailing, Compact.outer)
+                        }
+                    }
+                    .frame(height: notch.height)
+                    HUDBelow(note: note, style: style, bump: 0, bumpUp: true)
+                        .padding(.horizontal, layout.topRadius + (style == .slider ? 4 : 12))
+                }
+                if style == .outline {
+                    HUDOutline(level: 0.62, muted: false, layout: layout, notchHeight: notch.height)
+                }
+            }
+            .frame(width: size.width, height: size.height, alignment: .top)
+            .background(NotchShape(topRadius: layout.topRadius, bottomRadius: layout.bottomRadius).fill(.black))
+            .scaleEffect(0.42, anchor: .top)
+        }
+        .environment(\.colorScheme, .dark)
+        .accessibilityHidden(true)
+    }
+}
+
+private struct TimerPane: View {
+    @AppStorage(Prefs.timerSound) private var sound = "Glass"
+
+    private static let sounds: [String] = {
+        let files = (try? FileManager.default.contentsOfDirectory(atPath: "/System/Library/Sounds")) ?? []
+        return files.map { ($0 as NSString).deletingPathExtension }.sorted()
+    }()
+
+    var body: some View {
+        Form {
+            Section {
+                Picker("Sound when it ends", selection: $sound) {
+                    Text("None").tag("")
+                    Divider()
+                    ForEach(Self.sounds, id: \.self) { Text($0).tag($0) }
+                }
+                .onChange(of: sound) { _, new in
+                    if !new.isEmpty { NSSound(named: new)?.play() }
+                }
+            } footer: {
+                Text("Start a timer from the island's right-click menu. On the open timer, scroll over the time to add or take off minutes.")
+            }
+        }
+    }
+}
+

@@ -3,6 +3,7 @@ import SwiftUI
 
 struct CalendarActivitySide: View {
     @Environment(CalendarModel.self) private var calendar
+    @Environment(NotchModel.self) private var model
     let eventID: String
     let edge: HorizontalEdge
 
@@ -10,16 +11,19 @@ struct CalendarActivitySide: View {
         if let event = calendar.event(id: eventID) {
             if edge == .leading {
                 Image(systemName: "calendar")
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(.system(size: 14, weight: .semibold))
                     .foregroundStyle(.white)
+                    .concentric(.leading, height: model.notch.size.height)
             } else {
                 TimelineView(.everyMinute) { context in
                     let text = EventTiming.short(event, now: context.date)
                     Text(text)
-                        .font(.system(size: 12.5, weight: .semibold).monospacedDigit())
+                        .font(.system(size: Compact.fontSize, weight: .semibold).monospacedDigit())
                         .foregroundStyle(.white)
                         .contentTransition(.numericText(countsDown: true))
                         .animation(Motion.level, value: text)
+                        .frame(maxWidth: .infinity, alignment: .trailing)
+                        .padding(.trailing, Compact.outer)
                 }
             }
         }
@@ -185,12 +189,10 @@ private struct JoinButton: View {
         Button { NSWorkspace.shared.open(url) } label: {
             Text("Join")
                 .font(.system(size: 12.5, weight: .semibold))
-                .foregroundStyle(.black)
                 .padding(.horizontal, 14)
                 .frame(height: 26)
-                .background(Capsule().fill(.white))
         }
-        .buttonStyle(IslandButtonStyle())
+        .buttonStyle(CardButtonStyle(style: .primary))
     }
 }
 

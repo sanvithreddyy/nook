@@ -91,8 +91,9 @@ final class BluetoothMonitor: NSObject {
 
     nonisolated private static func symbol(for device: IOBluetoothDevice) -> String {
         let name = device.name ?? ""
-        if name.lowercased().contains("airpods") || name.lowercased().contains("beats") {
-            return HeadphoneSymbol.symbol(productID: nil, name: name)
+        if name.lowercased().contains("airpods") || name.lowercased().contains("beats"),
+           let symbol = HeadphoneSymbol.symbol(productID: nil, name: name) {
+            return symbol
         }
         // Major class 0x04 audio/video, 0x05 peripheral.
         switch device.deviceClassMajor {

@@ -27,7 +27,11 @@ final class TimerModel {
     /// The dial never takes a running timer below this.
     static let minimum: TimeInterval = 10
 
-    init(defaults: UserDefaults = .standard) {
+    /// Its own store: the app re-reads its settings whenever the standard defaults change, and a
+    /// timer saves on every dial detent.
+    static let store = UserDefaults(suiteName: "com.sanvith.nook.timer") ?? .standard
+
+    init(defaults: UserDefaults = TimerModel.store) {
         self.defaults = defaults
         restore()
     }
@@ -55,8 +59,16 @@ final class TimerModel {
         set(.running(end: .now.addingTimeInterval(total)))
     }
 
+    #if DEBUG
+    func debugStart(seconds: TimeInterval) {
+        total = seconds
+        set(.running(end: .now.addingTimeInterval(seconds)))
+    }
+    #endif
+
     func pause() {
-        guard case .running = state else { return }
+        // At zero the finish is a moment away; pausing then would hold a timer with nothing left.
+        guard case .running = state, remaining() > 0.5 else { return }
         set(.paused(remaining: remaining()))
     }
 
@@ -82,7 +94,10 @@ final class TimerModel {
     }
 
     /// The dial and "+1 Min": whole minutes on or off what's left, never below ten seconds.
-    func adjust(minutes: Int) {
+    /// Returns whether anything changed (an idle or finished timer has nothing to adjust).
+    @discardableResult
+    func adjust(minutes: Int) -> Bool {
+        guard isRunning || { if case .paused = state { true } else { false } }() else { return false }
         let left = max(remaining() + TimeInterval(minutes * 60), Self.minimum)
         switch state {
         case .running:
@@ -94,6 +109,7 @@ final class TimerModel {
         case .idle, .done:
             break
         }
+        return true
     }
 
     // MARK: State

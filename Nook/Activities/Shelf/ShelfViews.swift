@@ -66,9 +66,10 @@ private struct TileSurface: ViewModifier {
     func body(content: Content) -> some View {
         content
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .background(RoundedRectangle(cornerRadius: 18, style: .continuous)
+            // Concentric with the card's 30 pt corner at a 16 pt inset.
+            .background(RoundedRectangle(cornerRadius: 14, style: .continuous)
                 .fill(.white.opacity(lit ? 0.2 : (hovering ? 0.12 : 0.08))))
-            .contentShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .contentShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
             .scaleEffect(lit ? 1.03 : 1)
             .animation(Motion.press, value: lit)
             .animation(.easeOut(duration: 0.15), value: hovering)

@@ -7,6 +7,7 @@ import SwiftUI
 struct ExpandedView: View {
     @Environment(CalendarModel.self) private var calendar
     let card: IslandCard
+    let direction: PageDirection
     let showsDropTargets: Bool
 
     var body: some View {
@@ -21,7 +22,7 @@ struct ExpandedView: View {
                 }
             }
             .id(card)
-            .transition(.blurReplace)
+            .transition(.cardTurn(direction))
             PageDots()
         }
         // The body starts inside the ears; content keeps 16 pt from its edge.
@@ -120,7 +121,7 @@ struct CardButton: View {
     }
 }
 
-private struct CardButtonStyle: ButtonStyle {
+struct CardButtonStyle: ButtonStyle {
     let style: CardButton.Style
     @State private var hovering = false
 

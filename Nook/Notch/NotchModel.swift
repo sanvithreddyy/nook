@@ -136,17 +136,19 @@ struct IslandLayout: Equatable {
 /// large semibold text, glyphs concentric with the island's round ends.
 enum Compact {
     static let fontSize: CGFloat = 14
+    /// The island's top ears sit inside its frame at both ends.
+    static let ear: CGFloat = 6
     /// From the island's outer edge to text.
     static let outer: CGFloat = 13
     /// From content to the notch.
     static let inner: CGFloat = 10
     static let battery: CGFloat = 26 + 3.5
-    /// The level bar's ledge under the notch for volume and brightness.
-    static let ledge: CGFloat = 18
     static let bottomRadius: CGFloat = 15
 
-    static func textWidth(_ text: String) -> CGFloat {
-        let font = NSFont.systemFont(ofSize: fontSize, weight: .semibold)
+    /// Numbers are drawn with tabular digits, so they're measured that way.
+    static func textWidth(_ text: String, digits: Bool = false) -> CGFloat {
+        let font = digits ? NSFont.monospacedDigitSystemFont(ofSize: fontSize, weight: .semibold)
+                          : NSFont.systemFont(ofSize: fontSize, weight: .semibold)
         return ceil((text as NSString).size(withAttributes: [.font: font]).width)
     }
 
@@ -166,6 +168,8 @@ final class NotchModel {
     private(set) var card: IslandCard = .shelf
     /// Cards the island can open to, most relevant first. Set by the coordinator.
     private(set) var cards: [IslandCard] = []
+    /// Which way the last card turn went, for the card transition.
+    let pageDirection = PageDirection()
 
     var isHovering = false
     var isPressed = false
@@ -178,6 +182,10 @@ final class NotchModel {
     /// A second activity beside the island's own: a timer or a meeting about to start, shown as its own
     /// drop beside the island, like the Dynamic Island's detached minimal view.
     private(set) var companion: LiveActivity?
+    /// A timer of an hour or more needs room for "1:00:00" beside the notch.
+    var timerShowsHours = false
+    /// How volume and brightness show; from Settings.
+    var hudStyle: HUDStyle = .ledge
     /// Counts presses past either end of the volume or brightness range, to stretch the bar.
     private(set) var hudBump = 0
     private(set) var hudBumpUp = true
@@ -211,8 +219,8 @@ final class NotchModel {
         case .activity(let activity):
             // Glyphs sit snug against the notch; a countdown needs room for its longest text.
             switch activity {
-            case .calendar: return compact(leading: slot, trailing: Compact.inner + Compact.textWidth("00 min") + Compact.outer - 1)
-            case .timer: return compact(leading: slot, trailing: Compact.inner + Compact.textWidth("00:00") + Compact.outer - 1)
+            case .calendar: return compact(leading: slot, trailing: Compact.inner + Compact.textWidth("00 min", digits: true) + Compact.outer)
+            case .timer: return compact(leading: slot, trailing: Compact.inner + Compact.textWidth(timerShowsHours ? "0:00:00" : "00:00", digits: true) + Compact.outer)
             default: return compact(leading: slot, trailing: slot)
             }
         case .peek:
@@ -220,11 +228,12 @@ final class NotchModel {
         case .notification(let note):
             switch note {
             case .volume, .brightness:
-                // Glyph and value beside the notch; the level drops below it on a ledge.
-                return compact(leading: slot + 8, trailing: slot + 8, below: Compact.ledge)
+                // Glyph and value beside the notch, the level below it (the slider holds the glyph itself).
+                let side = hudStyle == .slider ? slot + 13 : slot + 8
+                return compact(leading: side, trailing: side, below: hudStyle.below)
             case .charging(let level), .onBattery(let level), .lowBattery(let level):
                 return compact(leading: Compact.textSide(note.title),
-                               trailing: Compact.inner + Compact.textWidth("\(level)%") + 6 + Compact.battery + Compact.outer - 3)
+                               trailing: Compact.inner + Compact.textWidth("\(level)%", digits: true) + 6 + Compact.battery + Compact.outer - 3)
             case .lowPowerMode(let on):
                 return compact(leading: Compact.textSide(note.title), trailing: Compact.textSide(on ? "On" : "Off"))
             case .device, .audioSwitched:
@@ -365,6 +374,11 @@ final class NotchModel {
 
     func show(_ target: IslandCard) {
         guard target != card else { return }
+        if let from = cards.firstIndex(of: card), let to = cards.firstIndex(of: target) {
+            pageDirection.forward = to > from
+        } else {
+            pageDirection.forward = true
+        }
         withAnimation(Motion.expand) { card = target }
     }
 
@@ -386,6 +400,7 @@ final class NotchModel {
         withAnimation(isExpanded ? Motion.expand : nil) {
             cards = available
             guard isExpanded, !available.contains(card) else { return }
+            pageDirection.forward = true
             if let first = available.first { card = first } else { isExpanded = false }
         }
     }

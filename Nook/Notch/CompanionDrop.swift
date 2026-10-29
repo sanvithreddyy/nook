@@ -18,6 +18,7 @@ struct CompanionDrop: View {
             }
         }
         .frame(width: size.width, height: size.height)
+        .background { if Motion.reduceMotion { shape.fill(.black) } }
         .contentShape(shape)
         .onTapGesture { if let card = activity.card { model.expand(card: card) } }
         .accessibilityElement(children: .combine)
@@ -84,7 +85,9 @@ struct LiquidSplit: ViewModifier, Animatable {
 extension AnyTransition {
     /// The drop splitting off the island's right end, and merging back.
     static func liquidSplit(size: CGSize) -> AnyTransition {
-        .modifier(active: LiquidSplit(progress: 0, size: size), identity: LiquidSplit(progress: 1, size: size))
+        // Reduce Motion: the drop fades in where it rests instead of travelling.
+        if Motion.reduceMotion { return .opacity.animation(Motion.ease(.easeOut(duration: 0.2))) }
+        return .modifier(active: LiquidSplit(progress: 0, size: size), identity: LiquidSplit(progress: 1, size: size))
             .animation(Motion.ease(.spring(duration: 0.62, bounce: 0.22)))
     }
 }

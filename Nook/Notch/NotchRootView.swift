@@ -14,6 +14,8 @@ struct NotchRootView: View {
 
 private struct IslandView: View {
     @Environment(NotchModel.self) private var model
+    /// Shared elements (the artwork) move between the closed island and the open card.
+    @Namespace private var shared
     @Environment(ShelfModel.self) private var shelf
     @AppStorage(Prefs.peekOnHover) private var peekOnHover = true
     @AppStorage(Prefs.expandOnHover) private var expandOnHover = true
@@ -30,26 +32,33 @@ private struct IslandView: View {
                     PeekRow(peek: peek)
                         .transition(.islandBody)
                 }
-                if !model.isExpanded, let note = model.notification, let level = note.hudLevel {
-                    HUDLedge(level: level.value, muted: level.muted, bump: model.hudBump, bumpUp: model.hudBumpUp)
-                        .padding(.horizontal, layout.topRadius + 12)
-                        .padding(.top, 5)
+                if !model.isExpanded, let note = model.notification, note.isHUD {
+                    HUDBelow(note: note, style: model.hudStyle, bump: model.hudBump, bumpUp: model.hudBumpUp)
+                        .padding(.horizontal, layout.topRadius + (model.hudStyle == .slider ? 4 : 12))
                         .transition(.islandBody)
                 }
+            }
+            // Outline: the island's own edge fills with the level.
+            if !model.isExpanded, model.hudStyle == .outline, let level = model.notification?.hudLevel {
+                HUDOutline(level: level.value, muted: level.muted, layout: layout, notchHeight: model.notch.size.height)
+                    .frame(width: layout.size.width, height: layout.size.height)
+                    .transition(.opacity)
             }
             // An open card spans the whole island, the strip beside the notch included,
             // the way Apple's expanded views use the space beside the camera.
             if model.isExpanded {
-                ExpandedView(card: model.card, showsDropTargets: model.isDraggingFile || !model.shelfHasFiles)
+                ExpandedView(card: model.card, direction: model.pageDirection,
+                             showsDropTargets: model.isDraggingFile || !model.shelfHasFiles)
                     .id(model.expandToken)
                     .transition(.islandBody)
             }
         }
         .frame(width: layout.size.width, height: layout.size.height, alignment: .top)
+        .environment(\.islandNamespace, shared)
         .background(shape.fill(LiquidSplit.fill))
         .clipShape(shape)
-        .background(alignment: .top) { Shadow(shape: shape, visible: model.presentation != .idle) }
-        .scaleEffect(scale, anchor: .top)
+        // Only what hangs below the menu bar casts a shadow; compact views sit in it.
+        .background(alignment: .top) { Shadow(shape: shape, visible: model.isExpanded || model.peek != nil) }
         .contentShape(shape)
         .onTapGesture { if !model.isExpanded { model.expand() } }
         // Right-click the closed island too; the open card has its own menu.
@@ -80,6 +89,8 @@ private struct IslandView: View {
                 }
             }
         }
+        // Scaled with the drop beside it, so a hover grow doesn't close the gap between them.
+        .scaleEffect(scale, anchor: .top)
         // One side can hold more than the other; the notch stays covered either way.
         .offset(x: layout.shift)
     }
@@ -93,7 +104,7 @@ private struct IslandView: View {
         var scale: CGFloat = 1
         // A hover that is about to open the island or the track peek grows into it instead of bumping first.
         let hoverOpens = expandOnHover || (peekOnHover && model.liveActivity == .nowPlaying && model.notification == nil)
-        if model.isHovering, model.peek == nil, !hoverOpens { scale *= 1.045 }
+        if model.isHovering, model.peek == nil, !hoverOpens { scale *= 1.03 }
         if model.isPressed { scale *= 0.96 }
         return scale
     }
@@ -160,15 +171,20 @@ private struct TopRow: View {
 }
 
 private struct ActivitySide: View {
+    @Environment(NotchModel.self) private var model
     let activity: LiveActivity
     let edge: HorizontalEdge
 
     var body: some View {
+        let height = model.notch.size.height
         switch activity {
         case .nowPlaying:
-            if edge == .leading { NowPlayingArtworkThumb() } else { NowPlayingWaveformSlot() }
+            Group {
+                if edge == .leading { NowPlayingArtworkThumb() } else { NowPlayingWaveformSlot() }
+            }
+            .concentric(edge, height: height)
         case .locked, .unlocked:
-            if edge == .leading { LockGlyph(unlocked: activity == .unlocked) }
+            if edge == .leading { LockGlyph(unlocked: activity == .unlocked).concentric(.leading, height: height) }
         case .calendar(let id):
             CalendarActivitySide(eventID: id, edge: edge)
         case .timer:

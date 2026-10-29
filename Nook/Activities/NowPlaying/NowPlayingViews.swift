@@ -8,11 +8,15 @@ struct NowPlayingArtworkThumb: View {
 
     var body: some View {
         let side = model.notch.size.height - 10
-        ArtworkImage(image: nowPlaying.artwork, cornerRadius: 6)
-            .frame(width: side, height: side)
-            .id(nowPlaying.trackID)
-            .transition(.artworkFlip)
-            .animation(Motion.peekIn, value: nowPlaying.trackID)
+        // A ZStack, so the old and new covers overlap while they cross-fade.
+        ZStack {
+            ArtworkImage(image: nowPlaying.artwork, cornerRadius: 6)
+                .id(nowPlaying.artworkToken)
+                .transition(.artworkSwap)
+        }
+        .sharedElement("artwork")
+        .frame(width: side, height: side)
+        .animation(Motion.ease(.easeOut(duration: 0.25)), value: nowPlaying.artworkToken)
     }
 }
 
@@ -21,7 +25,12 @@ struct NowPlayingWaveformSlot: View {
     @Environment(NotchModel.self) private var model
     @AppStorage(Prefs.showWaveform) private var showWaveform = true
     @AppStorage(Prefs.tintWaveform) private var tintWaveform = true
-    @State private var hovering = false
+    @AppStorage(Prefs.expandOnHover) private var expandOnHover = true
+    @State private var pointing = false
+
+    /// The waveform turns into play/pause under the pointer, unless hovering opens the island anyway,
+    /// where the glyph would show for an instant and vanish.
+    private var hovering: Bool { pointing && !expandOnHover }
 
     var body: some View {
         ZStack {
@@ -39,9 +48,9 @@ struct NowPlayingWaveformSlot: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .contentShape(Rectangle())
-        .onHover { inside in withAnimation(.easeOut(duration: 0.18)) { hovering = inside } }
+        .onHover { inside in withAnimation(.easeOut(duration: 0.18)) { pointing = inside } }
         // A fast exit can skip the slot's own exit event once the panel stops taking the mouse.
-        .onChange(of: model.isHovering) { _, island in if !island { hovering = false } }
+        .onChange(of: model.isHovering) { _, island in if !island { pointing = false } }
         .onTapGesture { nowPlaying.togglePlayPause() }
     }
 }
@@ -79,10 +88,14 @@ struct MusicCard: View {
         let top = max(12, model.notch.size.height + Card.titleGap + Self.textBlock - Self.artwork)
         VStack(spacing: 0) {
             HStack(alignment: .bottom, spacing: 12) {
-                ArtworkImage(image: nowPlaying.artwork, cornerRadius: 12)
-                    .frame(width: Self.artwork, height: Self.artwork)
-                    .id(nowPlaying.trackID)
-                    .transition(.artworkFlip)
+                ZStack {
+                    ArtworkImage(image: nowPlaying.artwork, cornerRadius: 12)
+                        .id(nowPlaying.artworkToken)
+                        .transition(.artworkSwap)
+                }
+                .sharedElement("artwork")
+                .frame(width: Self.artwork, height: Self.artwork)
+                .animation(Motion.ease(.easeOut(duration: 0.25)), value: nowPlaying.artworkToken)
                 VStack(alignment: .leading, spacing: 1) {
                     HStack(spacing: 10) {
                         MarqueeText(id: nowPlaying.trackID + "t") {
@@ -111,7 +124,6 @@ struct MusicCard: View {
             .padding(.top, 6)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-        .animation(Motion.peekIn, value: nowPlaying.trackID)
         .contextMenu {
             Toggle("Shuffle", isOn: Binding(get: { nowPlaying.isShuffled }, set: { _ in nowPlaying.toggleShuffle() }))
             Picker("Repeat", selection: Binding(get: { nowPlaying.repeatMode }, set: { nowPlaying.setRepeat($0) })) {
@@ -215,7 +227,7 @@ struct IslandButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .background(Circle().fill(.white.opacity(hovering ? 0.08 : 0)))
-            .scaleEffect(configuration.isPressed ? 0.86 : 1)
+            .scaleEffect(configuration.isPressed ? 0.9 : 1)
             .animation(Motion.press, value: configuration.isPressed)
             .animation(.easeOut(duration: 0.15), value: hovering)
             .onHover { hovering = $0 }
@@ -250,24 +262,13 @@ struct ArtworkImage: View {
     }
 }
 
-private struct FlipModifier: ViewModifier {
-    var angle: Double
-    var opacity: Double
-    func body(content: Content) -> some View {
-        content
-            .rotation3DEffect(.degrees(angle), axis: (x: 0, y: 1, z: 0), perspective: 0.5)
-            .opacity(opacity)
-    }
-}
-
 extension AnyTransition {
-    /// New artwork turns in like a card; the old one turns away.
-    static var artworkFlip: AnyTransition {
+    /// A new cover cross-fades in from a soft blur; the old one fades out under it.
+    static var artworkSwap: AnyTransition {
         .asymmetric(
-            insertion: .modifier(active: FlipModifier(angle: -90, opacity: 0), identity: FlipModifier(angle: 0, opacity: 1))
-                .animation(.spring(duration: 0.4, bounce: 0.15).delay(0.12)),
-            removal: .modifier(active: FlipModifier(angle: 90, opacity: 0), identity: FlipModifier(angle: 0, opacity: 1))
-                .animation(.easeIn(duration: 0.14))
+            insertion: .modifier(active: IslandContentModifier(opacity: 0, blur: 6, scaleX: 1, scaleY: 1, anchor: .center),
+                                 identity: IslandContentModifier.shown(anchor: .center)),
+            removal: .opacity
         )
     }
 }

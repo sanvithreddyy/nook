@@ -15,6 +15,9 @@ final class NowPlayingModel {
     /// Icon of the app that is playing, resolved once per app change.
     private(set) var appIcon: NSImage?
     private(set) var artwork: NSImage?
+    /// Changes when the artwork itself changes (it decodes a moment after the track does), so views
+    /// cross-fade to the new cover rather than the old one.
+    private(set) var artworkToken = 0
     /// Average artwork color, lifted so it reads on black.
     private(set) var tint: Color = .white
     private(set) var isShuffled = false
@@ -87,8 +90,9 @@ final class NowPlayingModel {
     /// Shows the current (or a sample) track as playing without sending anything to the player.
     func previewPlaying() {
         client.onUpdate = nil
-        if title.isEmpty {
-            title = "Emagination (B-Side)"
+        // -preview-sample: the sample track even when something is playing; its title is long enough to scroll.
+        if title.isEmpty || CommandLine.arguments.contains("-preview-sample") {
+            title = "Emagination (B-Side) [Extended Mix]"
             artist = "Miami Horror"
             duration = 241
             trackID = "preview"
@@ -110,6 +114,7 @@ final class NowPlayingModel {
         title = ""
         artist = ""
         artwork = nil
+        artworkToken &+= 1
         isPlaying = false
     }
     #endif
@@ -155,6 +160,7 @@ final class NowPlayingModel {
         } else if carries("artworkData"), state["artworkData"] == nil, artwork != nil {
             artworkGeneration += 1
             artwork = nil
+            artworkToken &+= 1
             tint = .white
         }
 
@@ -185,6 +191,7 @@ final class NowPlayingModel {
             await MainActor.run {
                 guard let self, generation == self.artworkGeneration else { return }
                 self.artwork = NSImage(data: data)
+                self.artworkToken &+= 1
                 self.tint = tint.map { Color(red: $0.r, green: $0.g, blue: $0.b) } ?? .white
             }
         }

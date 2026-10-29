@@ -9,6 +9,8 @@ final class NotchWindowController {
     private var monitors: [Any] = []
     private var collapseTask: Task<Void, Never>?
     private var hoverIntentTask: Task<Void, Never>?
+    /// Where and when the pointer last moved, for its speed.
+    private var lastPointer: (point: CGPoint, time: CFTimeInterval)?
     /// A press that started on the island keeps the panel taking events until release,
     /// so the scrubber gets its mouse-up even when released outside.
     private var dragBeganOnIsland = false
@@ -186,6 +188,13 @@ final class NotchWindowController {
         let pointer = NSEvent.mouseLocation
         let inside = hitRect().contains(pointer) || companionRect()?.contains(pointer) == true
         panel.ignoresMouseEvents = !inside && !dragBeganOnIsland
+        if !fromLayoutChange {
+            let now = CACurrentMediaTime()
+            let speed = lastPointer.map { hypot(pointer.x - $0.point.x, pointer.y - $0.point.y) / max(now - $0.time, 0.001) } ?? 0
+            lastPointer = (pointer, now)
+            // Sweeping across the menu bar passes over the notch; only a pointer that slows down there opens it.
+            if inside, model.isHovering, !model.isExpanded, speed > 300 { startDwell() }
+        }
         guard inside != model.isHovering else { return }
         // The island resized under a still pointer. That never starts a hover, and an open island
         // that turned to a shorter card stays open until the pointer itself moves.
@@ -198,18 +207,15 @@ final class NotchWindowController {
         hoverIntentTask?.cancel()
         if inside {
             collapseTask?.cancel()
-            hoverIntentTask = Task { [weak self] in
-                try? await Task.sleep(for: .milliseconds(180))
-                guard !Task.isCancelled else { return }
-                self?.hoverDwelled()
-            }
+            startDwell()
         } else {
             model.setPressed(false)
             // Whatever opened the track peek, leaving the island closes it.
             if model.peek == .track { model.hidePeek() }
             if model.isExpanded {
                 collapseTask = Task { [weak self] in
-                    try? await Task.sleep(for: .milliseconds(140))
+                    // A small overshoot past the edge doesn't close it.
+                    try? await Task.sleep(for: .milliseconds(250))
                     // Stay open while the scrubber is dragged past the edge, or while a file drag
                     // lingers near the island looking for the drop area.
                     while !Task.isCancelled, let self,
@@ -221,6 +227,16 @@ final class NotchWindowController {
                     self.model.collapse()
                 }
             }
+        }
+    }
+
+    /// The island opens once the pointer has rested on it for a moment.
+    private func startDwell() {
+        hoverIntentTask?.cancel()
+        hoverIntentTask = Task { [weak self] in
+            try? await Task.sleep(for: .milliseconds(180))
+            guard !Task.isCancelled else { return }
+            self?.hoverDwelled()
         }
     }
 
