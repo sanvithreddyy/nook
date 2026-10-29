@@ -190,19 +190,19 @@ private struct NowPlayingPane: View {
     @AppStorage(Prefs.tintWaveform) private var tintWaveform = true
 
     var body: some View {
-        Form {
-            Section {
-                Toggle("Show what's playing", isOn: $enabled)
+        SettingsPage(title: "Now Playing") {
+            SettingsSection {
+                SettingsToggle("Show what's playing", isOn: $enabled)
             }
-            Section {
-                Toggle("Show the title when the track changes", isOn: $peekOnTrackChange)
-                Toggle("Show the title on hover", isOn: $peekOnHover)
-                    // Hovering opens the whole island instead.
-                    .disabled(expandOnHover)
-                    .help(expandOnHover ? "Turn off Expand on hover in General to use this." : "")
-                Toggle("Waveform", isOn: $showWaveform)
-                Toggle("Color waveform from artwork", isOn: $tintWaveform)
+            SettingsSection("Closed island") {
+                SettingsToggle("Waveform", isOn: $showWaveform)
+                SettingsToggle("Color the waveform from the artwork", isOn: $tintWaveform)
                     .disabled(!showWaveform)
+                SettingsToggle("Show the title when the track changes", isOn: $peekOnTrackChange)
+                SettingsToggle("Show the title on hover",
+                               description: expandOnHover ? "Hovering opens the island instead. Turn off \"Open when the pointer rests on it\" in General to use this." : nil,
+                               isOn: $peekOnHover)
+                    .disabled(expandOnHover)
             }
             .disabled(!enabled)
         }
@@ -281,17 +281,20 @@ private struct CalendarPane: View {
     private let poll = Timer.publish(every: 1.5, on: .main, in: .common).autoconnect()
 
     var body: some View {
-        Form {
-            Section {
-                Toggle("Show upcoming events", isOn: $enabled)
-                Picker("Show an event in the notch", selection: $lead) {
-                    ForEach([5, 10, 15, 30], id: \.self) { Text("\($0) minutes before").tag($0) }
+        SettingsPage(title: "Calendar") {
+            SettingsSection {
+                SettingsToggle("Show upcoming events", isOn: $enabled)
+                SettingsRow("Show a meeting in the notch") {
+                    Picker("Show a meeting in the notch", selection: $lead) {
+                        ForEach([5, 10, 15, 30], id: \.self) { Text("\($0) minutes before").tag($0) }
+                    }
+                    .menuStyle()
                 }
                 .disabled(!enabled)
             }
             if enabled {
-                Section {
-                    LabeledContent("Calendar access") {
+                SettingsSection("Access") {
+                    SettingsRow("Calendar access", description: status == .fullAccess ? nil : "Nook reads your events to show what's next. Nothing leaves your Mac.") {
                         switch status {
                         case .fullAccess:
                             Text("Allowed").foregroundStyle(.secondary)
@@ -316,11 +319,11 @@ private struct ShelfPane: View {
     @AppStorage(Prefs.shelf) private var enabled = true
 
     var body: some View {
-        Form {
-            Section {
-                Toggle("Open the shelf when a file is dragged to the notch", isOn: $enabled)
-            } footer: {
-                Text("Files stay where they are; the shelf keeps a reference. Dropped text, links and images are saved in Application Support/Nook/Shelf until you remove them.")
+        SettingsPage(title: "Shelf") {
+            SettingsSection {
+                SettingsToggle("Open the shelf when a file is dragged to the notch",
+                               description: "Files stay where they are; the shelf keeps a reference. Dropped text, links and images are saved in Application Support/Nook/Shelf until you remove them.",
+                               isOn: $enabled)
             }
         }
     }
@@ -434,20 +437,21 @@ private struct TimerPane: View {
     }()
 
     var body: some View {
-        Form {
-            Section {
-                Picker("Sound when it ends", selection: $sound) {
-                    Text("None").tag("")
-                    Divider()
-                    ForEach(Self.sounds, id: \.self) { Text($0).tag($0) }
+        SettingsPage(title: "Timer") {
+            SettingsSection {
+                SettingsRow("Sound when it ends",
+                            description: "Start a timer from the island's right-click menu. On the open timer, scroll over the time to add or take off minutes.") {
+                    Picker("Sound when it ends", selection: $sound) {
+                        Text("None").tag("")
+                        Divider()
+                        ForEach(Self.sounds, id: \.self) { Text($0).tag($0) }
+                    }
+                    .menuStyle()
+                    .onChange(of: sound) { _, new in
+                        if !new.isEmpty { NSSound(named: new)?.play() }
+                    }
                 }
-                .onChange(of: sound) { _, new in
-                    if !new.isEmpty { NSSound(named: new)?.play() }
-                }
-            } footer: {
-                Text("Start a timer from the island's right-click menu. On the open timer, scroll over the time to add or take off minutes.")
             }
         }
     }
 }
-
