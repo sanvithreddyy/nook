@@ -158,6 +158,19 @@ final class NotchCoordinator {
                     model.collapse()
                 }
                 if CommandLine.arguments.contains("-peek") { model.showPeek(.track, for: nil) }
+                // -preview-note low|airpods|switch|charging: one closed notice, held for capturing.
+                if let i = args.firstIndex(of: "-preview-note"), i + 1 < args.count {
+                    try? await Task.sleep(for: .seconds(0.5))
+                    switch args[i + 1] {
+                    case "low": model.post(.lowBattery(level: 20), for: .seconds(30))
+                    case "charging": model.post(.charging(level: 84), for: .seconds(30))
+                    case "switch": model.post(.audioSwitched(symbol: "airpods.pro"), for: .seconds(30))
+                    default:
+                        model.post(.device(name: "AirPods Pro", symbol: "airpods.pro", battery: nil), for: .seconds(30))
+                        try? await Task.sleep(for: .seconds(1.2))
+                        model.post(.device(name: "AirPods Pro", symbol: "airpods.pro", battery: 87), for: .seconds(30))
+                    }
+                }
                 if CommandLine.arguments.contains("-hud") {
                     try? await Task.sleep(for: .seconds(1))
                     model.post(.volume(level: 0.62, muted: false, output: nil), for: .seconds(30))
