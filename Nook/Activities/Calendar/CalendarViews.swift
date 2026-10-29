@@ -26,34 +26,6 @@ struct CalendarActivitySide: View {
     }
 }
 
-/// The meeting beside a playing track: its own drop right of the island with the minutes left,
-/// like the Dynamic Island's detached minimal view. Clicking it opens the meeting card.
-struct CompanionDrop: View {
-    @Environment(NotchModel.self) private var model
-    @Environment(CalendarModel.self) private var calendar
-    let eventID: String
-
-    var body: some View {
-        let size = model.companionSize
-        let shape = NotchShape(topRadius: NotchModel.companionEar, bottomRadius: size.height / 2)
-        TimelineView(.everyMinute) { context in
-            let text = calendar.event(id: eventID).map { EventTiming.minimal($0, now: context.date) } ?? ""
-            Text(text)
-                .font(.system(size: 11.5, weight: .semibold).monospacedDigit())
-                .foregroundStyle(.white)
-                .contentTransition(.numericText(countsDown: true))
-                .animation(Motion.level, value: text)
-        }
-        .frame(width: size.width, height: size.height)
-        .background(shape.fill(.black))
-        .contentShape(shape)
-        .onTapGesture { model.expand(card: .meeting(id: eventID)) }
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel(calendar.event(id: eventID)?.title ?? "Meeting")
-        .accessibilityAddTraits(.isButton)
-    }
-}
-
 struct EventPeek: View {
     @Environment(CalendarModel.self) private var calendar
     let eventID: String

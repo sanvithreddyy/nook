@@ -2,29 +2,29 @@ import Testing
 
 /// Hovering opens the first card, so it has to be what the closed island is showing.
 struct IslandCardTests {
-    @Test func liveMusicOpensFirst() {
-        let cards = IslandCard.available(music: true, musicIsLive: true, meeting: "m", agenda: true, shelf: true)
-        #expect(cards == [.nowPlaying, .meeting(id: "m"), .shelf])
+    @Test func liveCardsOpenFirstInTheirOrder() {
+        let cards = IslandCard.available(live: [.nowPlaying, .timer], music: true, agenda: true, shelf: true)
+        #expect(cards == [.nowPlaying, .timer, .upNext, .shelf])
     }
 
     @Test func aMeetingTheNotchCountsDownToOpensBeforePausedMusic() {
-        let cards = IslandCard.available(music: true, musicIsLive: false, meeting: "m", agenda: true, shelf: true)
+        let cards = IslandCard.available(live: [.meeting(id: "m")], music: true, agenda: true, shelf: true)
         #expect(cards == [.meeting(id: "m"), .nowPlaying, .shelf])
     }
 
     @Test func pausedMusicStillComesBeforeTheCalendar() {
-        let cards = IslandCard.available(music: true, musicIsLive: false, meeting: nil, agenda: true, shelf: true)
+        let cards = IslandCard.available(live: [], music: true, agenda: true, shelf: true)
         #expect(cards == [.nowPlaying, .upNext, .shelf])
     }
 
     @Test func aMeetingReplacesUpNext() {
-        let cards = IslandCard.available(music: false, musicIsLive: false, meeting: "m", agenda: true, shelf: false)
-        #expect(cards == [.meeting(id: "m")])
+        let cards = IslandCard.available(live: [.timer, .meeting(id: "m")], music: false, agenda: true, shelf: false)
+        #expect(cards == [.timer, .meeting(id: "m")])
     }
 
     @Test func nothingGoingOnOpensTheShelf() {
-        #expect(IslandCard.available(music: false, musicIsLive: false, meeting: nil, agenda: false, shelf: true) == [.shelf])
-        #expect(IslandCard.available(music: false, musicIsLive: false, meeting: nil, agenda: false, shelf: false).isEmpty)
+        #expect(IslandCard.available(live: [], music: false, agenda: false, shelf: true) == [.shelf])
+        #expect(IslandCard.available(live: [], music: false, agenda: false, shelf: false).isEmpty)
     }
 }
 

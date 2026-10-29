@@ -16,6 +16,7 @@ struct ExpandedView: View {
                 case .nowPlaying: MusicCard()
                 case .meeting(let id): MeetingCard(eventID: id)
                 case .upNext: UpNextCard()
+                case .timer: TimerCard()
                 case .shelf: ShelfCard(showsDropTargets: showsDropTargets)
                 }
             }
@@ -28,7 +29,11 @@ struct ExpandedView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         // Right-click anywhere on the card, not only on what's drawn.
         .contentShape(Rectangle())
-        .contextMenu { SettingsMenuItem() }
+        .contextMenu {
+            TimerMenu()
+            Divider()
+            SettingsMenuItem()
+        }
         // Calendar access granted in System Settings shows up the next time the island opens,
         // whichever card it opens on.
         .onAppear { calendar.recheckAuthorization() }
@@ -83,6 +88,7 @@ extension IslandCard {
         case .nowPlaying: "Now Playing"
         case .meeting: "Meeting"
         case .upNext: "Up Next"
+        case .timer: "Timer"
         case .shelf: "Shelf"
         }
     }

@@ -1,183 +1,275 @@
 import SwiftUI
 
-/// One side of a transient notification beside the notch.
+/// One side of a transient notification beside the notch, drawn like macOS 27's compact views:
+/// large semibold words, glyphs centred on the island's round ends, Apple's colours for status.
 struct NotificationSide: View {
+    @Environment(NotchModel.self) private var model
     let note: NotchNotification
     let edge: HorizontalEdge
 
     var body: some View {
         Group {
             switch note {
-            case .volume(let level, let muted):
+            case .volume(let level, let muted, let output):
                 if edge == .leading {
-                    Image(systemName: muted || level == 0 ? "speaker.slash.fill" : "speaker.wave.3.fill", variableValue: Double(level))
-                        .contentTransition(.symbolEffect(.replace))
-                        .hudGlyph()
+                    // Sound going to AirPods shows the AirPods, as the iPhone's volume does.
+                    Group {
+                        if let output, !muted {
+                            Image(systemName: output)
+                                .symbolRenderingMode(.hierarchical)
+                                .font(.system(size: 17, weight: .medium))
+                        } else {
+                            Image(systemName: muted || level == 0 ? "speaker.slash.fill" : "speaker.wave.3.fill", variableValue: Double(level))
+                                .font(.system(size: 14, weight: .semibold))
+                        }
+                    }
+                    .contentTransition(.symbolEffect(.replace))
+                    .foregroundStyle(.white.opacity(muted ? 0.55 : 1))
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.leading, Compact.outer)
                 } else {
-                    LevelBar(level: muted ? 0 : level)
+                    LevelValue(level: level, dimmed: muted)
                 }
             case .brightness(let level):
                 if edge == .leading {
                     Image(systemName: level < 0.5 ? "sun.min.fill" : "sun.max.fill")
                         .contentTransition(.symbolEffect(.replace))
-                        .hudGlyph()
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(.white)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.leading, Compact.outer)
                 } else {
-                    LevelBar(level: level)
+                    LevelValue(level: level, dimmed: false)
                 }
             case .charging(let level):
-                sides(label: "Charging", level: level, style: .charging)
+                battery(level: level, style: .charging)
             case .onBattery(let level):
-                sides(label: "On battery", level: level, style: .normal)
+                battery(level: level, style: .normal)
             case .lowBattery(let level):
-                sides(label: "Low battery", level: level, style: .low)
+                battery(level: level, style: .low)
             case .lowPowerMode(let on):
                 if edge == .leading {
-                    label("Low Power")
+                    words(note.title)
                 } else {
-                    Text(on ? "On" : "Off")
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundStyle(on ? Color.yellow : .white.opacity(0.6))
-                        .frame(maxWidth: .infinity, alignment: .trailing)
-                        .padding(.trailing, 14)
+                    words(on ? "On" : "Off", color: on ? .yellow : .white.opacity(0.6), edge: .trailing)
                 }
-            case .device(let name, let symbol, let battery):
+            case .device(_, let symbol, let battery):
                 if edge == .leading {
-                    HStack(spacing: 7) {
-                        Image(systemName: symbol)
-                            .font(.system(size: 14, weight: .medium))
-                        Text(name)
-                            .font(.system(size: 12, weight: .medium))
-                            .lineLimit(1)
-                            .truncationMode(.tail)
-                    }
-                    .foregroundStyle(.white)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.leading, 14)
-                } else if let battery {
-                    HStack(spacing: 6) {
-                        Text("\(battery)%")
-                            .font(.system(size: 12, weight: .semibold).monospacedDigit())
-                            .foregroundStyle(.white)
-                        BatteryRing(level: Double(battery) / 100)
-                    }
-                    .frame(maxWidth: .infinity, alignment: .trailing)
-                    .padding(.trailing, 14)
+                    Image(systemName: symbol)
+                        .symbolRenderingMode(.hierarchical)
+                        .font(.system(size: 18, weight: .medium))
+                        .foregroundStyle(.white)
+                        .concentric(.leading, height: model.notch.size.height)
                 } else {
-                    Text("Connected")
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundStyle(.white.opacity(0.6))
-                        .frame(maxWidth: .infinity, alignment: .trailing)
-                        .padding(.trailing, 14)
+                    BatteryRing(level: battery.map { Double($0) / 100 })
+                        .concentric(.trailing, height: model.notch.size.height)
+                }
+            case .audioSwitched(let symbol):
+                if edge == .leading {
+                    Image(systemName: symbol)
+                        .symbolRenderingMode(.hierarchical)
+                        .font(.system(size: 18, weight: .medium))
+                        .foregroundStyle(.white)
+                        .concentric(.leading, height: model.notch.size.height)
+                } else {
+                    SwitchBadge()
+                        .concentric(.trailing, height: model.notch.size.height)
                 }
             }
         }
     }
 
     @ViewBuilder
-    private func sides(label text: String, level: Int, style: BatteryGlyph.Style) -> some View {
+    private func battery(level: Int, style: BatteryGlyph.Style) -> some View {
         if edge == .leading {
-            label(text)
+            words(note.title)
         } else {
             HStack(spacing: 6) {
                 Text("\(level)%")
-                    .font(.system(size: 12, weight: .semibold).monospacedDigit())
-                    .foregroundStyle(.white)
+                    .font(.system(size: Compact.fontSize, weight: .semibold).monospacedDigit())
+                    .foregroundStyle(style.textColor)
                     .contentTransition(.numericText(value: Double(level)))
                 BatteryGlyph(level: Double(level) / 100, style: style)
             }
             .frame(maxWidth: .infinity, alignment: .trailing)
-            .padding(.trailing, 14)
+            .padding(.trailing, Compact.outer - 3)
         }
     }
 
-    private func label(_ text: String) -> some View {
+    private func words(_ text: String, color: Color = .white, edge: HorizontalEdge = .leading) -> some View {
         Text(text)
-            .font(.system(size: 12, weight: .semibold))
-            .foregroundStyle(.white)
+            .font(.system(size: Compact.fontSize, weight: .semibold))
+            .foregroundStyle(color)
             .lineLimit(1)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.leading, 14)
+            .fixedSize()
+            .frame(maxWidth: .infinity, alignment: edge == .leading ? .leading : .trailing)
+            .padding(edge == .leading ? .leading : .trailing, Compact.outer)
     }
 }
 
 private extension View {
-    func hudGlyph() -> some View {
-        font(.system(size: 13, weight: .semibold))
-            .foregroundStyle(.white)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.leading, 16)
+    /// Centres a glyph on the island's round end, the way Apple places compact content
+    /// concentric with the pill's outer edge.
+    func concentric(_ edge: HorizontalEdge, height: CGFloat) -> some View {
+        frame(width: height, height: height)
+            .frame(maxWidth: .infinity, alignment: edge == .leading ? .leading : .trailing)
     }
 }
 
-/// Thin level bar for volume and brightness.
-struct LevelBar: View {
+/// Sound moved to these headphones: Apple's blue disc with the turn-back arrow, which swings in.
+private struct SwitchBadge: View {
+    @State private var shown = false
+
+    var body: some View {
+        Image(systemName: "arrow.uturn.backward")
+            .font(.system(size: 10, weight: .bold))
+            .foregroundStyle(.white)
+            .rotationEffect(.degrees(shown ? 0 : 50))
+            .frame(width: 20, height: 20)
+            .background(Circle().fill(.blue))
+            .scaleEffect(shown ? 1 : 0.5)
+            .onAppear { withAnimation(Motion.ease(.spring(duration: 0.45, bounce: 0.35).delay(0.08))) { shown = true } }
+            .accessibilityLabel("Audio switched")
+    }
+}
+
+/// Volume or brightness as a number on the trailing side: "62".
+private struct LevelValue: View {
     let level: Float
+    let dimmed: Bool
+
+    var body: some View {
+        let value = Int((level * 100).rounded())
+        Text("\(value)")
+            .font(.system(size: Compact.fontSize, weight: .semibold).monospacedDigit())
+            .foregroundStyle(.white.opacity(dimmed ? 0.45 : 1))
+            .contentTransition(.numericText(value: Double(value)))
+            .animation(Motion.level, value: value)
+            .frame(maxWidth: .infinity, alignment: .trailing)
+            .padding(.trailing, Compact.outer)
+    }
+}
+
+/// The level on a ledge under the notch. Pressing past either end stretches the bar a little and lets
+/// it spring back, as the iPhone's volume does; muted keeps the level but dims it.
+struct HUDLedge: View {
+    let level: Float
+    let muted: Bool
+    /// Counts presses past an end; `bumpUp` says which end.
+    let bump: Int
+    let bumpUp: Bool
 
     var body: some View {
         GeometryReader { geo in
             ZStack(alignment: .leading) {
-                Capsule().fill(.white.opacity(0.18))
-                Capsule().fill(.white).frame(width: geo.size.width * CGFloat(min(max(level, 0), 1)))
+                Capsule().fill(.white.opacity(muted ? 0.1 : 0.18))
+                Capsule().fill(.white.opacity(muted ? 0.3 : 1))
+                    .frame(width: max(geo.size.width * CGFloat(min(max(level, 0), 1)), 5))
+            }
+            .keyframeAnimator(initialValue: 1.0, trigger: bump) { bar, stretch in
+                bar.scaleEffect(x: stretch, y: 2 - stretch, anchor: bumpUp ? .leading : .trailing)
+            } keyframes: { _ in
+                SpringKeyframe(1.045, duration: 0.12, spring: .snappy)
+                SpringKeyframe(1, duration: 0.45, spring: .bouncy)
             }
         }
-        .frame(height: 4)
-        .padding(.leading, 6)
-        .padding(.trailing, 16)
+        .frame(height: 5)
+        .animation(Motion.level, value: level)
+        .animation(Motion.level, value: muted)
     }
 }
 
+/// Apple's battery: a dark body in the status colour with the level in the bright colour.
 struct BatteryGlyph: View {
-    enum Style { case normal, charging, low, lowPower }
+    enum Style {
+        case normal, charging, low, lowPower
+
+        var tint: Color {
+            switch self {
+            case .normal: .white
+            case .charging: .green
+            case .low: .red
+            case .lowPower: .yellow
+            }
+        }
+
+        var textColor: Color { self == .normal ? .white : tint }
+    }
+
     let level: Double
     let style: Style
 
-    private var fill: Color {
-        switch style {
-        case .charging: .green
-        case .low: .red
-        case .lowPower: .yellow
-        case .normal: level <= 0.2 ? .red : .white
-        }
-    }
-
     var body: some View {
-        HStack(spacing: 1) {
+        let body = RoundedRectangle(cornerRadius: 4, style: .continuous)
+        HStack(spacing: 1.5) {
             ZStack(alignment: .leading) {
-                RoundedRectangle(cornerRadius: 3.5, style: .continuous)
-                    .stroke(.white.opacity(0.4), lineWidth: 1)
-                RoundedRectangle(cornerRadius: 2, style: .continuous)
-                    .fill(fill)
-                    .frame(width: max(18 * min(max(level, 0), 1), 2))
-                    .padding(2)
+                body.fill(style.tint.opacity(style == .normal ? 0.3 : 0.38))
+                Rectangle().fill(style.tint)
+                    .frame(width: max(26 * min(max(level, 0), 1), 4))
             }
-            .frame(width: 24, height: 12)
-            RoundedRectangle(cornerRadius: 1)
-                .fill(.white.opacity(0.4))
-                .frame(width: 1.5, height: 4)
-        }
-        .overlay {
-            if style == .charging {
-                Image(systemName: "bolt.fill")
-                    .font(.system(size: 8, weight: .bold))
-                    .foregroundStyle(.white)
-                    .shadow(color: .black.opacity(0.5), radius: 1)
-                    .offset(x: -1)
+            .frame(width: 26, height: 13)
+            .clipShape(body)
+            .overlay {
+                if style == .charging {
+                    Image(systemName: "bolt.fill")
+                        .font(.system(size: 8.5, weight: .heavy))
+                        .foregroundStyle(.black.opacity(0.75))
+                }
             }
+            UnevenRoundedRectangle(cornerRadii: .init(topLeading: 0, bottomLeading: 0, bottomTrailing: 1.5, topTrailing: 1.5))
+                .fill(style.tint.opacity(style == .normal ? 0.3 : 0.38))
+                .frame(width: 2, height: 5)
         }
     }
 }
 
+/// A device's battery as a ring in Apple's green. Before the level is known a short arc turns;
+/// once it's known the ring fills to it.
 struct BatteryRing: View {
-    let level: Double
+    let level: Double?
 
     var body: some View {
         ZStack {
-            Circle().stroke(.white.opacity(0.2), lineWidth: 2.5)
-            Circle()
-                .trim(from: 0, to: min(max(level, 0), 1))
-                .stroke(.white, style: StrokeStyle(lineWidth: 2.5, lineCap: .round))
-                .rotationEffect(.degrees(-90))
+            Circle().stroke(Color.green.opacity(0.3), lineWidth: Self.line)
+            if let level {
+                FillingArc(level: min(max(level, 0), 1))
+                    .transition(.opacity)
+            } else {
+                TurningArc()
+                    .transition(.opacity)
+            }
         }
-        .frame(width: 15, height: 15)
+        .frame(width: 19, height: 19)
+        .animation(Motion.level, value: level == nil)
+    }
+
+    static let line: CGFloat = 2.6
+    static let style = StrokeStyle(lineWidth: line, lineCap: .round)
+}
+
+private struct FillingArc: View {
+    let level: Double
+    @State private var shown = 0.0
+
+    var body: some View {
+        Circle()
+            .trim(from: 0, to: shown)
+            .stroke(Color.green, style: BatteryRing.style)
+            .rotationEffect(.degrees(-90))
+            .onAppear { withAnimation(Motion.ease(.spring(duration: 0.7, bounce: 0.1))) { shown = level } }
+            .onChange(of: level) { _, new in withAnimation(Motion.level) { shown = new } }
+    }
+}
+
+private struct TurningArc: View {
+    @State private var turning = false
+
+    var body: some View {
+        Circle()
+            .trim(from: 0, to: 0.28)
+            .stroke(Color.green, style: BatteryRing.style)
+            .rotationEffect(.degrees(turning ? 270 : -90))
+            .animation(.linear(duration: 0.9).repeatForever(autoreverses: false), value: turning)
+            .onAppear { turning = true }
     }
 }

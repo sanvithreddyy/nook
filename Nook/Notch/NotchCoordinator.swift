@@ -8,6 +8,12 @@ final class NotchCoordinator {
     let nowPlaying = NowPlayingModel()
     let calendar = CalendarModel()
     let shelf = ShelfModel()
+    #if DEBUG
+    /// Preview timers live in their own store, so a test timer never shows up in the real app.
+    let timer = TimerModel(defaults: CommandLine.arguments.contains("-preview-timer") ? .preview : .standard)
+    #else
+    let timer = TimerModel()
+    #endif
 
     private let lock = LockMonitor()
     private let battery = BatteryMonitor()
@@ -36,6 +42,9 @@ final class NotchCoordinator {
 
         calendar.onChange = { [weak self] in self?.refreshActivity() }
 
+        timer.onChange = { [weak self] in self?.refreshActivity() }
+        timer.onDone = { [weak self] in self?.timerDone() }
+
         battery.onPowerSourceChange = { [weak self] reading in
             guard Prefs.bool(Prefs.battery) else { return }
             self?.model.post(reading.onAC ? .charging(level: reading.level) : .onBattery(level: reading.level), for: .seconds(2.6))
@@ -56,8 +65,10 @@ final class NotchCoordinator {
 
         bluetooth.onConnect = { [weak self] device in
             guard Prefs.bool(Prefs.connectivity) else { return }
+            self?.lastConnect = (device.name, .now)
             self?.model.post(.device(name: device.name, symbol: device.symbol, battery: nil), for: .seconds(3))
         }
+        volume.onOutputChange = { [weak self] symbol, name in self?.outputChanged(to: symbol, name: name) }
         bluetooth.onBattery = { [weak self] device, level in
             guard let self, Prefs.bool(Prefs.connectivity),
                   case .device(let name, _, _) = self.model.notification, name == device.name
@@ -119,15 +130,28 @@ final class NotchCoordinator {
                     refreshActivity()
                 }
                 if args.contains("-preview-drag") { model.setDraggingFile(true) }
+                if args.contains("-preview-timer") {
+                    // -later: the drop splits off after a pause and merges back, for recording the motion.
+                    if args.contains("-later") {
+                        try? await Task.sleep(for: .seconds(2))
+                        timer.start(minutes: 5)
+                        try? await Task.sleep(for: .seconds(2.5))
+                        timer.cancel()
+                    } else {
+                        timer.start(minutes: 5)
+                    }
+                }
                 if args.contains("-preview-shelf") {
                     let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
                     shelf.debugPreview(["scripts/build.sh", "project.yml", "Nook/Info.plist"].map { root.appendingPathComponent($0) })
                 }
-                if args.contains("-expand") { model.expand(card: args.contains("-shelf") ? .shelf : nil) }
+                if args.contains("-expand") {
+                    model.expand(card: args.contains("-shelf") ? .shelf : args.contains("-timer-card") ? .timer : nil)
+                }
                 if CommandLine.arguments.contains("-peek") { model.showPeek(.track, for: nil) }
                 if CommandLine.arguments.contains("-hud") {
                     try? await Task.sleep(for: .seconds(1))
-                    model.post(.volume(level: 0.62, muted: false), for: .seconds(30))
+                    model.post(.volume(level: 0.62, muted: false, output: nil), for: .seconds(30))
                 }
             }
         }
@@ -161,6 +185,7 @@ final class NotchCoordinator {
                 .environment(nowPlaying)
                 .environment(calendar)
                 .environment(shelf)
+                .environment(timer)
         }
         fileDrags.isInsideNotch = { [weak window] point in window?.catchesDrag(at: point) ?? false }
         window.isFileDragActive = { [weak self] in self?.fileDrags.isActive ?? false }
@@ -271,33 +296,40 @@ final class NotchCoordinator {
 
     // MARK: Live activity
 
+    /// What's going on, most important first: music the island is showing, a timer, a meeting about
+    /// to start. The first is the island's own activity; the next becomes the drop beside it.
+    private func liveActivities() -> [LiveActivity] {
+        var live: [LiveActivity] = []
+        if Prefs.bool(Prefs.nowPlaying), nowPlaying.hasTrack, nowPlayingVisible { live.append(.nowPlaying) }
+        var timed: [(activity: LiveActivity, due: Date)] = []
+        if timer.isActive { timed.append((.timer, .now.addingTimeInterval(timer.remaining()))) }
+        if Prefs.bool(Prefs.calendar), let meeting = calendar.eventForLiveActivity() { timed.append((.calendar(id: meeting.id), meeting.start)) }
+        // Of a timer and a meeting, whichever comes due first sits nearer the island.
+        live += timed.sorted { $0.due < $1.due }.map(\.activity)
+        return live
+    }
+
     private func refreshActivity() {
+        let live = liveActivities()
         let activity: LiveActivity?
-        let meeting = Prefs.bool(Prefs.calendar) ? calendar.eventForLiveActivity() : nil
         switch lock.state {
         case .locked where Prefs.bool(Prefs.lockActivity):
             activity = .locked
         case .justUnlocked where Prefs.bool(Prefs.lockActivity):
             activity = .unlocked
         default:
-            if Prefs.bool(Prefs.nowPlaying), nowPlaying.hasTrack, nowPlayingVisible {
-                activity = .nowPlaying
-            } else if let meeting {
-                activity = .calendar(id: meeting.id)
-            } else {
-                activity = nil
-            }
+            activity = live.first
         }
         model.setLiveActivity(activity)
-        // Music keeps the island; a meeting about to start gets its own drop beside it.
-        model.setCompanion(activity == .nowPlaying ? meeting.map { .calendar(id: $0.id) } : nil)
+        // The next thing going on gets its own drop beside the island.
+        model.setCompanion(activity == live.first ? live.dropFirst().first : nil)
         if activity != .nowPlaying, model.peek == .track { model.hidePeek() }
-        refreshCards()
+        refreshCards(live: live)
     }
 
     /// Runs on every calendar change and on the 30 s tick too, so a meeting that starts or the last
     /// event ending changes what the island opens to.
-    private func refreshCards() {
+    private func refreshCards(live: [LiveActivity]? = nil) {
         let calendarOn = Prefs.bool(Prefs.calendar)
         let needsAccess = calendar.access != .granted
         let hasFiles = !shelf.isEmpty
@@ -308,9 +340,8 @@ final class NotchCoordinator {
             }
         }
         model.setCards(IslandCard.available(
+            live: (live ?? liveActivities()).compactMap(\.card),
             music: Prefs.bool(Prefs.nowPlaying) && nowPlaying.hasTrack,
-            musicIsLive: model.liveActivity == .nowPlaying,
-            meeting: calendarOn ? calendar.eventForLiveActivity()?.id : nil,
             agenda: calendarOn && (needsAccess || !calendar.upcoming().isEmpty),
             shelf: Prefs.bool(Prefs.shelf)))
     }
@@ -358,6 +389,40 @@ final class NotchCoordinator {
         }
     }
 
+    // MARK: Audio output
+
+    /// The last Bluetooth device to connect, so its own connection view isn't followed by a switch view.
+    private var lastConnect: (name: String, at: Date)?
+
+    /// Sound moved to headphones that were already connected: AirPods' automatic switching, or a pick
+    /// in Control Center. A device that just connected already showed its connection instead.
+    private func outputChanged(to symbol: String?, name: String) {
+        guard Prefs.bool(Prefs.connectivity), let symbol else { return }
+        if let last = lastConnect, last.name == name, Date.now.timeIntervalSince(last.at) < 8 { return }
+        model.post(.audioSwitched(symbol: symbol), for: .seconds(2.6))
+    }
+
+    // MARK: Timer
+
+    private var doneTask: Task<Void, Never>?
+
+    /// Like a ringing timer on iPhone: a sound, the island opens on the finished timer for a few
+    /// seconds, then the notch keeps showing "Done" until it's stopped (or for ten minutes).
+    private func timerDone() {
+        NSSound(named: "Glass")?.play()
+        Haptics.tap()
+        if !model.isSuppressed { model.expand(card: .timer) }
+        doneTask?.cancel()
+        doneTask = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(8))
+            guard let self, !Task.isCancelled else { return }
+            if self.model.isExpanded, self.model.card == .timer, !self.model.isHovering { self.model.collapse() }
+            try? await Task.sleep(for: .seconds(10 * 60 - 8))
+            guard !Task.isCancelled, self.timer.state == .done else { return }
+            self.timer.cancel()
+        }
+    }
+
     // MARK: Input
 
     /// Sideways on the open island turns cards; on the closed island it skips tracks.
@@ -386,15 +451,27 @@ final class NotchCoordinator {
     private func mediaKey(_ key: MediaKeyTap.Key, fine: Bool) {
         switch key {
         case .volumeUp, .volumeDown:
-            let result = volume.step(up: key == .volumeUp, fine: fine)
-            model.post(.volume(level: result.level, muted: result.muted), for: .seconds(1.6))
+            let up = key == .volumeUp
+            let before = volume.volume
+            let result = volume.step(up: up, fine: fine)
+            bumpIfAtEnd(before: before, after: result.level, up: up)
+            model.post(.volume(level: result.level, muted: result.muted, output: volume.headphones), for: .seconds(1.6))
         case .mute:
             let result = volume.toggleMute()
-            model.post(.volume(level: result.level, muted: result.muted), for: .seconds(1.6))
+            model.post(.volume(level: result.level, muted: result.muted, output: volume.headphones), for: .seconds(1.6))
         case .brightnessUp, .brightnessDown:
-            let level = brightness.step(up: key == .brightnessUp, fine: fine)
+            let up = key == .brightnessUp
+            let before = brightness.level
+            let level = brightness.step(up: up, fine: fine)
+            bumpIfAtEnd(before: before, after: level, up: up)
             model.post(.brightness(level: level), for: .seconds(1.6))
         }
+    }
+
+    /// Pressing on at the top or bottom stretches the bar that's already showing, instead of nothing.
+    private func bumpIfAtEnd(before: Float, after: Float, up: Bool) {
+        guard model.notification?.isHUD == true, after == before, after == (up ? 1 : 0) else { return }
+        model.bumpHUD(up: up)
     }
 }
 
@@ -436,3 +513,14 @@ enum FullscreenDetector {
         return coveringWindow && !menuBarVisible
     }
 }
+
+#if DEBUG
+private extension UserDefaults {
+    static let preview: UserDefaults = {
+        let suite = "com.sanvith.nook.preview"
+        let defaults = UserDefaults(suiteName: suite)!
+        defaults.removePersistentDomain(forName: suite)
+        return defaults
+    }()
+}
+#endif

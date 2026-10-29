@@ -20,13 +20,16 @@ enum SnapshotRenderer {
             ("03-now-playing", { c.nowPlaying.previewPlaying(); c.debugRefresh() }),
             ("04-peek", { c.nowPlaying.previewPlaying(); c.debugRefresh(); m.showPeek(.track, for: nil) }),
             ("05-expanded", { c.nowPlaying.previewPlaying(); c.debugRefresh(); m.expand() }),
-            ("06-volume", { m.post(.volume(level: 0.56, muted: false)) }),
-            ("07-muted", { m.post(.volume(level: 0.56, muted: true)) }),
+            ("06-volume", { m.post(.volume(level: 0.56, muted: false, output: nil)) }),
+            ("06a-volume-airpods", { m.post(.volume(level: 0.7, muted: false, output: "airpods.pro")) }),
+            ("07-muted", { m.post(.volume(level: 0.56, muted: true, output: nil)) }),
             ("08-brightness", { m.post(.brightness(level: 0.75)) }),
             ("09-charging", { m.post(.charging(level: 84)) }),
             ("10-on-battery", { m.post(.onBattery(level: 84)) }),
-            ("11-low-battery", { m.post(.lowBattery(level: 12)) }),
-            ("12-device", { m.post(.device(name: "AirPods Pro", symbol: "airpodspro", battery: 82)) }),
+            ("11-low-battery", { m.post(.lowBattery(level: 20)) }),
+            ("12a-device-connecting", { m.post(.device(name: "AirPods Pro", symbol: "airpods.pro", battery: nil)) }),
+            ("12-device", { m.post(.device(name: "AirPods Pro", symbol: "airpods.pro", battery: 87)) }),
+            ("12b-audio-switched", { m.post(.audioSwitched(symbol: "airpods.pro")) }),
             ("13-locked", { m.debugSetActivity(.locked) }),
             ("14-unlocked", { m.debugSetActivity(.unlocked) }),
             ("15-up-next", { c.nowPlaying.debugClear(); c.calendar.debugPreview(); c.debugRefresh(); m.expand() }),
@@ -69,6 +72,7 @@ enum SnapshotRenderer {
                 .environment(c.nowPlaying)
                 .environment(c.calendar)
                 .environment(c.shelf)
+                .environment(c.timer)
         }
         .frame(width: size.width, height: size.height)
         let renderer = ImageRenderer(content: view)

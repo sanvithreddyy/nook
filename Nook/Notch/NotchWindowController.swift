@@ -84,7 +84,7 @@ final class NotchWindowController {
 
     /// The island's target rect in screen coordinates, padded so the notch is easy to hit.
     static func hitRect(for layout: IslandLayout, presentation: Presentation, in frame: CGRect) -> CGRect {
-        var rect = CGRect(x: frame.midX - layout.size.width / 2,
+        var rect = CGRect(x: frame.midX + layout.shift - layout.size.width / 2,
                           y: frame.maxY - layout.size.height,
                           width: layout.size.width,
                           height: layout.size.height)
@@ -109,7 +109,7 @@ final class NotchWindowController {
         return rect
     }
 
-    /// The meeting drop beside a playing track, when it shows.
+    /// The drop beside the island (a timer, a meeting about to start), when it shows.
     private func companionRect() -> CGRect? {
         guard model.showsCompanion else { return nil }
         return Self.companionRect(island: model.layout, drop: model.companionSize, in: panel.frame)
@@ -117,7 +117,7 @@ final class NotchWindowController {
 
     /// The drop's target rect: just right of the island, padded a little below like the island's.
     static func companionRect(island: IslandLayout, drop: CGSize, in frame: CGRect) -> CGRect {
-        var rect = CGRect(x: frame.midX + island.size.width / 2 + NotchModel.companionGap,
+        var rect = CGRect(x: frame.midX + island.shift + island.size.width / 2 + NotchModel.companionGap,
                           y: frame.maxY - drop.height,
                           width: drop.width,
                           height: drop.height)
@@ -227,9 +227,9 @@ final class NotchWindowController {
     private func hoverDwelled() {
         guard model.isHovering, !model.isExpanded else { return }
         if Prefs.bool(Prefs.expandOnHover) {
-            // Pointing at the meeting drop opens the meeting; anywhere else, the most relevant card.
-            if case .calendar(let id)? = model.companion, companionRect()?.contains(NSEvent.mouseLocation) == true {
-                model.expand(card: .meeting(id: id))
+            // Pointing at the drop opens what it shows; anywhere else, the most relevant card.
+            if let card = model.companion?.card, companionRect()?.contains(NSEvent.mouseLocation) == true {
+                model.expand(card: card)
             } else {
                 model.expand()
             }

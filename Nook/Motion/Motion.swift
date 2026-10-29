@@ -64,14 +64,6 @@ extension AnyTransition {
         )
     }
 
-    /// The meeting drop splits off the island's right edge and settles beside it.
-    static var companionDrop: AnyTransition {
-        .modifier(
-            active: IslandContentModifier(opacity: 0, blur: 6, scaleX: 0.3, scaleY: 0.7, anchor: .leading),
-            identity: IslandContentModifier(opacity: 1, blur: 0, scaleX: 1, scaleY: 1, anchor: .leading)
-        )
-    }
-
     /// Larger content (quick peek, expanded view) sharpens into place from just under the notch.
     static var islandBody: AnyTransition {
         .asymmetric(

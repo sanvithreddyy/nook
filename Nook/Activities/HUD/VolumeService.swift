@@ -5,15 +5,28 @@ import Foundation
 /// Reads and sets the default output device's volume and mute through CoreAudio.
 final class VolumeService {
     private var device: AudioObjectID = kAudioObjectUnknown
+    /// The output's SF Symbol when it's Bluetooth headphones (AirPods, Beats…); nil for speakers.
+    private(set) var headphones: String?
+    /// Sound moved to another output: its headphone symbol (nil if it isn't headphones) and its name.
+    var onOutputChange: ((String?, String) -> Void)?
 
     init() {
         device = Self.defaultOutputDevice()
+        headphones = Self.headphoneSymbol(for: device)
         var address = AudioObjectPropertyAddress(mSelector: kAudioHardwarePropertyDefaultOutputDevice,
                                                  mScope: kAudioObjectPropertyScopeGlobal,
                                                  mElement: kAudioObjectPropertyElementMain)
         AudioObjectAddPropertyListenerBlock(AudioObjectID(kAudioObjectSystemObject), &address, .main) { [weak self] _, _ in
-            MainActor.assumeIsolated { self?.device = Self.defaultOutputDevice() }
+            MainActor.assumeIsolated { self?.outputChanged() }
         }
+    }
+
+    private func outputChanged() {
+        let new = Self.defaultOutputDevice()
+        guard new != device else { return }
+        device = new
+        headphones = Self.headphoneSymbol(for: new)
+        onOutputChange?(headphones, Self.readString(new, kAudioObjectPropertyName) ?? "")
     }
 
     var volume: Float {
@@ -47,6 +60,29 @@ final class VolumeService {
     }
 
     // MARK: CoreAudio
+
+    private static func headphoneSymbol(for device: AudioObjectID) -> String? {
+        var address = AudioObjectPropertyAddress(mSelector: kAudioDevicePropertyTransportType,
+                                                 mScope: kAudioObjectPropertyScopeGlobal,
+                                                 mElement: kAudioObjectPropertyElementMain)
+        var transport: UInt32 = 0
+        var size = UInt32(MemoryLayout<UInt32>.size)
+        guard AudioObjectGetPropertyData(device, &address, 0, nil, &size, &transport) == noErr,
+              transport == kAudioDeviceTransportTypeBluetooth || transport == kAudioDeviceTransportTypeBluetoothLE
+        else { return nil }
+        let model = readString(device, kAudioDevicePropertyModelUID)
+        return HeadphoneSymbol.symbol(productID: HeadphoneSymbol.productID(modelUID: model),
+                                      name: readString(device, kAudioObjectPropertyName) ?? "")
+    }
+
+    private static func readString(_ device: AudioObjectID, _ selector: AudioObjectPropertySelector) -> String? {
+        var address = AudioObjectPropertyAddress(mSelector: selector, mScope: kAudioObjectPropertyScopeGlobal,
+                                                 mElement: kAudioObjectPropertyElementMain)
+        var value: Unmanaged<CFString>?
+        var size = UInt32(MemoryLayout<Unmanaged<CFString>?>.size)
+        guard AudioObjectGetPropertyData(device, &address, 0, nil, &size, &value) == noErr else { return nil }
+        return value?.takeRetainedValue() as String?
+    }
 
     private static func defaultOutputDevice() -> AudioObjectID {
         var id = AudioObjectID(kAudioObjectUnknown)

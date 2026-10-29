@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 /// Persistent content shown beside the notch.
@@ -6,6 +7,7 @@ enum LiveActivity: Equatable {
     case locked
     case unlocked
     case calendar(id: String)
+    case timer
 
     /// Activities with the same identity morph in place (padlock closing → opening) instead of transitioning.
     var identity: String {
@@ -13,19 +15,33 @@ enum LiveActivity: Equatable {
         case .nowPlaying: "nowPlaying"
         case .locked, .unlocked: "lock"
         case .calendar(let id): "calendar-\(id)"
+        case .timer: "timer"
+        }
+    }
+
+    /// The card the island opens to for this activity.
+    var card: IslandCard? {
+        switch self {
+        case .nowPlaying: .nowPlaying
+        case .calendar(let id): .meeting(id: id)
+        case .timer: .timer
+        case .locked, .unlocked: nil
         }
     }
 }
 
 /// Transient content that replaces the live activity for a few seconds.
 enum NotchNotification: Equatable {
-    case volume(level: Float, muted: Bool)
+    /// `output`: the headphones' symbol when sound goes to AirPods or other Bluetooth headphones.
+    case volume(level: Float, muted: Bool, output: String?)
     case brightness(level: Float)
     case charging(level: Int)
     case onBattery(level: Int)
     case lowBattery(level: Int)
     case lowPowerMode(on: Bool)
     case device(name: String, symbol: String, battery: Int?)
+    /// Sound moved to these headphones (AirPods' automatic switching, or picked in Control Center).
+    case audioSwitched(symbol: String)
 
     /// Notifications of the same kind update in place instead of transitioning.
     var kind: String {
@@ -35,6 +51,7 @@ enum NotchNotification: Equatable {
         case .charging, .onBattery, .lowBattery: "battery"
         case .lowPowerMode: "lowPower"
         case .device(let name, _, _): "device-\(name)"
+        case .audioSwitched: "audioSwitched"
         }
     }
 
@@ -42,6 +59,26 @@ enum NotchNotification: Equatable {
         switch self {
         case .volume, .brightness: true
         default: false
+        }
+    }
+
+    /// Volume and brightness show their level on a ledge under the notch.
+    var hudLevel: (value: Float, muted: Bool)? {
+        switch self {
+        case .volume(let level, let muted, _): (level, muted)
+        case .brightness(let level): (level, false)
+        default: nil
+        }
+    }
+
+    /// The words on the leading side, where there are any.
+    var title: String {
+        switch self {
+        case .charging: "Charging"
+        case .onBattery: "On Battery"
+        case .lowBattery: "Low Battery"
+        case .lowPowerMode: "Low Power"
+        default: ""
         }
     }
 }
@@ -67,21 +104,20 @@ enum IslandCard: Hashable {
     case meeting(id: String)
     /// The next event and the month after it, or the calendar access prompt.
     case upNext
+    /// A running, paused or finished timer.
+    case timer
     /// Files kept for later and AirDrop.
     case shelf
 
     /// The cards the island can open to, most relevant first, so hovering opens what the closed island
-    /// shows. `music`: a track is loaded, playing or paused; `musicIsLive`: the closed island shows it.
-    /// An imminent meeting stands in for Up next, which would only repeat it, and opens first unless
-    /// music is what the closed island shows. The shelf is always last: empty, it's a drop target.
-    static func available(music: Bool, musicIsLive: Bool, meeting: String?, agenda: Bool, shelf: Bool) -> [IslandCard] {
-        var cards: [IslandCard] = []
-        if music { cards.append(.nowPlaying) }
-        if let meeting {
-            cards.insert(.meeting(id: meeting), at: music && musicIsLive ? cards.count : 0)
-        } else if agenda {
-            cards.append(.upNext)
-        }
+    /// shows. `live`: the cards for what the closed island shows, the island's own activity first, then
+    /// the drop beside it. `music`: a track is loaded, playing or paused. A meeting about to start stands
+    /// in for Up next, which would only repeat it. The shelf is always last: empty, it's a drop target.
+    static func available(live: [IslandCard], music: Bool, agenda: Bool, shelf: Bool) -> [IslandCard] {
+        var cards = live
+        if music, !cards.contains(.nowPlaying) { cards.append(.nowPlaying) }
+        let meeting = cards.contains { if case .meeting = $0 { true } else { false } }
+        if agenda, !meeting { cards.append(.upNext) }
         if shelf { cards.append(.shelf) }
         return cards
     }
@@ -91,6 +127,31 @@ struct IslandLayout: Equatable {
     var size: CGSize
     var topRadius: CGFloat
     var bottomRadius: CGFloat
+    /// How far the island's centre sits right of the notch's, when one side holds more than the
+    /// other ("Low Battery" left, "20%" right). Apple keeps compact views as narrow as their content.
+    var shift: CGFloat = 0
+}
+
+/// Measurements of the compact views beside the notch, from macOS 27's compact assets:
+/// large semibold text, glyphs concentric with the island's round ends.
+enum Compact {
+    static let fontSize: CGFloat = 14
+    /// From the island's outer edge to text.
+    static let outer: CGFloat = 13
+    /// From content to the notch.
+    static let inner: CGFloat = 10
+    static let battery: CGFloat = 26 + 3.5
+    /// The level bar's ledge under the notch for volume and brightness.
+    static let ledge: CGFloat = 18
+    static let bottomRadius: CGFloat = 15
+
+    static func textWidth(_ text: String) -> CGFloat {
+        let font = NSFont.systemFont(ofSize: fontSize, weight: .semibold)
+        return ceil((text as NSString).size(withAttributes: [.font: font]).width)
+    }
+
+    /// A side holding one line of text.
+    static func textSide(_ text: String) -> CGFloat { outer + textWidth(text) + inner }
 }
 
 @Observable
@@ -114,9 +175,12 @@ final class NotchModel {
     var shelfHasFiles = false
     /// A file drag from another app is under way, so the shelf shows its drop targets.
     private(set) var isDraggingFile = false
-    /// A second activity while music plays: a meeting about to start, shown as its own drop beside
-    /// the island, like the Dynamic Island's detached minimal view.
+    /// A second activity beside the island's own: a timer or a meeting about to start, shown as its own
+    /// drop beside the island, like the Dynamic Island's detached minimal view.
     private(set) var companion: LiveActivity?
+    /// Counts presses past either end of the volume or brightness range, to stretch the bar.
+    private(set) var hudBump = 0
+    private(set) var hudBumpUp = true
     /// Hidden while a fullscreen app owns the notch screen.
     var isSuppressed = false
 
@@ -145,19 +209,27 @@ final class NotchModel {
         case .idle:
             return IslandLayout(size: n, topRadius: 6, bottomRadius: notch.isHardware ? 10 : 9)
         case .activity(let activity):
-            // Glyphs sit snug against the notch; a countdown needs a little more room than a glyph.
-            let side: CGFloat = if case .calendar = activity { slot + 18 } else { slot }
-            return IslandLayout(size: CGSize(width: n.width + side * 2, height: n.height), topRadius: 6, bottomRadius: 11)
+            // Glyphs sit snug against the notch; a countdown needs room for its longest text.
+            switch activity {
+            case .calendar: return compact(leading: slot, trailing: Compact.inner + Compact.textWidth("00 min") + Compact.outer - 1)
+            case .timer: return compact(leading: slot, trailing: Compact.inner + Compact.textWidth("00:00") + Compact.outer - 1)
+            default: return compact(leading: slot, trailing: slot)
+            }
         case .peek:
             return IslandLayout(size: CGSize(width: max(n.width + slot * 2, 300), height: n.height + 36), topRadius: 8, bottomRadius: 20)
         case .notification(let note):
-            let side: CGFloat
             switch note {
-            case .volume, .brightness: side = slot + 52
-            case .device: side = slot + 84
-            default: side = slot + 64
+            case .volume, .brightness:
+                // Glyph and value beside the notch; the level drops below it on a ledge.
+                return compact(leading: slot + 8, trailing: slot + 8, below: Compact.ledge)
+            case .charging(let level), .onBattery(let level), .lowBattery(let level):
+                return compact(leading: Compact.textSide(note.title),
+                               trailing: Compact.inner + Compact.textWidth("\(level)%") + 6 + Compact.battery + Compact.outer - 3)
+            case .lowPowerMode(let on):
+                return compact(leading: Compact.textSide(note.title), trailing: Compact.textSide(on ? "On" : "Off"))
+            case .device, .audioSwitched:
+                return compact(leading: slot, trailing: slot)
             }
-            return IslandLayout(size: CGSize(width: n.width + side * 2, height: n.height), topRadius: 6, bottomRadius: 11)
         case .expanded:
             // Every card is as wide as the next, so switching cards only changes the height.
             // The ears are outside the card's body, which is `cardWidth` wide.
@@ -166,12 +238,19 @@ final class NotchModel {
         }
     }
 
+    /// Beside the notch: as narrow as the content on each side, round at the ends like a capsule.
+    private func compact(leading: CGFloat, trailing: CGFloat, below: CGFloat = 0) -> IslandLayout {
+        IslandLayout(size: CGSize(width: notch.size.width + leading + trailing, height: notch.size.height + below),
+                     topRadius: 6, bottomRadius: Compact.bottomRadius, shift: (trailing - leading) / 2)
+    }
+
     /// Height of the open card below the notch line.
     private var cardBody: CGFloat {
         switch card {
         case .nowPlaying: 124
         case .meeting: 104
         case .upNext: calendarNeedsAccess ? 88 : 164
+        case .timer: 76
         case .shelf: shelfHasFiles && !isDraggingFile ? 112 : 96
         }
     }
@@ -201,8 +280,12 @@ final class NotchModel {
         withAnimation(activity == nil ? Motion.activityOut : Motion.activityIn) { companion = activity }
     }
 
-    /// The drop shows only beside the closed island playing music, never under a notification or an open card.
-    var showsCompanion: Bool { companion != nil && presentation == .activity(.nowPlaying) }
+    /// The drop shows only beside the closed island's own activity, never under a notification,
+    /// a peek or an open card.
+    var showsCompanion: Bool {
+        guard companion != nil, case .activity = presentation else { return false }
+        return true
+    }
 
     /// Space between the island's ear and the drop's, at the top edge.
     static let companionGap: CGFloat = 4
@@ -225,6 +308,12 @@ final class NotchModel {
             guard !Task.isCancelled else { return }
             self?.dismissNotification()
         }
+    }
+
+    /// A volume or brightness key pressed with the level already at that end.
+    func bumpHUD(up: Bool) {
+        hudBumpUp = up
+        hudBump &+= 1
     }
 
     func dismissNotification() {

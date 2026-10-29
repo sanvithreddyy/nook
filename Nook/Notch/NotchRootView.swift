@@ -30,6 +30,12 @@ private struct IslandView: View {
                     PeekRow(peek: peek)
                         .transition(.islandBody)
                 }
+                if !model.isExpanded, let note = model.notification, let level = note.hudLevel {
+                    HUDLedge(level: level.value, muted: level.muted, bump: model.hudBump, bumpUp: model.hudBumpUp)
+                        .padding(.horizontal, layout.topRadius + 12)
+                        .padding(.top, 5)
+                        .transition(.islandBody)
+                }
             }
             // An open card spans the whole island, the strip beside the notch included,
             // the way Apple's expanded views use the space beside the camera.
@@ -40,14 +46,18 @@ private struct IslandView: View {
             }
         }
         .frame(width: layout.size.width, height: layout.size.height, alignment: .top)
-        .background(shape.fill(.black))
+        .background(shape.fill(LiquidSplit.fill))
         .clipShape(shape)
         .background(alignment: .top) { Shadow(shape: shape, visible: model.presentation != .idle) }
         .scaleEffect(scale, anchor: .top)
         .contentShape(shape)
         .onTapGesture { if !model.isExpanded { model.expand() } }
         // Right-click the closed island too; the open card has its own menu.
-        .contextMenu { SettingsMenuItem() }
+        .contextMenu {
+            TimerMenu()
+            Divider()
+            SettingsMenuItem()
+        }
         // The whole island takes drops for the shelf (the AirDrop tile inside takes its own),
         // so letting go right at the notch works too.
         .onDrop(of: shelfDropTypes, isTargeted: shelfTargeted) { providers in
@@ -58,14 +68,20 @@ private struct IslandView: View {
             return true
         }
         .simultaneousGesture(pressGesture)
-        // After the island's own gestures, so a click on the drop opens the meeting, not the island.
-        .overlay(alignment: .topTrailing) {
-            if model.showsCompanion, case .calendar(let id)? = model.companion {
-                CompanionDrop(eventID: id)
-                    .offset(x: NotchModel.companionGap + model.companionSize.width)
-                    .transition(.companionDrop)
+        // After the island's own gestures, so a click on the drop opens it, not the island. Placed by
+        // layout (a spacer the island's width) rather than an offset: the liquid split transition wraps
+        // the drop, and its liquid has to share the drop's frame.
+        .overlay(alignment: .topLeading) {
+            HStack(alignment: .top, spacing: 0) {
+                Color.clear.frame(width: layout.size.width + NotchModel.companionGap, height: 1)
+                if model.showsCompanion, let companion = model.companion {
+                    CompanionDrop(activity: companion)
+                        .transition(.liquidSplit(size: model.companionSize))
+                }
             }
         }
+        // One side can hold more than the other; the notch stays covered either way.
+        .offset(x: layout.shift)
     }
 
     private var shelfTargeted: Binding<Bool> {
@@ -115,13 +131,13 @@ private struct TopRow: View {
     let isExpanded: Bool
 
     var body: some View {
-        let side = max(0, (layout.size.width - notch.width) / 2)
+        let half = max(0, (layout.size.width - notch.width) / 2)
         HStack(spacing: 0) {
             ZStack { content(.leading) }
-                .frame(width: side, height: notch.height)
+                .frame(width: max(0, half - layout.shift), height: notch.height)
             Spacer(minLength: 0)
             ZStack { content(.trailing) }
-                .frame(width: side, height: notch.height)
+                .frame(width: max(0, half + layout.shift), height: notch.height)
         }
         .frame(height: notch.height)
     }
@@ -155,6 +171,8 @@ private struct ActivitySide: View {
             if edge == .leading { LockGlyph(unlocked: activity == .unlocked) }
         case .calendar(let id):
             CalendarActivitySide(eventID: id, edge: edge)
+        case .timer:
+            TimerActivitySide(edge: edge)
         }
     }
 }
