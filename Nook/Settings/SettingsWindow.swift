@@ -10,7 +10,7 @@ final class SettingsWindowController {
 
     func show(activate: Bool = true) {
         if window == nil {
-            let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 720, height: 500),
+            let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 820, height: 600),
                                   styleMask: [.titled, .closable, .miniaturizable, .fullSizeContentView],
                                   backing: .buffered, defer: false)
             window.title = "Nook"
@@ -18,7 +18,7 @@ final class SettingsWindowController {
             window.toolbarStyle = .unified
             window.isReleasedWhenClosed = false
             window.contentViewController = NSHostingController(rootView: SettingsView())
-            window.setContentSize(NSSize(width: 720, height: 500))
+            window.setContentSize(NSSize(width: 820, height: 600))
             window.center()
             self.window = window
         }
@@ -66,21 +66,6 @@ enum SettingsPane: String, CaseIterable, Identifiable {
         case .about: "About"
         }
     }
-
-    var symbol: String {
-        switch self {
-        case .general: "gearshape"
-        case .nowPlaying: "play.circle"
-        case .huds: "speaker.wave.2"
-        case .battery: "battery.75percent"
-        case .connectivity: "airpods"
-        case .calendar: "calendar"
-        case .timer: "timer"
-        case .shelf: "tray"
-        case .lock: "lock"
-        case .about: "info.circle"
-        }
-    }
 }
 
 /// Which settings pane is showing, so other parts of the app can open a specific one.
@@ -96,10 +81,20 @@ struct SettingsView: View {
 
     var body: some View {
         NavigationSplitView {
-            List(SettingsPane.allCases, selection: $navigation.pane) { pane in
-                Label(pane.title, systemImage: pane.symbol).tag(pane)
+            // Plain names in groups.
+            List(selection: $navigation.pane) {
+                Text(SettingsPane.general.title).tag(SettingsPane.general)
+                Section("Island") {
+                    ForEach([SettingsPane.nowPlaying, .calendar, .timer, .shelf]) { Text($0.title).tag($0) }
+                }
+                Section("Notices") {
+                    ForEach([SettingsPane.huds, .battery, .connectivity, .lock]) { Text($0.title).tag($0) }
+                }
+                Section("Nook") {
+                    Text(SettingsPane.about.title).tag(SettingsPane.about)
+                }
             }
-            .navigationSplitViewColumnWidth(196)
+            .navigationSplitViewColumnWidth(min: 160, ideal: 180, max: 220)
         } detail: {
             Group {
                 switch pane {
@@ -116,9 +111,10 @@ struct SettingsView: View {
                 }
             }
             .formStyle(.grouped)
-            .navigationTitle(pane.title)
         }
-        .frame(minWidth: 680, minHeight: 460)
+        .frame(minWidth: 760, minHeight: 520)
+        // Otherwise a solid bar sits behind the toolbar once the sidebar is toggled or the window is inactive.
+        .toolbarBackgroundVisibility(.hidden, for: .windowToolbar)
     }
 }
 
