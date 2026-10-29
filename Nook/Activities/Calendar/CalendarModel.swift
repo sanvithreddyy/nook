@@ -1,3 +1,4 @@
+import AppKit
 import EventKit
 import SwiftUI
 
@@ -38,6 +39,8 @@ final class CalendarModel {
     @ObservationIgnored private var storeObserver: NSObjectProtocol?
     /// Join links by occurrence and edit date, so link detection runs once per event edit.
     @ObservationIgnored private var linkCache: [String: URL?] = [:]
+    /// Events whose meeting card was dismissed.
+    @ObservationIgnored private var dismissed: Set<String> = []
 
     var isEnabled: Bool { Prefs.bool(Prefs.calendar) }
 
@@ -77,27 +80,40 @@ final class CalendarModel {
         events.filter { !$0.isAllDay && $0.end > now }
     }
 
-    /// The timed event starting within the lead time, or one that started less than five minutes ago.
+    /// The timed event starting within the lead time, or one that started less than five minutes ago,
+    /// unless its meeting card was dismissed.
     func eventForLiveActivity(now: Date = .now) -> CalendarEvent? {
         let lead = TimeInterval(max(Prefs.int(Prefs.calendarLeadMinutes), 1) * 60)
         return events.first { event in
             !event.isAllDay
+                && !dismissed.contains(event.id)
                 && event.end > now
                 && event.start.timeIntervalSince(now) <= lead
                 && now.timeIntervalSince(event.start) < 5 * 60
         }
     }
 
+    /// Dismiss on the meeting card: stop showing that event in the notch. Kept until Nook quits.
+    func dismiss(_ id: String) {
+        guard dismissed.insert(id).inserted else { return }
+        onChange?()
+    }
+
+    static func openCalendarApp() {
+        guard let app = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.apple.iCal") else { return }
+        NSWorkspace.shared.openApplication(at: app, configuration: NSWorkspace.OpenConfiguration())
+    }
+
     #if DEBUG
-    /// Sample week for screenshots; never touches EventKit.
-    func debugPreview() {
+    /// Sample week for screenshots; never touches EventKit. `meetingSoon` starts the design review in 4 minutes.
+    func debugPreview(meetingSoon: Bool = false) {
         let cal = Calendar.current
         let today = cal.startOfDay(for: .now)
         func at(_ day: Int, _ hour: Int, _ minute: Int = 0) -> Date {
             cal.date(byAdding: .minute, value: day * 1440 + hour * 60 + minute, to: today)!
         }
         let now = Date()
-        let soon = cal.date(bySetting: .second, value: 0, of: now.addingTimeInterval(20 * 60)) ?? now
+        let soon = cal.date(bySetting: .second, value: 0, of: now.addingTimeInterval((meetingSoon ? 4 : 20) * 60)) ?? now
         events = [
             CalendarEvent(id: "a", title: "Ops sync", start: now.addingTimeInterval(-40 * 60), end: now.addingTimeInterval(-10 * 60), color: .orange, isAllDay: false, joinURL: nil),
             CalendarEvent(id: "b", title: "Design review", start: soon, end: soon.addingTimeInterval(45 * 60), color: .blue, isAllDay: false, joinURL: URL(string: "https://meet.google.com/abc")),

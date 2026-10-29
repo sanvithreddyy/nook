@@ -45,11 +45,12 @@ final class NotchWindowController {
         }
     }
 
-    /// The island can grow or shrink under a still pointer (a HUD ends, a swipe collapses it),
-    /// so re-run hit testing whenever the layout changes, not only when the mouse moves.
+    /// The island can grow or shrink under a still pointer (a HUD ends, a swipe collapses it, the
+    /// meeting drop comes and goes), so re-run hit testing whenever that changes, not only when the mouse moves.
     private func observeLayout() {
         withObservationTracking {
             _ = model.layout
+            _ = model.showsCompanion
         } onChange: { [weak self] in
             Task { @MainActor in
                 self?.pointerMoved(fromLayoutChange: true)
@@ -105,6 +106,24 @@ final class NotchWindowController {
         // The pointer pushed into the notch sits on the screen's top edge (y == maxY), which
         // `contains` leaves out. Reach one point past it so that edge counts as inside.
         rect.size.height += 1
+        return rect
+    }
+
+    /// The meeting drop beside a playing track, when it shows.
+    private func companionRect() -> CGRect? {
+        guard model.showsCompanion else { return nil }
+        return Self.companionRect(island: model.layout, drop: model.companionSize, in: panel.frame)
+    }
+
+    /// The drop's target rect: just right of the island, padded a little below like the island's.
+    static func companionRect(island: IslandLayout, drop: CGSize, in frame: CGRect) -> CGRect {
+        var rect = CGRect(x: frame.midX + island.size.width / 2 + NotchModel.companionGap,
+                          y: frame.maxY - drop.height,
+                          width: drop.width,
+                          height: drop.height)
+        rect.origin.y -= 4
+        // Same reach past the top edge as the island, for a pointer pushed into the menu bar.
+        rect.size.height += 5
         return rect
     }
 
@@ -164,10 +183,13 @@ final class NotchWindowController {
         }
         // A drag out of a tile or a context menu runs its own event loop and eats the mouse-up.
         if dragBeganOnIsland, NSEvent.pressedMouseButtons & 1 == 0 { dragBeganOnIsland = false }
-        let inside = hitRect().contains(NSEvent.mouseLocation)
+        let pointer = NSEvent.mouseLocation
+        let inside = hitRect().contains(pointer) || companionRect()?.contains(pointer) == true
         panel.ignoresMouseEvents = !inside && !dragBeganOnIsland
         guard inside != model.isHovering else { return }
-        if inside, fromLayoutChange { return }
+        // The island resized under a still pointer. That never starts a hover, and an open island
+        // that turned to a shorter card stays open until the pointer itself moves.
+        if fromLayoutChange, inside || model.isExpanded { return }
         hoverChanged(inside)
     }
 
@@ -205,8 +227,15 @@ final class NotchWindowController {
     private func hoverDwelled() {
         guard model.isHovering, !model.isExpanded else { return }
         if Prefs.bool(Prefs.expandOnHover) {
-            model.expand()
-        } else if model.liveActivity == .nowPlaying, model.notification == nil, Prefs.bool(Prefs.peekOnHover) {
+            // Pointing at the meeting drop opens the meeting; anywhere else, the most relevant card.
+            if case .calendar(let id)? = model.companion, companionRect()?.contains(NSEvent.mouseLocation) == true {
+                model.expand(card: .meeting(id: id))
+            } else {
+                model.expand()
+            }
+        } else if model.liveActivity == .nowPlaying, model.notification == nil, Prefs.bool(Prefs.peekOnHover),
+                  companionRect()?.contains(NSEvent.mouseLocation) != true {
+            // The peek would cover the meeting drop being pointed at, so it only shows over the island.
             model.showPeek(.track, for: nil)
         }
     }

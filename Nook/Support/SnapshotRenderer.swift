@@ -29,11 +29,11 @@ enum SnapshotRenderer {
             ("12-device", { m.post(.device(name: "AirPods Pro", symbol: "airpodspro", battery: 82)) }),
             ("13-locked", { m.debugSetActivity(.locked) }),
             ("14-unlocked", { m.debugSetActivity(.unlocked) }),
-            ("15-expanded-calendar", { c.nowPlaying.previewPlaying(); c.debugRefresh(); m.showsAgenda = true; m.expand() }),
-            ("16-expanded-empty", { c.nowPlaying.debugClear(); m.hasPlayer = false; m.debugSetActivity(nil); m.expand() }),
-            ("17-home-week", { c.nowPlaying.previewPlaying(); c.debugRefresh(); c.calendar.debugPreview(); m.showsAgenda = true; m.expand(tab: .home) }),
-            ("18-shelf", { c.shelf.debugPreview(SnapshotRenderer.sampleFiles); m.showsAgenda = true; m.expand(tab: .shelf) }),
-            ("19-shelf-empty", { c.shelf.debugPreview([]); m.showsAgenda = true; m.expand(tab: .shelf) }),
+            ("15-up-next", { c.nowPlaying.debugClear(); c.calendar.debugPreview(); c.debugRefresh(); m.expand() }),
+            ("16-meeting", { c.nowPlaying.debugClear(); c.calendar.debugPreview(meetingSoon: true); c.debugRefresh(); m.expand() }),
+            ("17-shelf-drop", { c.shelf.debugPreview([]); c.debugRefresh(); m.setDraggingFile(true); m.expand(card: .shelf) }),
+            ("18-shelf", { c.shelf.debugPreview(SnapshotRenderer.sampleFiles); c.debugRefresh(); m.expand(card: .shelf) }),
+            ("19-shelf-empty", { c.shelf.debugPreview([]); c.debugRefresh(); m.expand(card: .shelf) }),
         ]
         Task { @MainActor in
             // Let the now-playing stream deliver real metadata first.
@@ -88,8 +88,7 @@ extension NotchModel {
             hidePeek()
             dismissNotification()
             setHovering(false)
-            showsAgenda = false
-            hasPlayer = true
+            setDraggingFile(false)
         }
     }
 

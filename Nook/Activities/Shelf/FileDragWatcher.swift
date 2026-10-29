@@ -7,6 +7,8 @@ import UniformTypeIdentifiers
 final class FileDragWatcher {
     var isInsideNotch: (CGPoint) -> Bool = { _ in false }
     var onEnterNotch: (() -> Void)?
+    /// A drag carrying content started (true) or ended (false), so the shelf can offer its drop targets.
+    var onActiveChange: ((Bool) -> Void)?
 
     private let pasteboard = NSPasteboard(name: .drag)
     private var monitors: [Any] = []
@@ -14,6 +16,7 @@ final class FileDragWatcher {
     private var pressed = false
     private var carryingContent = false
     private var entered = false
+    private var reportedActive = false
 
     var isActive: Bool { pressed && carryingContent }
 
@@ -27,6 +30,7 @@ final class FileDragWatcher {
         }) { monitors.append(drag) }
         if let up = NSEvent.addGlobalMonitorForEvents(matching: .leftMouseUp, handler: { [weak self] _ in
             self?.pressed = false
+            self?.report(false)
         }) { monitors.append(up) }
     }
 
@@ -40,6 +44,14 @@ final class FileDragWatcher {
         pressed = true
         carryingContent = false
         entered = false
+        // Clears a drag whose mouse-up was missed.
+        report(false)
+    }
+
+    private func report(_ active: Bool) {
+        guard active != reportedActive else { return }
+        reportedActive = active
+        onActiveChange?(active)
     }
 
     private func dragged() {
@@ -50,6 +62,7 @@ final class FileDragWatcher {
             carryingContent = pasteboard.types?.contains(where: accepted.contains) ?? false
         }
         guard carryingContent else { return }
+        report(true)
         let inside = isInsideNotch(NSEvent.mouseLocation)
         if inside, !entered {
             entered = true

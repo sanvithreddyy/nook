@@ -5,8 +5,9 @@ struct NotchMetrics: Equatable {
     var size: CGSize
     var isHardware: Bool
 
-    /// Square slot on each side of the notch for live-activity content.
-    var slot: CGFloat { size.height + 10 }
+    /// Slot on each side of the notch for live-activity content: a 22 pt glyph or artwork with 7 pt
+    /// either side, so it sits snug against the notch as Apple's compact views do.
+    var slot: CGFloat { size.height + 4 }
 
     static let simulated = NotchMetrics(size: CGSize(width: 185, height: 32), isHardware: false)
 }

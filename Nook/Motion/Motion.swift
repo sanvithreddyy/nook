@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 /// Every spring the island uses (mass 1, stiffness / damping).
@@ -24,7 +25,10 @@ enum Motion {
     static func ease(_ animation: Animation) -> Animation? { isDisabled ? nil : animation }
 
     private static func spring(_ stiffness: Double, _ damping: Double) -> Animation? {
-        isDisabled ? nil : .interpolatingSpring(mass: 1, stiffness: stiffness, damping: damping)
+        if isDisabled { return nil }
+        // Reduce Motion: the island still changes shape, but quickly and without overshoot.
+        if NSWorkspace.shared.accessibilityDisplayShouldReduceMotion { return .easeOut(duration: 0.2) }
+        return .interpolatingSpring(mass: 1, stiffness: stiffness, damping: damping)
     }
 }
 
@@ -57,6 +61,14 @@ extension AnyTransition {
                 active: IslandContentModifier(opacity: 0, blur: 4, scaleX: 0.25, scaleY: 0.6, anchor: anchor),
                 identity: IslandContentModifier(opacity: 1, blur: 0, scaleX: 1, scaleY: 1, anchor: anchor)
             )
+        )
+    }
+
+    /// The meeting drop splits off the island's right edge and settles beside it.
+    static var companionDrop: AnyTransition {
+        .modifier(
+            active: IslandContentModifier(opacity: 0, blur: 6, scaleX: 0.3, scaleY: 0.7, anchor: .leading),
+            identity: IslandContentModifier(opacity: 1, blur: 0, scaleX: 1, scaleY: 1, anchor: .leading)
         )
     }
 

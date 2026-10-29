@@ -69,8 +69,9 @@ final class NotchCoordinator {
         // Swallow a key only when Nook can both act on it and show the result;
         // otherwise the system handles it as usual.
         keys.handles = { [weak self] key in
-            // Nook's panel isn't drawn on the lock screen or while suppressed.
-            guard let self, !self.model.isSuppressed, self.lock.state != .locked else { return false }
+            // Nook's panel isn't drawn on the lock screen or while suppressed, and an open card has no
+            // room for the level, so the system's own HUD shows instead.
+            guard let self, !self.model.isSuppressed, !self.model.isExpanded, self.lock.state != .locked else { return false }
             switch key {
             case .volumeUp, .volumeDown: return Prefs.bool(Prefs.volumeHUD) && self.volume.canSetVolume
             case .mute: return Prefs.bool(Prefs.volumeHUD) && self.volume.canMute
@@ -96,9 +97,11 @@ final class NotchCoordinator {
         // Dragging a file to the notch opens the shelf as a drop target.
         fileDrags.onEnterNotch = { [weak self] in
             guard let self, Prefs.bool(Prefs.shelf), !self.model.isSuppressed else { return }
-            self.model.expand(tab: .shelf)
+            self.model.expand(card: .shelf)
         }
+        fileDrags.onActiveChange = { [weak self] active in self?.model.setDraggingFile(active) }
         fileDrags.start()
+        observeShelf()
 
         #if DEBUG
         if DebugTour.isRequested { DebugTour.run(self) }
@@ -108,19 +111,19 @@ final class NotchCoordinator {
                 nowPlaying.previewPlaying()
                 debugRefresh()
                 let args = CommandLine.arguments
-                if args.contains("-preview-calendar") { calendar.debugPreview() }
+                if args.contains("-preview-calendar") { calendar.debugPreview(meetingSoon: args.contains("-preview-meeting")) }
                 // -preview-silent: what the island shows when nothing is playing.
                 if args.contains("-preview-silent") {
                     nowPlaying.debugClear()
-                    model.hasPlayer = false
                     nowPlayingVisible = false
                     refreshActivity()
                 }
+                if args.contains("-preview-drag") { model.setDraggingFile(true) }
                 if args.contains("-preview-shelf") {
                     let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
                     shelf.debugPreview(["scripts/build.sh", "project.yml", "Nook/Info.plist"].map { root.appendingPathComponent($0) })
                 }
-                if args.contains("-expand") { model.expand(tab: args.contains("-shelf") ? .shelf : .home) }
+                if args.contains("-expand") { model.expand(card: args.contains("-shelf") ? .shelf : nil) }
                 if CommandLine.arguments.contains("-peek") { model.showPeek(.track, for: nil) }
                 if CommandLine.arguments.contains("-hud") {
                     try? await Task.sleep(for: .seconds(1))
@@ -219,8 +222,6 @@ final class NotchCoordinator {
         } else {
             keys.stop()
         }
-        let hasPlayer = Prefs.bool(Prefs.nowPlaying) && nowPlaying.hasTrack
-        if model.hasPlayer != hasPlayer { model.hasPlayer = hasPlayer }
         watchPermissions()
         updateFullscreen()
         refreshActivity()
@@ -272,6 +273,7 @@ final class NotchCoordinator {
 
     private func refreshActivity() {
         let activity: LiveActivity?
+        let meeting = Prefs.bool(Prefs.calendar) ? calendar.eventForLiveActivity() : nil
         switch lock.state {
         case .locked where Prefs.bool(Prefs.lockActivity):
             activity = .locked
@@ -280,19 +282,47 @@ final class NotchCoordinator {
         default:
             if Prefs.bool(Prefs.nowPlaying), nowPlaying.hasTrack, nowPlayingVisible {
                 activity = .nowPlaying
-            } else if Prefs.bool(Prefs.calendar), let event = calendar.eventForLiveActivity() {
-                activity = .calendar(id: event.id)
+            } else if let meeting {
+                activity = .calendar(id: meeting.id)
             } else {
                 activity = nil
             }
         }
         model.setLiveActivity(activity)
+        // Music keeps the island; a meeting about to start gets its own drop beside it.
+        model.setCompanion(activity == .nowPlaying ? meeting.map { .calendar(id: $0.id) } : nil)
         if activity != .nowPlaying, model.peek == .track { model.hidePeek() }
+        refreshCards()
+    }
 
-        // Runs on every calendar change and on the 30 s tick, so the last event ending shrinks the island.
-        let agenda = Prefs.bool(Prefs.calendar) && (calendar.access != .granted || !calendar.upcoming().isEmpty)
-        if model.showsAgenda != agenda {
-            withAnimation(model.isExpanded ? Motion.expand : nil) { model.showsAgenda = agenda }
+    /// Runs on every calendar change and on the 30 s tick too, so a meeting that starts or the last
+    /// event ending changes what the island opens to.
+    private func refreshCards() {
+        let calendarOn = Prefs.bool(Prefs.calendar)
+        let needsAccess = calendar.access != .granted
+        let hasFiles = !shelf.isEmpty
+        if model.calendarNeedsAccess != needsAccess || model.shelfHasFiles != hasFiles {
+            withAnimation(model.isExpanded ? Motion.expand : nil) {
+                model.calendarNeedsAccess = needsAccess
+                model.shelfHasFiles = hasFiles
+            }
+        }
+        model.setCards(IslandCard.available(
+            music: Prefs.bool(Prefs.nowPlaying) && nowPlaying.hasTrack,
+            musicIsLive: model.liveActivity == .nowPlaying,
+            meeting: calendarOn ? calendar.eventForLiveActivity()?.id : nil,
+            agenda: calendarOn && (needsAccess || !calendar.upcoming().isEmpty),
+            shelf: Prefs.bool(Prefs.shelf)))
+    }
+
+    private func observeShelf() {
+        withObservationTracking {
+            _ = shelf.isEmpty
+        } onChange: { [weak self] in
+            Task { @MainActor in
+                self?.refreshCards()
+                self?.observeShelf()
+            }
         }
     }
 
@@ -317,10 +347,6 @@ final class NotchCoordinator {
     }
 
     private func trackChanged() {
-        let hasPlayer = Prefs.bool(Prefs.nowPlaying) && nowPlaying.hasTrack
-        if model.hasPlayer != hasPlayer {
-            withAnimation(model.isExpanded ? Motion.expand : nil) { model.hasPlayer = hasPlayer }
-        }
         guard nowPlaying.hasTrack, nowPlaying.isPlaying || nowPlayingVisible else {
             refreshActivity()
             return
@@ -334,7 +360,16 @@ final class NotchCoordinator {
 
     // MARK: Input
 
+    /// Sideways on the open island turns cards; on the closed island it skips tracks.
     private func swiped(_ direction: SwipeDirection) {
+        if model.isExpanded {
+            switch direction {
+            case .left: model.page(1)
+            case .right: model.page(-1)
+            default: break
+            }
+            return
+        }
         guard Prefs.bool(Prefs.nowPlaying), nowPlaying.hasTrack else { return }
         switch direction {
         case .left:

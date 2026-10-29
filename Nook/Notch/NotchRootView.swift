@@ -22,14 +22,19 @@ private struct IslandView: View {
         let layout = model.layout
         let shape = NotchShape(topRadius: layout.topRadius, bottomRadius: layout.bottomRadius)
 
-        VStack(spacing: 0) {
-            TopRow()
-            if model.peek != nil, !model.isExpanded {
-                PeekRow()
-                    .transition(.islandBody)
+        ZStack(alignment: .top) {
+            VStack(spacing: 0) {
+                TopRow(layout: layout, notch: model.notch.size, activity: model.liveActivity,
+                       notification: model.notification, isExpanded: model.isExpanded)
+                if let peek = model.peek, !model.isExpanded {
+                    PeekRow(peek: peek)
+                        .transition(.islandBody)
+                }
             }
+            // An open card spans the whole island, the strip beside the notch included,
+            // the way Apple's expanded views use the space beside the camera.
             if model.isExpanded {
-                ExpandedView()
+                ExpandedView(card: model.card, showsDropTargets: model.isDraggingFile || !model.shelfHasFiles)
                     .id(model.expandToken)
                     .transition(.islandBody)
             }
@@ -41,15 +46,26 @@ private struct IslandView: View {
         .scaleEffect(scale, anchor: .top)
         .contentShape(shape)
         .onTapGesture { if !model.isExpanded { model.expand() } }
+        // Right-click the closed island too; the open card has its own menu.
+        .contextMenu { SettingsMenuItem() }
         // The whole island takes drops for the shelf (the AirDrop tile inside takes its own),
         // so letting go right at the notch works too.
         .onDrop(of: shelfDropTypes, isTargeted: shelfTargeted) { providers in
             guard Prefs.bool(Prefs.shelf) else { return false }
             shelf.add(providers)
-            model.expand(tab: .shelf)
+            model.setDraggingFile(false)
+            model.expand(card: .shelf)
             return true
         }
         .simultaneousGesture(pressGesture)
+        // After the island's own gestures, so a click on the drop opens the meeting, not the island.
+        .overlay(alignment: .topTrailing) {
+            if model.showsCompanion, case .calendar(let id)? = model.companion {
+                CompanionDrop(eventID: id)
+                    .offset(x: NotchModel.companionGap + model.companionSize.width)
+                    .transition(.companionDrop)
+            }
+        }
     }
 
     private var shelfTargeted: Binding<Bool> {
@@ -89,49 +105,40 @@ private struct Shadow: View {
 // MARK: Top row
 
 /// The strip beside the hardware notch: live activity or notification content in two side slots.
+/// Takes what it shows from the island rather than reading the model itself, so it redraws
+/// whenever the island does (it once kept showing a track after a meeting took over).
 private struct TopRow: View {
-    @Environment(NotchModel.self) private var model
+    let layout: IslandLayout
+    let notch: CGSize
+    let activity: LiveActivity?
+    let notification: NotchNotification?
+    let isExpanded: Bool
 
     var body: some View {
-        let layout = model.layout
-        let side = max(0, (layout.size.width - model.notch.size.width) / 2)
+        let side = max(0, (layout.size.width - notch.width) / 2)
         HStack(spacing: 0) {
-            ZStack { leading }
-                .frame(width: side, height: model.notch.size.height)
+            ZStack { content(.leading) }
+                .frame(width: side, height: notch.height)
             Spacer(minLength: 0)
-            ZStack { trailing }
-                .frame(width: side, height: model.notch.size.height)
+            ZStack { content(.trailing) }
+                .frame(width: side, height: notch.height)
         }
-        .frame(height: model.notch.size.height)
+        .frame(height: notch.height)
     }
 
-    @ViewBuilder private var leading: some View {
-        if let note = model.notification {
-            NotificationSide(note: note, edge: .leading)
-                .id("n-\(note.kind)")
-                .transition(.islandSide(.leading))
-        } else if model.isExpanded {
-            ExpandedTabs()
-                .transition(.islandSide(.leading))
-        } else if let activity = model.liveActivity {
-            ActivitySide(activity: activity, edge: .leading)
+    // The open card owns the strip beside the notch, so nothing shows here while it's open;
+    // a notification that arrives meanwhile shows if it's still current when the card closes.
+    @ViewBuilder private func content(_ edge: HorizontalEdge) -> some View {
+        if isExpanded {
+            EmptyView()
+        } else if let notification {
+            NotificationSide(note: notification, edge: edge)
+                .id("n-\(notification.kind)")
+                .transition(.islandSide(edge))
+        } else if let activity {
+            ActivitySide(activity: activity, edge: edge)
                 .id("a-\(activity.identity)")
-                .transition(.islandSide(.leading))
-        }
-    }
-
-    @ViewBuilder private var trailing: some View {
-        if let note = model.notification {
-            NotificationSide(note: note, edge: .trailing)
-                .id("n-\(note.kind)")
-                .transition(.islandSide(.trailing))
-        } else if model.isExpanded {
-            ExpandedActions()
-                .transition(.islandSide(.trailing))
-        } else if let activity = model.liveActivity {
-            ActivitySide(activity: activity, edge: .trailing)
-                .id("a-\(activity.identity)")
-                .transition(.islandSide(.trailing))
+                .transition(.islandSide(edge))
         }
     }
 }
@@ -155,14 +162,13 @@ private struct ActivitySide: View {
 // MARK: Peek
 
 private struct PeekRow: View {
-    @Environment(NotchModel.self) private var model
+    let peek: QuickPeek
 
     var body: some View {
         Group {
-            switch model.peek {
+            switch peek {
             case .track: TrackPeek()
             case .event(let id): EventPeek(eventID: id)
-            case nil: EmptyView()
             }
         }
         .padding(.horizontal, 18)

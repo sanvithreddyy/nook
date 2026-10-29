@@ -1,132 +1,138 @@
 import SwiftUI
 
+/// The open island: one card at a time, as Apple's expanded views are. Each card lays out across
+/// the whole island, using the wings beside the notch the way Apple's use the space beside the camera.
+/// Takes the card from the island rather than reading the model, so it always redraws with the
+/// island (see TopRow).
 struct ExpandedView: View {
-    @Environment(NotchModel.self) private var model
-
-    var body: some View {
-        ZStack {
-            switch model.tab {
-            case .home:
-                HomeView().transition(.tabSwitch)
-            case .shelf:
-                ShelfView().transition(.tabSwitch)
-            }
-        }
-        .padding(.horizontal, 22)
-        .padding(.top, 6)
-        .padding(.bottom, 18)
-    }
-}
-
-/// The player with what's next beside it; the next event alone when nothing plays; one line when neither has anything.
-private struct HomeView: View {
-    @Environment(NotchModel.self) private var model
     @Environment(CalendarModel.self) private var calendar
+    let card: IslandCard
+    let showsDropTargets: Bool
 
     var body: some View {
-        if model.hasPlayer {
-            HStack(alignment: .top, spacing: 40) {
-                ExpandedPlayer()
-                    .frame(width: model.showsAgenda ? 300 : nil)
-                    .frame(maxWidth: model.showsAgenda ? nil : .infinity, alignment: .leading)
-                if model.showsAgenda {
-                    AgendaColumn()
+        ZStack(alignment: .top) {
+            Group {
+                switch card {
+                case .nowPlaying: MusicCard()
+                case .meeting(let id): MeetingCard(eventID: id)
+                case .upNext: UpNextCard()
+                case .shelf: ShelfCard(showsDropTargets: showsDropTargets)
                 }
             }
-        } else if model.showsAgenda {
-            AgendaSpread()
-        } else {
-            Text(calendar.isEnabled && calendar.isAuthorized ? "Nothing playing · No upcoming events" : "Nothing playing")
-                .font(.system(size: 12.5))
-                .foregroundStyle(.white.opacity(0.45))
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+            .id(card)
+            .transition(.blurReplace)
+            PageDots()
         }
+        // The body starts inside the ears; content keeps 16 pt from its edge.
+        .padding(.horizontal, NotchModel.cardEar + Card.inset)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        // Right-click anywhere on the card, not only on what's drawn.
+        .contentShape(Rectangle())
+        .contextMenu { SettingsMenuItem() }
+        // Calendar access granted in System Settings shows up the next time the island opens,
+        // whichever card it opens on.
+        .onAppear { calendar.recheckAuthorization() }
     }
 }
 
-// MARK: Header beside the notch
-
-/// Tab switcher shown left of the notch while expanded.
-struct ExpandedTabs: View {
-    @Environment(NotchModel.self) private var model
-    @Environment(ShelfModel.self) private var shelf
-
-    var body: some View {
-        HStack(spacing: 4) {
-            TabButton(symbol: "house.fill", tab: .home)
-            TabButton(symbol: "tray.fill", tab: .shelf, count: shelf.items.count)
-        }
-        // The first glyph lines up with the content below; its hit area reaches left of it.
-        .padding(.leading, -8)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        // Same inset as the content below, so the capsule lines up with the artwork and tiles.
-        .padding(.leading, 22)
-    }
+/// Spacing shared by every card.
+enum Card {
+    static let inset: CGFloat = 16
+    /// Space between the notch line and the title under it.
+    static let titleGap: CGFloat = 4
 }
 
-private struct TabButton: View {
+/// One dot per card in the wing right of the notch, when there's more than one card.
+/// Swiping sideways does the same; the dots show there's somewhere to go.
+private struct PageDots: View {
     @Environment(NotchModel.self) private var model
-    let symbol: String
-    let tab: ExpandedTab
-    var count = 0
 
     var body: some View {
-        let selected = model.tab == tab
-        Button { model.select(tab) } label: {
-            HStack(spacing: 4) {
-                Image(systemName: symbol)
-                    .font(.system(size: 11, weight: .semibold))
-                if count > 0 {
-                    Text("\(count)")
-                        .font(.system(size: 11, weight: .semibold).monospacedDigit())
+        if model.cards.count > 1 {
+            HStack(spacing: 0) {
+                ForEach(model.cards, id: \.self) { card in
+                    Button { model.show(card) } label: {
+                        Circle()
+                            .fill(.white.opacity(card == model.card ? 0.9 : 0.28))
+                            .frame(width: 5, height: 5)
+                            .frame(width: 13, height: 20)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(card.name)
+                    .accessibilityAddTraits(card == model.card ? .isSelected : [])
                 }
             }
-            .foregroundStyle(.white.opacity(selected ? 1 : 0.4))
-            .padding(.horizontal, 8)
-            .frame(height: 24)
-            .contentShape(Rectangle())
+            .padding(.trailing, -4)
+            .frame(maxWidth: .infinity, alignment: .trailing)
+            .frame(height: model.notch.size.height)
+            .animation(.easeOut(duration: 0.2), value: model.card)
         }
-        .buttonStyle(.plain)
-        .animation(.easeOut(duration: 0.15), value: selected)
     }
 }
 
-/// Actions shown right of the notch while expanded.
-struct ExpandedActions: View {
-    @Environment(NotchModel.self) private var model
-    @Environment(ShelfModel.self) private var shelf
+struct SettingsMenuItem: View {
+    var body: some View {
+        Button("Settings…") { SettingsWindowController.shared.show() }
+    }
+}
+
+extension IslandCard {
+    var name: String {
+        switch self {
+        case .nowPlaying: "Now Playing"
+        case .meeting: "Meeting"
+        case .upNext: "Up Next"
+        case .shelf: "Shelf"
+        }
+    }
+}
+
+/// Full-width capsule button for a card's actions, like the AirDrop request's Decline and Accept.
+struct CardButton: View {
+    enum Style { case primary, secondary }
+
+    let title: String
+    var style: Style = .secondary
+    let action: () -> Void
+
+    init(_ title: String, style: Style = .secondary, action: @escaping () -> Void) {
+        self.title = title
+        self.style = style
+        self.action = action
+    }
 
     var body: some View {
-        HStack(spacing: 10) {
-            if model.tab == .shelf, !shelf.isEmpty {
-                Button { withAnimation(Motion.peekOut) { shelf.clear() } } label: {
-                    Text("Clear")
-                        .font(.system(size: 11.5, weight: .medium))
-                        .foregroundStyle(.white.opacity(0.6))
-                }
-                .buttonStyle(.plain)
-                .transition(.opacity)
-            }
-            Button { SettingsWindowController.shared.show() } label: {
-                Image(systemName: "gearshape.fill")
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(.white.opacity(0.55))
-                    .frame(width: 24, height: 22)
-                    .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
+        Button(action: action) {
+            Text(title)
+                .font(.system(size: 13.5, weight: .semibold))
+                .lineLimit(1)
+                .frame(maxWidth: .infinity)
+                .frame(height: 34)
         }
-        .frame(maxWidth: .infinity, alignment: .trailing)
-        .padding(.trailing, 16)
-        .animation(.easeOut(duration: 0.15), value: model.tab)
+        .buttonStyle(CardButtonStyle(style: style))
     }
 }
 
-private extension AnyTransition {
-    static var tabSwitch: AnyTransition {
-        .modifier(
-            active: IslandContentModifier(opacity: 0, blur: 6, scaleX: 0.98, scaleY: 0.98, anchor: .top),
-            identity: IslandContentModifier(opacity: 1, blur: 0, scaleX: 1, scaleY: 1, anchor: .top)
-        )
+private struct CardButtonStyle: ButtonStyle {
+    let style: CardButton.Style
+    @State private var hovering = false
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .foregroundStyle(style == .primary ? .black : .white)
+            .background(Capsule().fill(fill(pressed: configuration.isPressed)))
+            .contentShape(Capsule())
+            .scaleEffect(configuration.isPressed ? 0.97 : 1)
+            .animation(Motion.press, value: configuration.isPressed)
+            .animation(.easeOut(duration: 0.15), value: hovering)
+            .onHover { hovering = $0 }
+    }
+
+    private func fill(pressed: Bool) -> Color {
+        switch style {
+        case .primary: .white.opacity(pressed ? 0.8 : (hovering ? 0.9 : 1))
+        case .secondary: .white.opacity(pressed ? 0.26 : (hovering ? 0.21 : 0.16))
+        }
     }
 }

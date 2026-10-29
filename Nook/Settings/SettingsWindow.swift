@@ -257,7 +257,7 @@ private struct CalendarPane: View {
     var body: some View {
         Form {
             Section {
-                Toggle("Show your week beside the player", isOn: $enabled)
+                Toggle("Show upcoming events", isOn: $enabled)
                 Picker("Show an event in the notch", selection: $lead) {
                     ForEach([5, 10, 15, 30], id: \.self) { Text("\($0) minutes before").tag($0) }
                 }

@@ -60,10 +60,31 @@ enum Presentation: Equatable {
     case expanded
 }
 
-/// The two pages of the expanded island, switched from the strip beside the notch.
-enum ExpandedTab: String {
-    case home   // now playing + calendar
-    case shelf  // files kept for later, AirDrop
+/// What the open island shows: one card at a time, like the Dynamic Island's expanded views.
+enum IslandCard: Hashable {
+    case nowPlaying
+    /// An event about to start or under way, with Join and Dismiss.
+    case meeting(id: String)
+    /// The next event and the month after it, or the calendar access prompt.
+    case upNext
+    /// Files kept for later and AirDrop.
+    case shelf
+
+    /// The cards the island can open to, most relevant first, so hovering opens what the closed island
+    /// shows. `music`: a track is loaded, playing or paused; `musicIsLive`: the closed island shows it.
+    /// An imminent meeting stands in for Up next, which would only repeat it, and opens first unless
+    /// music is what the closed island shows. The shelf is always last: empty, it's a drop target.
+    static func available(music: Bool, musicIsLive: Bool, meeting: String?, agenda: Bool, shelf: Bool) -> [IslandCard] {
+        var cards: [IslandCard] = []
+        if music { cards.append(.nowPlaying) }
+        if let meeting {
+            cards.insert(.meeting(id: meeting), at: music && musicIsLive ? cards.count : 0)
+        } else if agenda {
+            cards.append(.upNext)
+        }
+        if shelf { cards.append(.shelf) }
+        return cards
+    }
 }
 
 struct IslandLayout: Equatable {
@@ -80,14 +101,22 @@ final class NotchModel {
     private(set) var notification: NotchNotification?
     private(set) var peek: QuickPeek?
     private(set) var isExpanded = false
-    private(set) var tab: ExpandedTab = .home
+    /// The card the open island shows.
+    private(set) var card: IslandCard = .shelf
+    /// Cards the island can open to, most relevant first. Set by the coordinator.
+    private(set) var cards: [IslandCard] = []
 
     var isHovering = false
     var isPressed = false
-    /// Calendar is on and has something to show on Home: events still to come, or the access prompt.
-    var showsAgenda = false
-    /// False when nothing is playing, so the expanded island stays short instead of showing an empty panel.
-    var hasPlayer = true
+    /// Up next has no events to show yet, only the calendar access prompt (a shorter card).
+    var calendarNeedsAccess = false
+    /// The shelf holds files (a taller card with the files row).
+    var shelfHasFiles = false
+    /// A file drag from another app is under way, so the shelf shows its drop targets.
+    private(set) var isDraggingFile = false
+    /// A second activity while music plays: a meeting about to start, shown as its own drop beside
+    /// the island, like the Dynamic Island's detached minimal view.
+    private(set) var companion: LiveActivity?
     /// Hidden while a fullscreen app owns the notch screen.
     var isSuppressed = false
 
@@ -115,8 +144,10 @@ final class NotchModel {
         switch presentation {
         case .idle:
             return IslandLayout(size: n, topRadius: 6, bottomRadius: notch.isHardware ? 10 : 9)
-        case .activity:
-            return IslandLayout(size: CGSize(width: n.width + slot * 2, height: n.height), topRadius: 6, bottomRadius: 11)
+        case .activity(let activity):
+            // Glyphs sit snug against the notch; a countdown needs a little more room than a glyph.
+            let side: CGFloat = if case .calendar = activity { slot + 18 } else { slot }
+            return IslandLayout(size: CGSize(width: n.width + side * 2, height: n.height), topRadius: 6, bottomRadius: 11)
         case .peek:
             return IslandLayout(size: CGSize(width: max(n.width + slot * 2, 300), height: n.height + 36), topRadius: 8, bottomRadius: 20)
         case .notification(let note):
@@ -128,26 +159,33 @@ final class NotchModel {
             }
             return IslandLayout(size: CGSize(width: n.width + side * 2, height: n.height), topRadius: 6, bottomRadius: 11)
         case .expanded:
-            // One width for every tab, so the tab buttons never fall outside the island when switching.
-            // The height follows what Home shows, so there is never an empty panel.
-            let body: CGFloat = switch tab {
-            case .shelf: Self.expandedBodyHeight
-            case .home where hasPlayer: 146
-            case .home where showsAgenda: 128
-            case .home: 40
-            }
-            return IslandLayout(size: CGSize(width: max(n.width + 300, Self.expandedWidth), height: n.height + body),
-                                topRadius: 12, bottomRadius: body < 60 ? 22 : 32)
+            // Every card is as wide as the next, so switching cards only changes the height.
+            // The ears are outside the card's body, which is `cardWidth` wide.
+            return IslandLayout(size: CGSize(width: Self.cardWidth + Self.cardEar * 2, height: n.height + cardBody),
+                                topRadius: Self.cardEar, bottomRadius: 30)
         }
     }
 
-    static let expandedWidth: CGFloat = 660
-    /// The tallest page (the shelf); the panel is sized for it.
-    static let expandedBodyHeight: CGFloat = 160
+    /// Height of the open card below the notch line.
+    private var cardBody: CGFloat {
+        switch card {
+        case .nowPlaying: 124
+        case .meeting: 104
+        case .upNext: calendarNeedsAccess ? 88 : 164
+        case .shelf: shelfHasFiles && !isDraggingFile ? 112 : 96
+        }
+    }
 
-    /// The biggest island the panel must hold, with room for its shadow.
+    /// Width of an open card's body: the notch plus a wing either side wide enough for artwork.
+    static let cardWidth: CGFloat = 360
+    static let cardEar: CGFloat = 12
+    /// The tallest card body (Up next); the panel is sized for it.
+    static let tallestCardBody: CGFloat = 164
+
+    /// The biggest island the panel must hold, with room for its shadow and the meeting drop beside it.
     var maximumSize: CGSize {
-        CGSize(width: max(notch.size.width + 300, Self.expandedWidth) + 80, height: notch.size.height + Self.expandedBodyHeight + 40)
+        let widest = max(Self.cardWidth + Self.cardEar * 2, notch.size.width + (notch.slot + 84) * 2)
+        return CGSize(width: widest + 120, height: notch.size.height + Self.tallestCardBody + 40)
     }
 
     // MARK: Live activity
@@ -156,6 +194,23 @@ final class NotchModel {
         guard activity != liveActivity else { return }
         let animation = activity == nil ? Motion.activityOut : Motion.activityIn
         withAnimation(animation) { liveActivity = activity }
+    }
+
+    func setCompanion(_ activity: LiveActivity?) {
+        guard activity != companion else { return }
+        withAnimation(activity == nil ? Motion.activityOut : Motion.activityIn) { companion = activity }
+    }
+
+    /// The drop shows only beside the closed island playing music, never under a notification or an open card.
+    var showsCompanion: Bool { companion != nil && presentation == .activity(.nowPlaying) }
+
+    /// Space between the island's ear and the drop's, at the top edge.
+    static let companionGap: CGFloat = 4
+    static let companionEar: CGFloat = 4
+
+    /// The drop's frame, ears included: as wide as the notch is tall, so its bottom is round.
+    var companionSize: CGSize {
+        CGSize(width: notch.size.height + Self.companionEar * 2, height: notch.size.height)
     }
 
     // MARK: Notifications
@@ -202,25 +257,48 @@ final class NotchModel {
 
     // MARK: Expand
 
-    /// Opens the island, optionally on a given tab (a file drag opens the shelf).
-    func expand(tab target: ExpandedTab? = nil) {
+    /// Opens the island on the most relevant card, or on a given one (a file drag opens the shelf).
+    func expand(card target: IslandCard? = nil) {
+        guard let next = target ?? cards.first else { return }
         guard !isExpanded else {
-            if let target { select(target) }
+            show(next)
             return
         }
         peekTask?.cancel()
         expandToken &+= 1
         withAnimation(Motion.expand) {
-            if let target { tab = target }
+            card = next
             isExpanded = true
             peek = nil
         }
         Haptics.tap()
     }
 
-    func select(_ target: ExpandedTab) {
-        guard target != tab else { return }
-        withAnimation(Motion.expand) { tab = target }
+    func show(_ target: IslandCard) {
+        guard target != card else { return }
+        withAnimation(Motion.expand) { card = target }
+    }
+
+    /// A sideways swipe or a page dot: the next or previous card, stopping at either end.
+    func page(_ step: Int) {
+        guard isExpanded, let index = cards.firstIndex(of: card), cards.indices.contains(index + step) else { return }
+        show(cards[index + step])
+        Haptics.tap()
+    }
+
+    func setDraggingFile(_ dragging: Bool) {
+        guard dragging != isDraggingFile else { return }
+        withAnimation(isExpanded ? Motion.expand : nil) { isDraggingFile = dragging }
+    }
+
+    /// Keeps an open island on a card that still exists: a track ending moves it to the next one.
+    func setCards(_ available: [IslandCard]) {
+        guard available != cards else { return }
+        withAnimation(isExpanded ? Motion.expand : nil) {
+            cards = available
+            guard isExpanded, !available.contains(card) else { return }
+            if let first = available.first { card = first } else { isExpanded = false }
+        }
     }
 
     func collapse() {

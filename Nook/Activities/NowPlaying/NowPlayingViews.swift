@@ -61,44 +61,56 @@ struct TrackPeek: View {
 
 // MARK: Expanded
 
-/// Large artwork, title, three buttons and the scrubber. Shuffle and repeat are in the right-click menu.
-struct ExpandedPlayer: View {
+/// Apple's expanded music view on the notch: artwork in the wing beside the notch, title and artist just
+/// under the notch line with the waveform, the scrubber with both times, then three large controls.
+/// Shuffle and repeat are in the right-click menu.
+struct MusicCard: View {
     @Environment(NowPlayingModel.self) private var nowPlaying
+    @Environment(NotchModel.self) private var model
     @AppStorage(Prefs.tintWaveform) private var tintWaveform = true
 
+    private static let artwork: CGFloat = 56
+    /// Title and artist together, bottom-aligned with the artwork.
+    private static let textBlock: CGFloat = 34
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            HStack(spacing: 16) {
-                ArtworkImage(image: nowPlaying.artwork, cornerRadius: 16)
-                    .frame(width: 88, height: 88)
-                    .shadow(color: .black.opacity(0.45), radius: 12, y: 8)
+        // The text block ends level with the artwork and starts just under the notch,
+        // so the artwork's top follows the notch's height.
+        let top = max(12, model.notch.size.height + Card.titleGap + Self.textBlock - Self.artwork)
+        VStack(spacing: 0) {
+            HStack(alignment: .bottom, spacing: 12) {
+                ArtworkImage(image: nowPlaying.artwork, cornerRadius: 12)
+                    .frame(width: Self.artwork, height: Self.artwork)
                     .id(nowPlaying.trackID)
                     .transition(.artworkFlip)
-                VStack(alignment: .leading, spacing: 2) {
-                    MarqueeText(id: nowPlaying.trackID + "t") {
-                        Text(nowPlaying.title)
-                            .font(.system(size: 16, weight: .bold))
-                            .foregroundStyle(.white)
+                VStack(alignment: .leading, spacing: 1) {
+                    HStack(spacing: 10) {
+                        MarqueeText(id: nowPlaying.trackID + "t") {
+                            Text(nowPlaying.title)
+                                .font(.system(size: 14, weight: .semibold))
+                                .foregroundStyle(.white)
+                        }
+                        Waveform(isPlaying: nowPlaying.isPlaying, tint: tintWaveform ? nowPlaying.tint : .white)
                     }
                     Text(nowPlaying.artist)
                         .font(.system(size: 13))
-                        .foregroundStyle(.white.opacity(0.72))
+                        .foregroundStyle(.white.opacity(0.55))
                         .lineLimit(1)
-                    HStack(spacing: 6) {
-                        ControlButton(symbol: "backward.fill", size: 17) { nowPlaying.previous() }
-                        ControlButton(symbol: nowPlaying.isPlaying ? "pause.fill" : "play.fill", size: 24) { nowPlaying.togglePlayPause() }
-                        ControlButton(symbol: "forward.fill", size: 17) { nowPlaying.next() }
-                        Spacer(minLength: 0)
-                        Waveform(isPlaying: nowPlaying.isPlaying, tint: tintWaveform ? nowPlaying.tint : .white)
-                            .frame(width: 22)
-                    }
-                    // The buttons' hit areas reach past their glyphs; line the first glyph up with the text.
-                    .padding(.leading, -10)
-                    .padding(.top, 8)
                 }
+                .padding(.bottom, 1)
             }
+            .padding(.top, top)
             Scrubber()
+                .padding(.top, 12)
+            HStack(spacing: 30) {
+                ControlButton(symbol: "backward.fill", size: 20, label: "Previous") { nowPlaying.previous() }
+                ControlButton(symbol: nowPlaying.isPlaying ? "pause.fill" : "play.fill", size: 27,
+                              label: nowPlaying.isPlaying ? "Pause" : "Play", bounces: false) { nowPlaying.togglePlayPause() }
+                ControlButton(symbol: "forward.fill", size: 20, label: "Next") { nowPlaying.next() }
+            }
+            .padding(.top, 6)
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .animation(Motion.peekIn, value: nowPlaying.trackID)
         .contextMenu {
             Toggle("Shuffle", isOn: Binding(get: { nowPlaying.isShuffled }, set: { _ in nowPlaying.toggleShuffle() }))
@@ -107,10 +119,13 @@ struct ExpandedPlayer: View {
                 Text("All").tag(3)
                 Text("One").tag(2)
             }
+            Divider()
+            SettingsMenuItem()
         }
     }
 }
 
+/// Elapsed time, the bar, time remaining, on one line. The bar thickens under the pointer and while dragged.
 struct Scrubber: View {
     @Environment(NowPlayingModel.self) private var nowPlaying
     @State private var dragElapsed: Double?
@@ -121,14 +136,17 @@ struct Scrubber: View {
             let duration = nowPlaying.duration
             let elapsed = dragElapsed ?? nowPlaying.elapsed(at: context.date)
             let fraction = duration > 0 ? min(max(elapsed / duration, 0), 1) : 0
-            VStack(spacing: 3) {
+            let active = hovering || dragElapsed != nil
+            HStack(spacing: 10) {
+                Text(Self.format(elapsed))
+                    .frame(minWidth: 28, alignment: .leading)
                 GeometryReader { geo in
-                    let thick = hovering || dragElapsed != nil
                     ZStack(alignment: .leading) {
-                        Capsule().fill(.white.opacity(0.22))
-                        Capsule().fill(.white).frame(width: max(geo.size.width * fraction, thick ? 6 : 3))
+                        Capsule().fill(.white.opacity(0.18))
+                        Capsule().fill(.white.opacity(active ? 1 : 0.72))
+                            .frame(width: max(geo.size.width * fraction, active ? 7 : 4))
                     }
-                    .frame(height: thick ? 6 : 3)
+                    .frame(height: active ? 7 : 4)
                     .frame(maxHeight: .infinity)
                     .contentShape(Rectangle())
                     .gesture(
@@ -143,18 +161,17 @@ struct Scrubber: View {
                             }
                     )
                 }
-                .frame(height: 10)
-                .animation(Motion.ease(.spring(duration: 0.25, bounce: 0)), value: hovering || dragElapsed != nil)
+                .frame(height: 14)
+                .animation(Motion.ease(.spring(duration: 0.25, bounce: 0)), value: active)
                 .onHover { hovering = $0 }
-
-                HStack {
-                    Text(Self.format(elapsed))
-                    Spacer()
-                    Text("-" + Self.format(max(duration - elapsed, 0)))
-                }
-                .font(.system(size: 10.5, weight: .medium).monospacedDigit())
-                .foregroundStyle(.white.opacity(0.55))
+                .accessibilityElement()
+                .accessibilityLabel("Playback position")
+                .accessibilityValue("\(Self.format(elapsed)) of \(Self.format(duration))")
+                Text("−" + Self.format(max(duration - elapsed, 0)))
+                    .frame(minWidth: 34, alignment: .trailing)
             }
+            .font(.system(size: 11, weight: .medium).monospacedDigit())
+            .foregroundStyle(.white.opacity(0.5))
         }
     }
 
@@ -165,21 +182,29 @@ struct Scrubber: View {
     }
 }
 
+/// A transport control. The glyph swaps with the system's replace effect and bounces when clicked.
 struct ControlButton: View {
     let symbol: String
     var size: CGFloat = 16
-    var active = true
+    let label: String
+    var bounces = true
     let action: () -> Void
+    @State private var clicks = 0
 
     var body: some View {
-        Button(action: action) {
+        Button {
+            if bounces { clicks += 1 }
+            action()
+        } label: {
             Image(systemName: symbol)
                 .font(.system(size: size, weight: .semibold))
                 .contentTransition(.symbolEffect(.replace))
-                .foregroundStyle(.white.opacity(active ? 1 : 0.4))
-                .frame(width: size + 20, height: 30)
+                .symbolEffect(.bounce.down, options: .speed(1.4), value: clicks)
+                .foregroundStyle(.white.opacity(0.95))
+                .frame(width: size + 24, height: size + 14)
         }
         .buttonStyle(IslandButtonStyle())
+        .accessibilityLabel(label)
     }
 }
 
@@ -189,8 +214,8 @@ struct IslandButtonStyle: ButtonStyle {
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .background(Circle().fill(.white.opacity(hovering ? 0.1 : 0)).padding(-2))
-            .scaleEffect(configuration.isPressed ? 0.84 : 1)
+            .background(Circle().fill(.white.opacity(hovering ? 0.08 : 0)))
+            .scaleEffect(configuration.isPressed ? 0.86 : 1)
             .animation(Motion.press, value: configuration.isPressed)
             .animation(.easeOut(duration: 0.15), value: hovering)
             .onHover { hovering = $0 }

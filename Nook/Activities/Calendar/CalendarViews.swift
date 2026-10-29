@@ -11,15 +11,46 @@ struct CalendarActivitySide: View {
             if edge == .leading {
                 Image(systemName: "calendar")
                     .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(event.color)
+                    .foregroundStyle(.white)
             } else {
                 TimelineView(.everyMinute) { context in
-                    Text(EventTiming.short(event, now: context.date))
-                        .font(.system(size: 12, weight: .semibold).monospacedDigit())
+                    let text = EventTiming.short(event, now: context.date)
+                    Text(text)
+                        .font(.system(size: 12.5, weight: .semibold).monospacedDigit())
                         .foregroundStyle(.white)
+                        .contentTransition(.numericText(countsDown: true))
+                        .animation(Motion.level, value: text)
                 }
             }
         }
+    }
+}
+
+/// The meeting beside a playing track: its own drop right of the island with the minutes left,
+/// like the Dynamic Island's detached minimal view. Clicking it opens the meeting card.
+struct CompanionDrop: View {
+    @Environment(NotchModel.self) private var model
+    @Environment(CalendarModel.self) private var calendar
+    let eventID: String
+
+    var body: some View {
+        let size = model.companionSize
+        let shape = NotchShape(topRadius: NotchModel.companionEar, bottomRadius: size.height / 2)
+        TimelineView(.everyMinute) { context in
+            let text = calendar.event(id: eventID).map { EventTiming.minimal($0, now: context.date) } ?? ""
+            Text(text)
+                .font(.system(size: 11.5, weight: .semibold).monospacedDigit())
+                .foregroundStyle(.white)
+                .contentTransition(.numericText(countsDown: true))
+                .animation(Motion.level, value: text)
+        }
+        .frame(width: size.width, height: size.height)
+        .background(shape.fill(.black))
+        .contentShape(shape)
+        .onTapGesture { model.expand(card: .meeting(id: eventID)) }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(calendar.event(id: eventID)?.title ?? "Meeting")
+        .accessibilityAddTraits(.isButton)
     }
 }
 
@@ -37,8 +68,50 @@ struct EventPeek: View {
     }
 }
 
-/// Beside the player: the event under way or next, then the rest of the month to scroll through.
-struct AgendaColumn: View {
+// MARK: Cards
+
+/// An event about to start or under way, laid out like Apple's AirDrop request: the icon beside the
+/// notch, the title and one grey line under it, then Dismiss and Join.
+struct MeetingCard: View {
+    @Environment(CalendarModel.self) private var calendar
+    @Environment(NotchModel.self) private var model
+    let eventID: String
+
+    var body: some View {
+        if let event = calendar.event(id: eventID) {
+            TimelineView(.everyMinute) { context in
+                VStack(alignment: .leading, spacing: 0) {
+                    CardGlyph(symbol: "calendar")
+                    EventHeading(title: event.title,
+                                 detail: [EventTiming.relative(event, now: context.date), event.meetingService ?? EventTiming.range(event)])
+                    Spacer(minLength: 0)
+                    HStack(spacing: 10) {
+                        CardButton("Dismiss") {
+                            model.collapse()
+                            calendar.dismiss(event.id)
+                        }
+                        if let url = event.joinURL {
+                            CardButton("Join", style: .primary) {
+                                model.collapse()
+                                NSWorkspace.shared.open(url)
+                            }
+                        } else {
+                            CardButton("Open Calendar", style: .primary) {
+                                model.collapse()
+                                CalendarModel.openCalendarApp()
+                            }
+                        }
+                    }
+                    .padding(.bottom, Card.inset)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            }
+        }
+    }
+}
+
+/// The next event, then the rest of the month scrolling under it. Without calendar access, the prompt.
+struct UpNextCard: View {
     @Environment(CalendarModel.self) private var calendar
 
     var body: some View {
@@ -46,11 +119,15 @@ struct AgendaColumn: View {
             TimelineView(.everyMinute) { context in
                 let upcoming = calendar.upcoming(now: context.date)
                 VStack(alignment: .leading, spacing: 0) {
+                    CardGlyph(symbol: "calendar")
                     if let next = upcoming.first {
-                        HStack(spacing: 12) {
-                            UpNext(event: next, now: context.date, titleSize: 16)
-                            Spacer(minLength: 0)
-                            JoinButton(url: next.joinURL)
+                        HStack(alignment: .bottom, spacing: 12) {
+                            EventHeading(title: next.title,
+                                         detail: [EventTiming.relative(next, now: context.date), EventTiming.range(next), next.meetingService])
+                            if let url = next.joinURL {
+                                JoinButton(url: url)
+                                    .padding(.bottom, 1)
+                            }
                         }
                         Rectangle().fill(.white.opacity(0.09)).frame(height: 1)
                             .padding(.top, 12)
@@ -60,57 +137,88 @@ struct AgendaColumn: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             }
         } else {
-            AccessPrompt()
+            AccessPromptCard()
         }
     }
 }
 
-/// Nothing playing: the next event takes the player's place, and the rest of the month scrolls beside it.
-struct AgendaSpread: View {
+/// Calendar access is missing: ask from here, so nobody is prompted at launch.
+private struct AccessPromptCard: View {
     @Environment(CalendarModel.self) private var calendar
 
     var body: some View {
-        if calendar.access == .granted {
-            TimelineView(.everyMinute) { context in
-                let upcoming = calendar.upcoming(now: context.date)
-                HStack(alignment: .top, spacing: 40) {
-                    if let next = upcoming.first {
-                        VStack(alignment: .leading, spacing: 14) {
-                            UpNext(event: next, now: context.date, titleSize: 22)
-                            JoinButton(url: next.joinURL)
-                        }
-                        .frame(width: 300, alignment: .leading)
-                    }
-                    LaterByDay(events: Array(upcoming.dropFirst()), now: context.date, topInset: 0)
+        let denied = calendar.access == .denied
+        VStack(alignment: .leading, spacing: 0) {
+            CardGlyph(symbol: "calendar")
+            EventHeading(title: denied ? "Calendar access is off" : "See what's coming up", detail: [])
+            Spacer(minLength: 0)
+            CardButton(denied ? "Open Privacy Settings" : "Allow Calendar Access", style: .primary) {
+                if denied {
+                    NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Calendars")!)
+                } else {
+                    calendar.requestAccess()
                 }
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             }
-        } else {
-            AccessPrompt()
+            .padding(.bottom, Card.inset)
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        // Access granted in System Settings shows up the next time the island opens.
+        .onAppear { calendar.recheckAuthorization() }
     }
 }
 
-/// When, what and where for one event: "In 20 min", the title, "2:00 – 2:45 PM · Google Meet".
-private struct UpNext: View {
-    let event: CalendarEvent
-    let now: Date
-    let titleSize: CGFloat
+/// A card's icon, in the wing left of the notch.
+struct CardGlyph: View {
+    @Environment(NotchModel.self) private var model
+    let symbol: String
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            Caption(EventTiming.relative(event, now: now), bright: event.start <= now)
-            Text(event.title)
-                .font(.system(size: titleSize, weight: .bold))
+        Image(systemName: symbol)
+            .font(.system(size: 17, weight: .medium))
+            .foregroundStyle(.white)
+            .frame(height: model.notch.size.height, alignment: .center)
+            .accessibilityHidden(true)
+    }
+}
+
+/// Title and one grey line, just under the notch line.
+private struct EventHeading: View {
+    let title: String
+    let detail: [String?]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 1) {
+            Text(title)
+                .font(.system(size: 14, weight: .semibold))
                 .foregroundStyle(.white)
                 .lineLimit(1)
-                .padding(.top, titleSize > 18 ? 6 : 4)
-            Text([EventTiming.range(event), event.meetingService].compactMap { $0 }.joined(separator: " · "))
-                .font(.system(size: 12.5).monospacedDigit())
-                .foregroundStyle(.white.opacity(0.5))
-                .lineLimit(1)
-                .padding(.top, 3)
+            let line = detail.compactMap { $0 }.joined(separator: " · ")
+            if !line.isEmpty {
+                Text(line)
+                    .font(.system(size: 13).monospacedDigit())
+                    .foregroundStyle(.white.opacity(0.55))
+                    .lineLimit(1)
+            }
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.top, Card.titleGap)
+    }
+}
+
+/// The only filled button on the Up next card.
+private struct JoinButton: View {
+    let url: URL
+
+    var body: some View {
+        Button { NSWorkspace.shared.open(url) } label: {
+            Text("Join")
+                .font(.system(size: 12.5, weight: .semibold))
+                .foregroundStyle(.black)
+                .padding(.horizontal, 14)
+                .frame(height: 26)
+                .background(Capsule().fill(.white))
+        }
+        .buttonStyle(IslandButtonStyle())
     }
 }
 
@@ -191,62 +299,20 @@ private struct Caption: View {
     }
 }
 
-/// The only filled button in the island.
-private struct JoinButton: View {
-    let url: URL?
-
-    var body: some View {
-        if let url {
-            Button { NSWorkspace.shared.open(url) } label: {
-                Text("Join")
-                    .font(.system(size: 12.5, weight: .semibold))
-                    .foregroundStyle(.black)
-                    .padding(.horizontal, 14)
-                    .frame(height: 26)
-                    .background(Capsule().fill(.white))
-            }
-            .buttonStyle(IslandButtonStyle())
-        }
-    }
-}
-
-private struct AccessPrompt: View {
-    @Environment(CalendarModel.self) private var calendar
-
-    var body: some View {
-        let denied = calendar.access == .denied
-        VStack(alignment: .leading, spacing: 12) {
-            Text(denied ? "Calendar access is off" : "See what's coming up")
-                .font(.system(size: 14, weight: .semibold))
-                .foregroundStyle(.white.opacity(0.9))
-            Button {
-                if denied {
-                    NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Calendars")!)
-                } else {
-                    calendar.requestAccess()
-                }
-            } label: {
-                Text(denied ? "Open Settings" : "Allow access")
-                    .font(.system(size: 12.5, weight: .semibold))
-                    .foregroundStyle(.black)
-                    .padding(.horizontal, 14)
-                    .frame(height: 26)
-                    .background(Capsule().fill(.white))
-            }
-            .buttonStyle(IslandButtonStyle())
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
-        // Access granted in System Settings shows up the next time the island opens.
-        .onAppear { calendar.recheckAuthorization() }
-    }
-}
-
 enum EventTiming {
+    /// Beside the notch: "5 min", "Now", or the start time.
     static func short(_ event: CalendarEvent, now: Date) -> String {
         let minutes = Int((event.start.timeIntervalSince(now) / 60).rounded(.up))
         if minutes <= 0 { return "Now" }
-        if minutes < 60 { return "in \(minutes)m" }
+        if minutes < 60 { return "\(minutes) min" }
         return event.start.formatted(date: .omitted, time: .shortened)
+    }
+
+    /// In the drop beside a playing track, where there's room for three characters: "5m", "Now".
+    static func minimal(_ event: CalendarEvent, now: Date) -> String {
+        let minutes = Int((event.start.timeIntervalSince(now) / 60).rounded(.up))
+        if minutes <= 0 { return "Now" }
+        return minutes < 60 ? "\(minutes)m" : "\(minutes / 60)h"
     }
 
     /// "10:00 – 10:45 AM": the shared AM/PM is written once.

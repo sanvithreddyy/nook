@@ -172,10 +172,10 @@ struct BatteryRing: View {
 
     var body: some View {
         ZStack {
-            Circle().stroke(Color.green.opacity(0.3), lineWidth: 2.5)
+            Circle().stroke(.white.opacity(0.2), lineWidth: 2.5)
             Circle()
                 .trim(from: 0, to: min(max(level, 0), 1))
-                .stroke(Color.green, style: StrokeStyle(lineWidth: 2.5, lineCap: .round))
+                .stroke(.white, style: StrokeStyle(lineWidth: 2.5, lineCap: .round))
                 .rotationEffect(.degrees(-90))
         }
         .frame(width: 15, height: 15)

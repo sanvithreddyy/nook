@@ -15,6 +15,15 @@ struct HitTestTests {
         #expect(rect.contains(CGPoint(x: panel.midX, y: panel.maxY)))
     }
 
+    /// The meeting drop sits right of the island, clear of it, and takes the pointer at the top edge too.
+    @Test func theMeetingDropIsItsOwnTarget() {
+        let drop = NotchWindowController.companionRect(island: island, drop: CGSize(width: 40, height: 32), in: panel)
+        let islandRect = NotchWindowController.hitRect(for: island, presentation: .activity(.nowPlaying), in: panel)
+        #expect(drop.contains(CGPoint(x: drop.midX, y: panel.maxY)))
+        #expect(drop.minX > panel.midX + island.size.width / 2)
+        #expect(!islandRect.contains(CGPoint(x: drop.midX, y: panel.maxY - 10)))
+    }
+
     @Test func besideTheIslandIsOutside() {
         let rect = NotchWindowController.hitRect(for: island, presentation: .idle, in: panel)
         #expect(!rect.contains(CGPoint(x: panel.midX + 150, y: panel.maxY)))

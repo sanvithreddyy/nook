@@ -17,51 +17,112 @@ enum AirDrop {
 
 let shelfDropTypes: [UTType] = [.fileURL, .url, .image, .plainText]
 
-struct ShelfView: View {
+/// Two big drop targets while a file is dragged or the shelf is empty (Keep in Shelf, AirDrop),
+/// like Apple's AirDrop request; otherwise AirDrop beside the files kept here.
+struct ShelfCard: View {
     @Environment(ShelfModel.self) private var shelf
+    @Environment(NotchModel.self) private var model
+    let showsDropTargets: Bool
 
     var body: some View {
-        HStack(spacing: 12) {
-            AirDropTile()
-                .frame(width: 104)
-            DropArea()
+        Group {
+            if showsDropTargets {
+                HStack(spacing: 10) {
+                    KeepTile()
+                    AirDropTile(compact: false)
+                }
+                .frame(height: 74)
+                .transition(.blurReplace)
+            } else {
+                HStack(spacing: 8) {
+                    AirDropTile(compact: true)
+                        .frame(width: 72)
+                    FilesRow()
+                }
+                .frame(height: 92)
+                .transition(.blurReplace)
+            }
         }
+        .padding(.top, model.notch.size.height + 6)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .animation(Motion.expand, value: showsDropTargets)
+        .contextMenu {
+            Button("Add Files…") { shelf.chooseFiles() }
+            if !shelf.isEmpty {
+                Button("AirDrop All") { AirDrop.send(shelf.urls) }
+                Button("Clear Shelf") { withAnimation(Motion.peekOut) { shelf.clear() } }
+                Divider()
+            }
+            SettingsMenuItem()
+        }
+    }
+}
+
+/// The surface every shelf tile shares; lights up while a drag is over it.
+private struct TileSurface: ViewModifier {
+    let lit: Bool
+    let hovering: Bool
+
+    func body(content: Content) -> some View {
+        content
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .fill(.white.opacity(lit ? 0.2 : (hovering ? 0.12 : 0.08))))
+            .contentShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .scaleEffect(lit ? 1.03 : 1)
+            .animation(Motion.press, value: lit)
+            .animation(.easeOut(duration: 0.15), value: hovering)
+    }
+}
+
+/// Drop here to keep a file for later; click to choose files. The whole island takes the drop.
+private struct KeepTile: View {
+    @Environment(ShelfModel.self) private var shelf
+    @Environment(NotchModel.self) private var model
+    @State private var hovering = false
+
+    var body: some View {
+        VStack(spacing: 7) {
+            Image(systemName: "tray.and.arrow.down.fill")
+                .font(.system(size: 19, weight: .medium))
+            Text(model.isDraggingFile ? "Keep in Shelf" : "Add Files")
+                .font(.system(size: 12.5, weight: .semibold))
+        }
+        .foregroundStyle(.white)
+        .modifier(TileSurface(lit: shelf.isTargeted, hovering: hovering))
+        .onHover { hovering = $0 }
+        .onTapGesture { shelf.chooseFiles() }
+        .accessibilityElement(children: .combine)
+        .accessibilityAddTraits(.isButton)
     }
 }
 
 private struct AirDropTile: View {
     @Environment(ShelfModel.self) private var shelf
+    @Environment(NotchModel.self) private var model
+    let compact: Bool
     @State private var targeted = false
     @State private var hovering = false
 
     var body: some View {
-        VStack(spacing: 10) {
+        VStack(spacing: compact ? 6 : 7) {
             AirDropGlyph()
-                .fill(.white.opacity(hovering || targeted ? 0.95 : 0.8))
-                .frame(width: 28, height: 28)
+                .fill(.white)
+                .frame(width: compact ? 20 : 22, height: compact ? 20 : 22)
             Text("AirDrop")
-                .font(.system(size: 12, weight: .medium))
-                .foregroundStyle(.white.opacity(0.85))
+                .font(.system(size: compact ? 11 : 12.5, weight: .semibold))
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .fill(.white.opacity(targeted ? 0.12 : (hovering ? 0.08 : 0.05)))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .strokeBorder(.white.opacity(targeted ? 0.55 : 0.08), lineWidth: targeted ? 1.5 : 1)
-        )
-        .scaleEffect(targeted ? 1.03 : 1)
-        .animation(Motion.press, value: targeted)
-        .animation(.easeOut(duration: 0.15), value: hovering)
-        .contentShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .foregroundStyle(.white)
+        .modifier(TileSurface(lit: targeted, hovering: hovering))
         .onHover { hovering = $0 }
         // Click sends everything on the shelf; a drop sends just what was dropped.
         .onTapGesture { AirDrop.send(shelf.urls) }
         .help(shelf.isEmpty ? "Drop files here to AirDrop them" : "AirDrop everything on the shelf")
+        .accessibilityElement(children: .combine)
+        .accessibilityAddTraits(.isButton)
         // AirDrop sends files, so only file drops are offered here.
         .onDrop(of: [.fileURL], isTargeted: $targeted) { providers in
+            model.setDraggingFile(false)
             Task {
                 var urls: [URL] = []
                 for provider in providers {
@@ -106,40 +167,23 @@ nonisolated private func loadFileURL(_ provider: NSItemProvider) async -> URL? {
     }
 }
 
-private struct DropArea: View {
+/// The files kept on the shelf, scrolling sideways.
+private struct FilesRow: View {
     @Environment(ShelfModel.self) private var shelf
 
     var body: some View {
-        ZStack {
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .fill(.white.opacity(shelf.isTargeted ? 0.07 : 0.03))
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .strokeBorder(.white.opacity(shelf.isTargeted ? 0.45 : 0.08),
-                              style: StrokeStyle(lineWidth: shelf.isTargeted ? 1.5 : 1, dash: shelf.isTargeted ? [6, 4] : []))
-            if shelf.isEmpty {
-                Text("Drop files here, or click to choose")
-                    .font(.system(size: 13))
-                    .foregroundStyle(.white.opacity(0.45))
-            } else {
-                ScrollView(.horizontal) {
-                    // Thumbnails line up along the top; the row as a whole is centered.
-                    HStack(alignment: .top, spacing: 6) {
-                        ForEach(shelf.items) { item in
-                            ShelfTile(item: item)
-                                .transition(.scale(scale: 0.8).combined(with: .opacity))
-                        }
-                    }
-                    .padding(.horizontal, 10)
-                    .frame(maxHeight: .infinity)
+        ScrollView(.horizontal) {
+            HStack(alignment: .top, spacing: 2) {
+                ForEach(shelf.items) { item in
+                    ShelfTile(item: item)
+                        .transition(.scale(scale: 0.8).combined(with: .opacity))
                 }
-                .scrollIndicators(.never)
+                AddTile()
             }
+            .frame(maxHeight: .infinity)
         }
-        .contentShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-        // Tiles handle their own clicks; a click on the empty space picks files.
-        .onTapGesture { shelf.chooseFiles() }
+        .scrollIndicators(.never)
         .animation(Motion.peekIn, value: shelf.items.map(\.id))
-        .animation(.easeOut(duration: 0.15), value: shelf.isTargeted)
     }
 }
 
@@ -151,7 +195,7 @@ private struct ShelfTile: View {
     var body: some View {
         VStack(spacing: 6) {
             Thumbnail(url: item.url)
-                .frame(width: 52, height: 52)
+                .frame(width: 44, height: 44)
                 .overlay(alignment: .topTrailing) {
                     if hovering {
                         Button { withAnimation(Motion.peekOut) { shelf.remove(item) } } label: {
@@ -171,7 +215,7 @@ private struct ShelfTile: View {
                 .lineLimit(2)
                 .multilineTextAlignment(.center)
                 .truncationMode(.middle)
-                .frame(width: 76)
+                .frame(width: 68)
         }
         .padding(.vertical, 8)
         .padding(.horizontal, 2)
@@ -180,7 +224,7 @@ private struct ShelfTile: View {
         .onHover { inside in withAnimation(.easeOut(duration: 0.15)) { hovering = inside } }
         .opacity(item.isMissing ? 0.4 : 1)
         .onTapGesture(count: 2) { if !item.isMissing { shelf.open(item) } }
-        // Absorb single clicks so they don't reach the drop area's click-to-choose.
+        // Absorb single clicks so they don't reach the island's tap.
         .onTapGesture {}
         .onDrag { NSItemProvider(contentsOf: item.url) ?? NSItemProvider() }
         .contextMenu {
@@ -192,6 +236,33 @@ private struct ShelfTile: View {
             Button("Remove from Shelf") { shelf.remove(item) }
         }
         .help(item.path)
+    }
+}
+
+/// The last tile in the row: click to choose more files.
+private struct AddTile: View {
+    @Environment(ShelfModel.self) private var shelf
+    @State private var hovering = false
+
+    var body: some View {
+        VStack(spacing: 6) {
+            Image(systemName: "plus")
+                .font(.system(size: 16, weight: .medium))
+                .foregroundStyle(.white.opacity(hovering ? 0.9 : 0.6))
+                .frame(width: 44, height: 44)
+                .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(.white.opacity(hovering ? 0.12 : 0.07)))
+            Text("Add")
+                .font(.system(size: 11))
+                .foregroundStyle(.white.opacity(0.6))
+        }
+        .frame(width: 60)
+        .padding(.vertical, 8)
+        .contentShape(Rectangle())
+        .onHover { inside in withAnimation(.easeOut(duration: 0.15)) { hovering = inside } }
+        .onTapGesture { shelf.chooseFiles() }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Add Files")
+        .accessibilityAddTraits(.isButton)
     }
 }
 
@@ -216,7 +287,7 @@ private struct Thumbnail: View {
     }
 
     nonisolated private static func thumbnail(for url: URL) async -> NSImage? {
-        let request = QLThumbnailGenerator.Request(fileAt: url, size: CGSize(width: 52, height: 52),
+        let request = QLThumbnailGenerator.Request(fileAt: url, size: CGSize(width: 44, height: 44),
                                                    scale: 2, representationTypes: .thumbnail)
         guard let rep = try? await QLThumbnailGenerator.shared.generateBestRepresentation(for: request) else { return nil }
         return rep.nsImage
