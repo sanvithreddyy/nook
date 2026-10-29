@@ -21,12 +21,22 @@ final class SettingsWindowController {
             window.setContentSize(NSSize(width: 820, height: 600))
             window.center()
             self.window = window
+            applyAppearance()
         }
         if activate {
             NSApp.activate()
             window?.makeKeyAndOrderFront(nil)
         } else {
             window?.orderFrontRegardless()
+        }
+    }
+
+    /// Only this window follows the Theme setting; the island and its menus keep their own look.
+    func applyAppearance() {
+        window?.appearance = switch SettingsAppearance.saved {
+        case .system: nil
+        case .light: NSAppearance(named: .aqua)
+        case .dark: NSAppearance(named: .darkAqua)
         }
     }
 
@@ -126,6 +136,7 @@ private struct GeneralPane: View {
     @AppStorage(Prefs.hideMenuBarIcon) private var hideMenuBarIcon = false
     @AppStorage(Prefs.statusColors) private var statusColors = true
     @AppStorage(Prefs.showCompanion) private var showCompanion = true
+    @AppStorage(Prefs.settingsAppearance) private var appearance = SettingsAppearance.light
     @State private var loginError: String?
 
     var body: some View {
@@ -144,6 +155,13 @@ private struct GeneralPane: View {
                 SettingsToggle("Hide when an app is full screen", isOn: $hideInFullscreen)
             }
             SettingsSection("Appearance") {
+                SettingsRow("Theme", description: "For this window. The island is always black.") {
+                    Picker("Theme", selection: $appearance) {
+                        ForEach(SettingsAppearance.allCases) { Text($0.title).tag($0) }
+                    }
+                    .segmentedStyle()
+                    .onChange(of: appearance) { _, _ in SettingsWindowController.shared.applyAppearance() }
+                }
                 SettingsRow("Status colors", description: "Green for charging and AirPods, orange for timers, blue when sound switches. Low battery is red either way.") {
                     Picker("Status colors", selection: $statusColors) {
                         Text("Apple's").tag(true)

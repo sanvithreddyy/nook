@@ -13,6 +13,8 @@ enum Prefs {
     static let statusColors = "statusColors"
     /// A second activity (a timer, a meeting about to start) shows as its own drop beside the island.
     static let showCompanion = "showCompanion"
+    /// The Settings window's look: SettingsAppearance raw value. The island is always black.
+    static let settingsAppearance = "settingsAppearance"
 
     static let nowPlaying = "nowPlaying"
     static let peekOnTrackChange = "peekOnTrackChange"
@@ -50,6 +52,7 @@ enum Prefs {
             swipeGestures: true,
             statusColors: true,
             showCompanion: true,
+            settingsAppearance: SettingsAppearance.light.rawValue,
             nowPlaying: true,
             peekOnTrackChange: true,
             peekOnHover: true,
@@ -72,6 +75,25 @@ enum Prefs {
 
     static func bool(_ key: String) -> Bool { UserDefaults.standard.bool(forKey: key) }
     static func int(_ key: String) -> Int { UserDefaults.standard.integer(forKey: key) }
+}
+
+/// The Settings window's look: the system's, or always light or dark.
+enum SettingsAppearance: String, CaseIterable, Identifiable {
+    case system, light, dark
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .system: "System"
+        case .light: "Light"
+        case .dark: "Dark"
+        }
+    }
+
+    static var saved: SettingsAppearance {
+        UserDefaults.standard.string(forKey: Prefs.settingsAppearance).flatMap(SettingsAppearance.init) ?? .light
+    }
 }
 
 /// How volume and brightness show under the notch.
