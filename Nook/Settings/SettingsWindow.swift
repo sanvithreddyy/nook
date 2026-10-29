@@ -110,7 +110,6 @@ struct SettingsView: View {
                 case .about: AboutPane()
                 }
             }
-            .formStyle(.grouped)
         }
         .frame(minWidth: 760, minHeight: 520)
         // Otherwise a solid bar sits behind the toolbar once the sidebar is toggled or the window is inactive.
@@ -217,26 +216,21 @@ private struct HUDPane: View {
     private let poll = Timer.publish(every: 1.5, on: .main, in: .common).autoconnect()
 
     var body: some View {
-        Form {
-            Section("Style") {
-                HUDStylePicker(selection: $style)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 4)
-            }
-            Section {
-                Toggle("Replace the volume HUD", isOn: $volumeHUD)
-                Toggle("Replace the brightness HUD", isOn: $brightnessHUD)
-            } footer: {
-                Text("Option-Shift with a key moves in quarter steps.")
-            }
-            if (volumeHUD || brightnessHUD) && !trusted {
-                Section {
-                    LabeledContent("Accessibility access") {
+        SettingsPage(title: "Volume & Brightness") {
+            SettingsSection {
+                SettingsToggle("Replace the volume HUD", isOn: $volumeHUD)
+                SettingsToggle("Replace the brightness HUD", description: "Option-Shift with a key moves in quarter steps.", isOn: $brightnessHUD)
+                if (volumeHUD || brightnessHUD) && !trusted {
+                    SettingsRow("Accessibility access",
+                                description: "Nook needs Accessibility access to handle the volume and brightness keys. It only reads those keys.") {
                         Button("Allow…") { MediaKeyTap.requestTrust() }
                     }
-                } footer: {
-                    Text("Nook needs Accessibility access to handle the volume and brightness keys. It only reads those keys.")
                 }
+            }
+            SettingsSection("Style") {
+                HUDStylePicker(selection: $style)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 16)
             }
         }
         .onReceive(poll) { _ in trusted = MediaKeyTap.isTrusted }
@@ -248,11 +242,14 @@ private struct BatteryPane: View {
     @AppStorage(Prefs.lowBatteryThreshold) private var threshold = 20
 
     var body: some View {
-        Form {
-            Section {
-                Toggle("Show charging and battery notices", isOn: $enabled)
-                Picker("Warn at", selection: $threshold) {
-                    ForEach([10, 15, 20, 25, 30], id: \.self) { Text("\($0)%").tag($0) }
+        SettingsPage(title: "Battery") {
+            SettingsSection {
+                SettingsToggle("Charging and battery notices", isOn: $enabled)
+                SettingsRow("Warn at") {
+                    Picker("Warn at", selection: $threshold) {
+                        ForEach([10, 15, 20, 25, 30], id: \.self) { Text("\($0)%").tag($0) }
+                    }
+                    .menuStyle()
                 }
                 .disabled(!enabled)
             }
@@ -264,11 +261,11 @@ private struct ConnectivityPane: View {
     @AppStorage(Prefs.connectivity) private var enabled = true
 
     var body: some View {
-        Form {
-            Section {
-                Toggle("Show when Bluetooth devices connect", isOn: $enabled)
-            } footer: {
-                Text("AirPods and other headphones show their battery when macOS reports it.")
+        SettingsPage(title: "Connectivity") {
+            SettingsSection {
+                SettingsToggle("Show when Bluetooth devices connect",
+                               description: "AirPods and other headphones show their battery when macOS reports it, and sound switching to them shows too.",
+                               isOn: $enabled)
             }
         }
     }
@@ -333,9 +330,9 @@ private struct LockPane: View {
     @AppStorage(Prefs.lockActivity) private var enabled = true
 
     var body: some View {
-        Form {
-            Section {
-                Toggle("Show lock and unlock", isOn: $enabled)
+        SettingsPage(title: "Lock Screen") {
+            SettingsSection {
+                SettingsToggle("Show lock and unlock", isOn: $enabled)
             }
         }
     }
@@ -343,13 +340,15 @@ private struct LockPane: View {
 
 private struct AboutPane: View {
     var body: some View {
-        Form {
-            Section {
-                LabeledContent("Version", value: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "")
+        SettingsPage(title: "About") {
+            SettingsSection {
+                SettingsRow("Version", value: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "")
             }
-            Section("Acknowledgements") {
+            SettingsSection("Acknowledgements") {
                 Text("Now playing uses mediaremote-adapter by Jonas van den Berg, BSD 3-Clause License.")
                     .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.vertical, 11)
             }
         }
     }
