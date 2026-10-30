@@ -150,49 +150,59 @@ struct Scrubber: View {
     @Environment(\.homeScale) private var k
     @State private var dragElapsed: Double?
     @State private var hovering = false
+    /// Steps ten times a second while playing, so the time and bar move on.
+    @State private var tick = 0
 
     var body: some View {
-        TimelineView(.animation(minimumInterval: 1.0 / 10, paused: !nowPlaying.isPlaying || dragElapsed != nil)) { context in
-            let duration = nowPlaying.duration
-            let elapsed = dragElapsed ?? nowPlaying.elapsed(at: context.date)
-            let fraction = duration > 0 ? min(max(elapsed / duration, 0), 1) : 0
-            let active = hovering || dragElapsed != nil
-            let thickness = (active ? 9 : 6) * k
-            HStack(spacing: 10 * k) {
-                Text(Self.format(elapsed))
-                    .frame(minWidth: 30 * k, alignment: .leading)
-                GeometryReader { geo in
-                    ZStack(alignment: .leading) {
-                        Capsule().fill(.white.opacity(0.18))
-                        Capsule().fill(.white.opacity(active ? 0.95 : 0.55))
-                            .frame(width: max(geo.size.width * fraction, thickness))
-                    }
-                    .frame(height: thickness)
-                    .frame(maxHeight: .infinity)
-                    .contentShape(Rectangle())
-                    .gesture(
-                        DragGesture(minimumDistance: 0)
-                            .onChanged { value in
-                                guard duration > 0 else { return }
-                                dragElapsed = min(max(value.location.x / geo.size.width, 0), 1) * duration
-                            }
-                            .onEnded { _ in
-                                if let dragElapsed { nowPlaying.seek(to: dragElapsed) }
-                                dragElapsed = nil
-                            }
-                    )
+        let duration = nowPlaying.duration
+        let _ = tick
+        let elapsed = dragElapsed ?? nowPlaying.elapsed(at: .now)
+        let fraction = duration > 0 ? min(max(elapsed / duration, 0), 1) : 0
+        let active = hovering || dragElapsed != nil
+        let thickness = (active ? 9 : 6) * k
+        HStack(spacing: 10 * k) {
+            Text(Self.format(elapsed))
+                .frame(minWidth: 30 * k, alignment: .leading)
+            GeometryReader { geo in
+                ZStack(alignment: .leading) {
+                    Capsule().fill(.white.opacity(0.18))
+                    Capsule().fill(.white.opacity(active ? 0.95 : 0.55))
+                        .frame(width: max(geo.size.width * fraction, thickness))
                 }
-                .frame(height: 14 * k)
-                .animation(Motion.ease(.spring(duration: 0.25, bounce: 0)), value: active)
-                .onHover { hovering = $0 }
-                .accessibilityElement()
-                .accessibilityLabel("Playback position")
-                .accessibilityValue("\(Self.format(elapsed)) of \(Self.format(duration))")
-                Text("−" + Self.format(max(duration - elapsed, 0)))
-                    .frame(minWidth: 36 * k, alignment: .trailing)
+                .frame(height: thickness)
+                .frame(maxHeight: .infinity)
+                .contentShape(Rectangle())
+                .gesture(
+                    DragGesture(minimumDistance: 0)
+                        .onChanged { value in
+                            guard duration > 0 else { return }
+                            dragElapsed = min(max(value.location.x / geo.size.width, 0), 1) * duration
+                        }
+                        .onEnded { _ in
+                            if let dragElapsed { nowPlaying.seek(to: dragElapsed) }
+                            dragElapsed = nil
+                        }
+                )
             }
-            .font(.system(size: 12 * k, weight: .medium).monospacedDigit())
-            .foregroundStyle(.white.opacity(0.6))
+            .frame(height: 14 * k)
+            .animation(Motion.ease(.spring(duration: 0.25, bounce: 0)), value: active)
+            .onHover { hovering = $0 }
+            .accessibilityElement()
+            .accessibilityLabel("Playback position")
+            .accessibilityValue("\(Self.format(elapsed)) of \(Self.format(duration))")
+            Text("−" + Self.format(max(duration - elapsed, 0)))
+                .frame(minWidth: 36 * k, alignment: .trailing)
+        }
+        .font(.system(size: 12 * k, weight: .medium).monospacedDigit())
+        .foregroundStyle(.white.opacity(0.6))
+        // A TimelineView this frequent runs SwiftUI's update on every display frame, redrawing the
+        // whole island at 120 Hz; a sleeping task wakes only for the ten steps.
+        .task(id: nowPlaying.isPlaying && dragElapsed == nil) {
+            guard nowPlaying.isPlaying, dragElapsed == nil else { return }
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .milliseconds(100))
+                tick &+= 1
+            }
         }
     }
 
