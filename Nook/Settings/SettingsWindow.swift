@@ -45,16 +45,43 @@ final class SettingsWindowController {
     /// Steps through every pane without taking focus, printing the window number for screencapture.
     func runCapture() {
         show(activate: false)
+        // -capture-tall: as tall as the screen allows, so a long page shows more of itself.
+        if CommandLine.arguments.contains("-capture-tall"), let window, let screen = window.screen {
+            // The hosting controller would size the window back to the content's preferred size.
+            (window.contentViewController as? NSHostingController<SettingsView>)?.sizingOptions = []
+            let area = screen.visibleFrame
+            window.setFrame(NSRect(x: window.frame.minX, y: area.minY, width: window.frame.width, height: area.height), display: true)
+        }
         Task { @MainActor in
             for pane in SettingsPane.allCases {
                 SettingsNavigation.shared.pane = pane
                 try? await Task.sleep(for: .milliseconds(900))
                 print("PANE \(pane.rawValue) \(window?.windowNumber ?? 0)")
                 fflush(stdout)
-                try? await Task.sleep(for: .milliseconds(600))
+                try? await Task.sleep(for: .milliseconds(1500))
+                // -capture-end: the same page scrolled to its end, for pages longer than the window.
+                if CommandLine.arguments.contains("-capture-end"), let page = pageScroller(), page.documentView?.frame.height ?? 0 > page.contentView.bounds.height {
+                    let doc = page.documentView?.frame.height ?? 0
+                    let end = (page.documentView?.isFlipped ?? true) ? doc - page.contentView.bounds.height : 0
+                    page.contentView.scroll(to: NSPoint(x: 0, y: end))
+                    page.reflectScrolledClipView(page.contentView)
+                    try? await Task.sleep(for: .milliseconds(400))
+                    print("PANE \(pane.rawValue)-end \(window?.windowNumber ?? 0)")
+                    fflush(stdout)
+                    try? await Task.sleep(for: .milliseconds(1500))
+                }
             }
             NSApp.terminate(nil)
         }
+    }
+
+    /// The page's scroll view: the rightmost one, the sidebar's being on the left.
+    private func pageScroller() -> NSScrollView? {
+        func all(in view: NSView) -> [NSScrollView] {
+            view.subviews.flatMap { sub in (sub as? NSScrollView).map { [$0] } ?? all(in: sub) }
+        }
+        guard let root = window?.contentView else { return nil }
+        return all(in: root).max { $0.convert($0.bounds, to: nil).minX < $1.convert($1.bounds, to: nil).minX }
     }
     #endif
 }
