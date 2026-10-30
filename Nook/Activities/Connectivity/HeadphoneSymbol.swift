@@ -9,7 +9,8 @@ nonisolated enum HeadphoneSymbol {
         0x2002: ["airpods"], 0x200F: ["airpods"],
         0x2013: ["airpods.gen3", "airpods"],
         0x2019: ["airpods.gen4", "airpods.gen3", "airpods"], 0x201B: ["airpods.gen4", "airpods.gen3", "airpods"],
-        0x200E: ["airpods.pro.gen1", "airpods.pro"], 0x2014: ["airpods.pro"], 0x2024: ["airpods.pro"],
+        // Pro and Pro 2 share a shape, which macOS draws as gen1 since Pro 3 took "airpods.pro".
+        0x200E: ["airpods.pro.gen1", "airpods.pro"], 0x2014: ["airpods.pro.gen1", "airpods.pro"], 0x2024: ["airpods.pro.gen1", "airpods.pro"],
         0x2027: ["airpods.pro.gen3", "airpods.pro"],
         0x200A: ["airpods.max"], 0x201F: ["airpods.max"],
     ]

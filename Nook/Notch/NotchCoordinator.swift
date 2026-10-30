@@ -77,25 +77,13 @@ final class NotchCoordinator {
         }
         battery.start()
 
-        bluetooth.onConnect = { [weak self] device in
-            guard Prefs.bool(Prefs.connectivity) else { return }
-            self?.lastConnect = (device.name, .now)
-            self?.model.post(.device(name: device.name, symbol: device.symbol, battery: nil),
-                             for: .seconds(Prefs.double(Prefs.deviceNoticeDuration)))
-            // Levels arrive a beat after connecting, as for the notice.
-            Task { [weak self] in
-                try? await Task.sleep(for: .seconds(3))
-                self?.batteries.refresh(force: true)
-            }
-        }
-        volume.onOutputChange = { [weak self] symbol, name in self?.outputChanged(to: symbol, name: name) }
-        bluetooth.onBattery = { [weak self] device, level in
-            guard let self, Prefs.bool(Prefs.connectivity),
-                  case .device(let name, _, _) = self.model.notification, name == device.name
-            else { return }
+        bluetooth.onConnect = { [weak self] device, level in
+            guard let self, Prefs.bool(Prefs.connectivity) else { return }
             self.model.post(.device(name: device.name, symbol: device.symbol, battery: level),
                             for: .seconds(Prefs.double(Prefs.deviceNoticeDuration)))
+            self.batteries.refresh(force: true)
         }
+        volume.onOutputChange = { [weak self] symbol, name in self?.outputChanged(to: symbol, name: name) }
         if Prefs.bool(Prefs.connectivity) { bluetooth.start() }
         batteries.refresh(force: true)
 
@@ -207,11 +195,8 @@ final class NotchCoordinator {
                     switch args[i + 1] {
                     case "low": model.post(.lowBattery(level: 20), for: .seconds(30))
                     case "charging": model.post(.charging(level: 84), for: .seconds(30))
-                    case "switch": model.post(.audioSwitched(symbol: "airpods.pro"), for: .seconds(30))
-                    default:
-                        model.post(.device(name: "AirPods Pro", symbol: "airpods.pro", battery: nil), for: .seconds(30))
-                        try? await Task.sleep(for: .seconds(1.2))
-                        model.post(.device(name: "AirPods Pro", symbol: "airpods.pro", battery: 87), for: .seconds(30))
+                    case "switch": model.post(.audioSwitched(symbol: "airpods.pro.gen1"), for: .seconds(30))
+                    default: model.post(.device(name: "AirPods Pro", symbol: "airpods.pro.gen1", battery: 87), for: .seconds(30))
                     }
                 }
                 if CommandLine.arguments.contains("-hud") {
@@ -600,7 +585,7 @@ final class NotchCoordinator {
                 notice(reading.onAC ? .charging(level: reading.level) : .onBattery(level: reading.level))
             }
         case .connectivity:
-            notice(.device(name: "AirPods Pro", symbol: "airpods.pro", battery: 80))
+            notice(.device(name: "AirPods Pro", symbol: "airpods.pro.gen1", battery: 80))
         default:
             open(cards.first { !$0.modules.isEmpty })
         }
@@ -664,14 +649,12 @@ final class NotchCoordinator {
 
     // MARK: Audio output
 
-    /// The last Bluetooth device to connect, so its own connection view isn't followed by a switch view.
-    private var lastConnect: (name: String, at: Date)?
-
     /// Sound moved to headphones that were already connected: AirPods' automatic switching, or a pick
-    /// in Control Center. A device that just connected already showed its connection instead.
+    /// in Control Center. Sound follows a device that has just connected, which shows its own
+    /// connection instead.
     private func outputChanged(to symbol: String?, name: String) {
         guard Prefs.bool(Prefs.connectivity), let symbol else { return }
-        if let last = lastConnect, last.name == name, Date.now.timeIntervalSince(last.at) < 8 { return }
+        if let last = bluetooth.lastConnection, Date.now.timeIntervalSince(last) < 10 { return }
         model.post(.audioSwitched(symbol: symbol), for: .seconds(Prefs.double(Prefs.deviceNoticeDuration)))
     }
 

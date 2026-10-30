@@ -17,14 +17,14 @@ struct DeviceBatteriesTests {
     /// macOS lists a pair a second time with only some levels: still one left, one right, one case.
     @Test func aPairListedTwiceIsOneDevice() {
         let short = #"{"AirPods Pro": {"device_address": "00:00:00:00:00:01", "device_batteryLevelCase": "51%", "device_batteryLevelLeft": "100%"}}"#
-        let expected = ["airpods.pro.left 100", "airpods.pro.right 76", "airpods.pro.chargingcase.wireless.fill 51"]
+        let expected = ["airpods.pro.gen1.left 100", "airpods.pro.gen1.right 76", "airpods.pro.gen1.chargingcase.wireless.fill 51"]
         #expect(rings(short + "," + fullListing) == expected)
         #expect(rings(fullListing + "," + short) == expected)
     }
 
     @Test func budsAtTheSameLevelShareARing() {
         let same = #"{"AirPods Pro": {"device_address": "a", "device_batteryLevelLeft": "90%", "device_batteryLevelRight": "90%", "device_productID": "0x2024"}}"#
-        #expect(rings(same) == ["airpods.pro 90"])
+        #expect(rings(same) == ["airpods.pro.gen1 90"])
     }
 
     /// The other bud is in its case: only the one out shows.
@@ -35,7 +35,16 @@ struct DeviceBatteriesTests {
 
     @Test func otherDevicesFollowHeadphonesAndCases() {
         let keyboard = #"{"Magic Keyboard": {"device_address": "k", "device_batteryLevelMain": "64%", "device_minorType": "Keyboard"}}"#
-        #expect(rings(keyboard + "," + fullListing).first == "airpods.pro.left 100")
+        #expect(rings(keyboard + "," + fullListing).first == "airpods.pro.gen1.left 100")
         #expect(rings(keyboard + "," + fullListing).last == "keyboard.fill 64")
+    }
+
+    /// The connection view's level and model: the lower bud, and the product ID for Apple's symbol.
+    @Test func aConnectingDeviceReadsItsLevelAndModel() {
+        let json = #"{"SPBluetoothDataType": [{"device_connected": [\#(fullListing)]}]}"#
+        let listing = BluetoothMonitor.parseListing(Data(json.utf8), address: "00-00-00-00-00-02")
+        #expect(listing?.level == 76)
+        #expect(listing?.productID == 0x2024)
+        #expect(BluetoothMonitor.parseListing(Data(json.utf8), address: "11:11:11:11:11:11") == nil)
     }
 }

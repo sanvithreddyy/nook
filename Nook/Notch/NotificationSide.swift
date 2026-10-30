@@ -36,18 +36,15 @@ struct NotificationSide: View {
                 }
             case .device(_, let symbol, let battery):
                 if edge == .leading {
-                    TurningDevice(symbol: symbol)
+                    DeviceGlyph(symbol: symbol)
                         .concentric(.leading, height: model.notch.size.height)
-                } else {
-                    BatteryRing(level: battery.map { Double($0) / 100 })
+                } else if let battery {
+                    BatteryRing(level: Double(battery) / 100)
                         .concentric(.trailing, height: model.notch.size.height)
                 }
             case .audioSwitched(let symbol):
                 if edge == .leading {
-                    Image(systemName: symbol)
-                        .symbolRenderingMode(.hierarchical)
-                        .font(.system(size: 18, weight: .medium))
-                        .foregroundStyle(.white)
+                    DeviceGlyph(symbol: symbol)
                         .concentric(.leading, height: model.notch.size.height)
                 } else {
                     SwitchBadge()
@@ -95,57 +92,16 @@ extension View {
     }
 }
 
-/// A device that just connected turns once about its vertical axis, front to side and back, the way
-/// a product turns on a stand. A symbol is flat, so at the edge it swaps to the side view's symbol.
-/// Devices without one (over-ear headphones) stay still.
-private struct TurningDevice: View {
+/// A device in two tones, as macOS draws its devices.
+private struct DeviceGlyph: View {
     let symbol: String
-    @State private var angle = 0.0
-    @State private var sideways = false
 
     var body: some View {
-        let side = Self.sides[symbol]
-        Image(systemName: sideways ? side ?? symbol : symbol)
+        Image(systemName: symbol)
             .symbolRenderingMode(.hierarchical)
             .font(.system(size: 18, weight: .medium))
             .foregroundStyle(.white)
-            .rotation3DEffect(.degrees(angle), axis: (x: 0, y: 1, z: 0), perspective: 0.5)
-            .task {
-                guard side != nil, !Motion.reduceMotion, !Motion.isDisabled else { return }
-                do {
-                    // After the glyph has sharpened in: slow off the front, quick past each edge,
-                    // a beat on the side, and slow back onto the front, about 2 s in all, so it's
-                    // facing front again well before the notice goes.
-                    try await Task.sleep(for: .milliseconds(300))
-                    try await turn(to: 90, easeIn: true, seconds: 0.45)
-                    sideways = true
-                    angle = -90
-                    try await turn(to: 0, easeIn: false, seconds: 0.35)
-                    try await Task.sleep(for: .milliseconds(100))
-                    try await turn(to: 90, easeIn: true, seconds: 0.35)
-                    sideways = false
-                    angle = -90
-                    try await turn(to: 0, easeIn: false, seconds: 0.5)
-                } catch {
-                    angle = 0
-                    sideways = false
-                }
-            }
     }
-
-    private func turn(to target: Double, easeIn: Bool, seconds: Double) async throws {
-        withAnimation(easeIn ? .easeIn(duration: seconds) : .easeOut(duration: seconds)) { angle = target }
-        try await Task.sleep(for: .seconds(seconds))
-    }
-
-    /// One bud from the side, for each pair that has a symbol for it.
-    static let sides: [String: String] = [
-        "airpods": "airpod.right",
-        "airpods.pro": "airpodpro.right", "airpodspro": "airpodpro.right", "airpods.pro.gen3": "airpodpro.right",
-        "airpods.gen3": "airpod.gen3.right", "airpods.gen4": "airpod.gen3.right",
-        "beats.fit.pro": "beats.fit.pro.right", "beats.studiobuds": "beats.studiobuds.right",
-        "beats.powerbeats.pro": "beats.powerbeats.pro.right",
-    ]
 }
 
 /// Sound moved to these headphones: Apple's blue disc with the turn-back arrow, which swings in.
@@ -210,54 +166,24 @@ struct BatteryGlyph: View {
     }
 }
 
-/// A device's battery as a ring in Apple's green. Before the level is known a short arc turns;
-/// once it's known the ring shows it, fading in rather than sweeping.
+/// A device's battery as a ring in Apple's green.
 struct BatteryRing: View {
-    let level: Double?
+    let level: Double
 
     var body: some View {
         ZStack {
             Circle().stroke(Color.status(.green).opacity(0.3), lineWidth: Self.line)
-            if let level {
-                FillingArc(level: min(max(level, 0), 1))
-                    .transition(.opacity)
-            } else {
-                TurningArc()
-                    .transition(.opacity)
-            }
+            Circle()
+                .trim(from: 0, to: min(max(level, 0), 1))
+                .stroke(Color.status(.green), style: Self.style)
+                .rotationEffect(.degrees(-90))
+                .animation(Motion.level, value: level)
         }
         .frame(width: 19, height: 19)
-        .animation(Motion.level, value: level == nil)
     }
 
     static let line: CGFloat = 2.6
     static let style = StrokeStyle(lineWidth: line, lineCap: .round)
-}
-
-private struct FillingArc: View {
-    let level: Double
-
-    var body: some View {
-        Circle()
-            .trim(from: 0, to: level)
-            .stroke(Color.status(.green), style: BatteryRing.style)
-            .rotationEffect(.degrees(-90))
-            .animation(Motion.level, value: level)
-    }
-}
-
-private struct TurningArc: View {
-    @State private var turning = false
-
-    var body: some View {
-        Circle()
-            .trim(from: 0, to: 0.28)
-            .stroke(Color.status(.green), style: BatteryRing.style)
-            .rotationEffect(.degrees(turning ? 270 : -90))
-            .animation(.linear(duration: 0.9).repeatForever(autoreverses: false), value: turning)
-            // Reduce Motion: the short arc stands still until the level arrives.
-            .onAppear { turning = !Motion.reduceMotion }
-    }
 }
 
 extension Color {

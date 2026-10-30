@@ -1,7 +1,9 @@
 import Foundation
 import IOBluetooth
 
-/// Reports Bluetooth devices as they connect, with battery levels when macOS publishes them.
+/// Reports Bluetooth devices as they connect, once each, with the battery level when macOS publishes
+/// one. AirPods report theirs a moment after connecting, so the report waits for it (up to 3 s), the way
+/// Apple's own connection view arrives with the level already in its ring.
 final class BluetoothMonitor: NSObject {
     nonisolated struct Device: Sendable {
         let name: String
@@ -9,12 +11,14 @@ final class BluetoothMonitor: NSObject {
         let address: String
     }
 
-    var onConnect: ((Device) -> Void)?
-    /// A battery level arrived for a device that connected a moment ago.
-    var onBattery: ((Device, Int) -> Void)?
+    var onConnect: ((Device, _ battery: Int?) -> Void)?
+    /// When a device last connected, reported or not: sound moving to it is part of connecting.
+    private(set) var lastConnection: Date?
 
     private var connectNotification: IOBluetoothUserNotification?
     private var startedAt = Date()
+    /// Names reported in the last few seconds: AirPods connect over more than one link.
+    private var recent: [String: Date] = [:]
 
     func start() {
         startedAt = Date()
@@ -28,33 +32,44 @@ final class BluetoothMonitor: NSObject {
 
     /// IOBluetooth calls this on its own queue; read the device there, then hop to main.
     @objc nonisolated private func deviceConnected(_ notification: IOBluetoothUserNotification, device: IOBluetoothDevice) {
-        let info = Device(name: device.name ?? "Bluetooth device", symbol: Self.symbol(for: device), address: device.addressString ?? "")
+        let name = device.name ?? ""
+        let info = Device(name: name, symbol: Self.symbol(for: device), address: device.addressString ?? "")
         Task { @MainActor [weak self] in self?.connected(info) }
     }
 
     private func connected(_ info: Device) {
         // Registration replays devices that were already connected; only announce new connections.
         guard Date().timeIntervalSince(startedAt) > 3 else { return }
-        onConnect?(info)
-        fetchBattery(for: info)
-    }
-
-    /// AirPods report battery a beat after connecting; system_profiler is the public place it appears.
-    private func fetchBattery(for device: Device) {
-        guard !device.address.isEmpty else { return }
+        lastConnection = .now
+        // A link without a name is a second link of something already connecting (AirPods open one
+        // before their name arrives); it has nothing to show.
+        guard !info.name.isEmpty else { return }
+        if let at = recent[info.name], Date.now.timeIntervalSince(at) < 10 { return }
+        recent = recent.filter { Date.now.timeIntervalSince($0.value) < 10 }
+        recent[info.name] = .now
         Task { [weak self] in
-            for delay in [1.5, 3.0] {
-                try? await Task.sleep(for: .seconds(delay))
-                if let level = await Self.batteryLevel(address: device.address) {
-                    self?.onBattery?(device, level)
-                    return
+            var listing: Listing?
+            if !info.address.isEmpty {
+                for delay in [0.3, 0.6, 0.9, 1.2] {
+                    try? await Task.sleep(for: .seconds(delay))
+                    listing = await Self.listing(address: info.address)
+                    if listing?.level != nil { break }
                 }
             }
+            // macOS knows the exact model by now: the symbol Apple draws for it.
+            let symbol = HeadphoneSymbol.symbol(productID: listing?.productID, name: info.name) ?? info.symbol
+            self?.onConnect?(Device(name: info.name, symbol: symbol, address: info.address), listing?.level)
         }
     }
 
-    nonisolated private static func batteryLevel(address: String) async -> Int? {
-        await Task.detached(priority: .utility) { () -> Int? in
+    nonisolated struct Listing: Sendable {
+        var level: Int?
+        var productID: Int?
+    }
+
+    /// What system_profiler, the public place AirPods' levels appear, lists for one device.
+    nonisolated private static func listing(address: String) async -> Listing? {
+        await Task.detached(priority: .utility) { () -> Listing? in
             let process = Process()
             process.executableURL = URL(fileURLWithPath: "/usr/sbin/system_profiler")
             process.arguments = ["SPBluetoothDataType", "-json"]
@@ -64,11 +79,11 @@ final class BluetoothMonitor: NSObject {
             guard (try? process.run()) != nil else { return nil }
             let data = pipe.fileHandleForReading.readDataToEndOfFile()
             process.waitUntilExit()
-            return parseBattery(data, address: address)
+            return parseListing(data, address: address)
         }.value
     }
 
-    nonisolated private static func parseBattery(_ data: Data, address: String) -> Int? {
+    nonisolated static func parseListing(_ data: Data, address: String) -> Listing? {
         guard let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let sections = root["SPBluetoothDataType"] as? [[String: Any]]
         else { return nil }
@@ -82,7 +97,8 @@ final class BluetoothMonitor: NSObject {
                     // AirPods report left/right/case; headphones and keyboards report one level.
                     let keys = ["device_batteryLevelMain", "device_batteryLevelLeft", "device_batteryLevelRight"]
                     let levels = keys.compactMap { (props[$0] as? String).flatMap { Int($0.replacingOccurrences(of: "%", with: "")) } }
-                    return levels.min()
+                    let productID = (props["device_productID"] as? String).flatMap { Int($0.replacingOccurrences(of: "0x", with: ""), radix: 16) }
+                    return Listing(level: levels.min(), productID: productID)
                 }
             }
         }
