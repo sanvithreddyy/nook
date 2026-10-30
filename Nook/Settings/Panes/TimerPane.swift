@@ -10,7 +10,7 @@ struct TimerPane: View {
     }()
 
     var body: some View {
-        SettingsPage(title: "Timer", area: Prefs.timerArea) {
+        SettingsPage(title: "Timer", area: Prefs.timerArea, preview: "Opens the timer on the notch while one is running.") {
             SettingsSection {
                 SettingsRow("Sound when it ends",
                             description: "Start a timer from the island's right-click menu. On the open timer, scroll over the time to add or take off minutes.") {

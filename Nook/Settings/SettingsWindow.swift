@@ -5,7 +5,8 @@ final class SettingsWindowController {
     static let shared = SettingsWindowController()
     private var window: NSWindow?
 
-    func show(activate: Bool = true) {
+    func show(activate: Bool = true, pane: SettingsPane? = nil) {
+        if let pane { SettingsNavigation.shared.pane = pane }
         if window == nil {
             let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 820, height: 600),
                                   styleMask: [.titled, .closable, .miniaturizable, .fullSizeContentView],
@@ -159,6 +160,16 @@ final class SettingsNavigation {
     var pane: SettingsPane = .general
 }
 
+/// Shows the part of the island the settings page is about on the real notch while it's open (the
+/// home, the player, a volume HUD at the real level), so changes show as they're made.
+@Observable
+final class IslandPreview {
+    static let shared = IslandPreview()
+    var isOn = false
+    /// Follows the page Settings shows.
+    var pane: SettingsPane = .general
+}
+
 struct SettingsView: View {
     @Bindable private var navigation = SettingsNavigation.shared
     @State private var query = ""
@@ -218,6 +229,7 @@ struct SettingsView: View {
             }
         }
         .frame(minWidth: 760, minHeight: 520)
+        .onChange(of: navigation.pane, initial: true) { _, pane in IslandPreview.shared.pane = pane }
         // Otherwise a solid bar sits behind the toolbar once the sidebar is toggled or the window is inactive.
         .toolbarBackgroundVisibility(.hidden, for: .windowToolbar)
     }

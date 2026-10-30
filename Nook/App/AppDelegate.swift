@@ -24,6 +24,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         installStatusItem()
         #if DEBUG
         if CommandLine.arguments.contains("-settings-capture") { SettingsWindowController.shared.runCapture() }
+        // -settings-preview <pane>: Settings on that page with "Preview on the notch" on, for captures.
+        let args = CommandLine.arguments
+        if let i = args.firstIndex(of: "-settings-preview"), i + 1 < args.count, let pane = SettingsPane(rawValue: args[i + 1]) {
+            SettingsWindowController.shared.show(activate: false, pane: pane)
+            Task { @MainActor in
+                try? await Task.sleep(for: .seconds(1))
+                IslandPreview.shared.isOn = true
+            }
+        }
         #endif
         hideIconObserver = UserDefaults.standard.observe(\.hideMenuBarIcon, options: [.new]) { [weak self] _, _ in
             Task { @MainActor in self?.installStatusItem() }

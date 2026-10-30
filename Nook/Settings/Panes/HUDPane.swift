@@ -10,7 +10,7 @@ struct HUDPane: View {
     private let poll = Timer.publish(every: 1.5, on: .main, in: .common).autoconnect()
 
     var body: some View {
-        SettingsPage(title: "Volume & Brightness", area: Prefs.hudsArea) {
+        SettingsPage(title: "Volume & Brightness", area: Prefs.hudsArea, preview: "Shows the volume on the notch, at its real level, while you change things here.") {
             SettingsSection {
                 SettingsToggle("Replace the volume HUD", isOn: $volumeHUD)
                 SettingsToggle("Replace the brightness HUD", description: "Option-Shift with a key moves in quarter steps.", isOn: $brightnessHUD)

@@ -5,7 +5,7 @@ struct BatteryPane: View {
     @AppStorage(Prefs.lowBatteryThreshold) private var threshold = 20
 
     var body: some View {
-        SettingsPage(title: "Battery", area: Prefs.batteryArea) {
+        SettingsPage(title: "Battery", area: Prefs.batteryArea, preview: "Shows the battery notice on the notch while you change things here.") {
             SettingsSection {
                 SettingsToggle("Charging and battery notices", isOn: $enabled)
                 SettingsRow("Warn at") {

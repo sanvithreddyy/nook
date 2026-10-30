@@ -44,7 +44,7 @@ struct ShelfPage: View {
                 Button("Clear Shelf") { withAnimation(Motion.peekOut) { shelf.clear() } }
                 Divider()
             }
-            SettingsMenuItem()
+            SettingsMenuItem(pane: .shelf)
         }
     }
 }

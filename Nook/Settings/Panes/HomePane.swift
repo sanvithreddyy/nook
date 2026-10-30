@@ -8,13 +8,10 @@ struct HomePane: View {
     @AppStorage(Prefs.homeSize) private var size = HomeSize.medium
     @AppStorage(Prefs.homeOrder) private var orderText = HomeOrder.string(HomeModule.allCases)
     @AppStorage(Prefs.homeHidden) private var hiddenText = ""
-    @Bindable private var preview = IslandPreview.shared
 
     var body: some View {
-        SettingsPage(title: "Home", area: Prefs.homeArea) {
-            SettingsSection(footer: "Keeps the island open while you change things here, with what's playing and your real events.") {
-                SettingsToggle("Preview on the notch", isOn: $preview.isOn)
-            }
+        SettingsPage(title: "Home", area: Prefs.homeArea,
+                     preview: "Keeps the island open while you change things here, with what's playing and your real events.") {
             SettingsSection("Layout") {
                 HomeLayoutPicker(selection: $layout)
                     .frame(maxWidth: .infinity)
@@ -47,7 +44,6 @@ struct HomePane: View {
             CalendarModuleOptions()
             BatteriesModuleOptions()
         }
-        .onDisappear { preview.isOn = false }
     }
 
     private var order: [HomeModule] {
@@ -285,10 +281,3 @@ private struct CalendarSketch: View {
     }
 }
 
-/// Keeps the island open on its home while Settings shows the Home pane, so changes show on the
-/// real notch as they're made.
-@Observable
-final class IslandPreview {
-    static let shared = IslandPreview()
-    var isOn = false
-}

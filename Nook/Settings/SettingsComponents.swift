@@ -17,12 +17,16 @@ enum SettingsTheme {
 struct SettingsPage<Content: View>: View {
     let title: String
     var area: PrefsArea?
+    /// What "Preview on the notch" shows for this page; pages without island content have none.
+    var preview: String?
     @ViewBuilder var content: Content
     @State private var confirmingReset = false
+    @Bindable private var islandPreview = IslandPreview.shared
 
-    init(title: String, area: PrefsArea? = nil, @ViewBuilder content: () -> Content) {
+    init(title: String, area: PrefsArea? = nil, preview: String? = nil, @ViewBuilder content: () -> Content) {
         self.title = title
         self.area = area
+        self.preview = preview
         self.content = content()
     }
 
@@ -30,6 +34,11 @@ struct SettingsPage<Content: View>: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
                 Text(title).font(.title2.weight(.semibold))
+                if let preview {
+                    SettingsSection(footer: preview) {
+                        SettingsToggle("Preview on the notch", isOn: $islandPreview.isOn)
+                    }
+                }
                 content
                 if area != nil {
                     Button("Reset to Defaults…") { confirmingReset = true }

@@ -10,7 +10,7 @@ struct CalendarPane: View {
     private let poll = Timer.publish(every: 1.5, on: .main, in: .common).autoconnect()
 
     var body: some View {
-        SettingsPage(title: "Calendar", area: Prefs.calendarArea) {
+        SettingsPage(title: "Calendar", area: Prefs.calendarArea, preview: "Opens the calendar on the notch while you change things here.") {
             SettingsSection {
                 SettingsToggle("Show upcoming events", isOn: $enabled)
                 SettingsRow("Show a meeting in the notch") {

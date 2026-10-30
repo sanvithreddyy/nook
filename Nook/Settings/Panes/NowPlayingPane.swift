@@ -15,7 +15,7 @@ struct NowPlayingPane: View {
     @AppStorage(Prefs.mediaIgnoredApps) private var ignoredText = ""
 
     var body: some View {
-        SettingsPage(title: "Now Playing", area: Prefs.mediaArea) {
+        SettingsPage(title: "Now Playing", area: Prefs.mediaArea, preview: "Opens the player on the notch while you change things here.") {
             SettingsSection {
                 SettingsToggle("Show what's playing", isOn: $enabled)
                 SettingsRow("Keep a paused player") {

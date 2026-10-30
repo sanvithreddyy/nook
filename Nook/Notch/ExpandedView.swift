@@ -32,7 +32,13 @@ struct ExpandedView: View {
         .contextMenu {
             TimerMenu()
             Divider()
-            SettingsMenuItem()
+            if !card.modules.isEmpty {
+                Button("Edit Home…") {
+                    IslandPreview.shared.isOn = true
+                    SettingsWindowController.shared.show(pane: .home)
+                }
+            }
+            SettingsMenuItem(pane: card.settingsPane)
         }
         .onAppear {
             // Calendar access granted in System Settings shows up the next time the island opens,
@@ -88,9 +94,43 @@ private struct PageDots: View {
     }
 }
 
+/// Opens Settings on the page for what was right-clicked.
 struct SettingsMenuItem: View {
+    var pane: SettingsPane?
+
     var body: some View {
-        Button("Settings…") { SettingsWindowController.shared.show() }
+        Button("Settings…") { SettingsWindowController.shared.show(pane: pane) }
+    }
+}
+
+extension IslandCard {
+    var settingsPane: SettingsPane {
+        switch self {
+        case .home: .home
+        case .meeting: .calendar
+        case .timer: .timer
+        case .shelf: .shelf
+        }
+    }
+}
+
+extension NotchModel {
+    /// The settings page for what the closed island shows.
+    var settingsPane: SettingsPane {
+        if let notification {
+            switch notification {
+            case .volume, .brightness: return .huds
+            case .charging, .onBattery, .lowBattery, .lowPowerMode: return .battery
+            case .device, .audioSwitched: return .connectivity
+            }
+        }
+        switch liveActivity {
+        case .nowPlaying: return .nowPlaying
+        case .locked, .unlocked: return .lock
+        case .calendar: return .calendar
+        case .timer: return .timer
+        case nil: return .general
+        }
     }
 }
 

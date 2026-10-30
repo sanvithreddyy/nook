@@ -437,18 +437,61 @@ final class NotchCoordinator {
     private func observePreview() {
         withObservationTracking {
             _ = IslandPreview.shared.isOn
+            _ = IslandPreview.shared.pane
         } onChange: { [weak self] in
             Task { @MainActor in
-                guard let self else { return }
-                let on = IslandPreview.shared.isOn
-                self.model.isPreviewing = on
-                if on, !self.model.isSuppressed {
-                    self.model.expand(card: self.model.cards.first { !$0.modules.isEmpty })
-                } else if !on, !self.model.isHovering {
-                    self.model.collapse()
-                }
-                self.observePreview()
+                self?.showPreview()
+                self?.observePreview()
             }
+        }
+    }
+
+    /// A notice the preview put up, taken down when the preview moves on.
+    private var previewNotice = false
+
+    /// Shows what the settings page is about: an open page for the island's own content, a closed
+    /// notice for volume, battery and connections.
+    private func showPreview() {
+        let preview = IslandPreview.shared
+        model.isPreviewing = preview.isOn
+        if previewNotice {
+            previewNotice = false
+            model.dismissNotification()
+        }
+        guard preview.isOn, !model.isSuppressed else {
+            if !model.isHovering { model.collapse() }
+            return
+        }
+        let cards = model.cards
+        func page(with module: HomeModule) -> IslandCard? { cards.first { $0.modules.contains(module) } }
+        func notice(_ note: NotchNotification) {
+            model.collapse()
+            model.post(note, for: .seconds(3600))
+            previewNotice = true
+        }
+        switch preview.pane {
+        case .nowPlaying:
+            if let music = page(with: .music) { model.expand(card: music) } else { model.collapse() }
+        case .calendar:
+            if let calendar = page(with: .calendar) ?? cards.first(where: { $0.settingsPane == .calendar }) {
+                model.expand(card: calendar)
+            } else {
+                model.collapse()
+            }
+        case .timer:
+            if cards.contains(.timer) { model.expand(card: .timer) } else { model.collapse() }
+        case .shelf:
+            if cards.contains(.shelf) { model.expand(card: .shelf) } else { model.collapse() }
+        case .huds:
+            notice(.volume(level: volume.volume, muted: volume.isMuted, output: volume.headphones))
+        case .battery:
+            if let reading = battery.reading {
+                notice(reading.onAC ? .charging(level: reading.level) : .onBattery(level: reading.level))
+            }
+        case .connectivity:
+            notice(.device(name: "AirPods Pro", symbol: "airpods.pro", battery: 80))
+        default:
+            model.expand(card: cards.first { !$0.modules.isEmpty })
         }
     }
 
