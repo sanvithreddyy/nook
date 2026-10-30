@@ -5,14 +5,15 @@ import SwiftUI
 struct NowPlayingArtworkThumb: View {
     @Environment(NowPlayingModel.self) private var nowPlaying
     @Environment(NotchModel.self) private var model
+    @AppStorage(Prefs.artworkFlip) private var flip = true
 
     var body: some View {
         let side = model.notch.size.height - 10
-        // A ZStack, so the old and new covers overlap while they cross-fade.
+        // A ZStack, so the old and new covers overlap while they change.
         ZStack {
             ArtworkImage(image: nowPlaying.artwork, cornerRadius: 6)
                 .id(nowPlaying.artworkToken)
-                .transition(.artworkSwap)
+                .transition(.artworkChange(flip: flip))
         }
         .sharedElement("artwork")
         .frame(width: side, height: side)
@@ -79,6 +80,7 @@ struct MusicModule: View {
     @AppStorage(Prefs.tintWaveform) private var tintWaveform = true
     @AppStorage(Prefs.musicFavorite) private var showFavorite = true
     @AppStorage(Prefs.musicOutput) private var showOutput = true
+    @AppStorage(Prefs.artworkFlip) private var flip = true
 
     var body: some View {
         VStack(spacing: 0) {
@@ -86,7 +88,7 @@ struct MusicModule: View {
                 ZStack {
                     ArtworkImage(image: nowPlaying.artwork, cornerRadius: 12 * k)
                         .id(nowPlaying.artworkToken)
-                        .transition(.artworkSwap)
+                        .transition(.artworkChange(flip: flip))
                 }
                 .sharedElement("artwork")
                 .frame(width: 64 * k, height: 64 * k)
@@ -373,6 +375,18 @@ struct ArtworkImage: View {
 }
 
 extension AnyTransition {
+    /// A new cover turns in like a card: the old one turns to its edge about the vertical axis, then the
+    /// new one turns out from the other side. Without the flip, or with Reduce Motion, they cross-fade.
+    static func artworkChange(flip: Bool) -> AnyTransition {
+        guard flip, !Motion.reduceMotion else { return artworkSwap }
+        return .asymmetric(
+            insertion: .modifier(active: ArtworkTurn(angle: -90), identity: ArtworkTurn(angle: 0))
+                .animation(Motion.ease(.easeOut(duration: 0.12))?.delay(0.11)),
+            removal: .modifier(active: ArtworkTurn(angle: 90), identity: ArtworkTurn(angle: 0))
+                .animation(Motion.ease(.easeIn(duration: 0.11)))
+        )
+    }
+
     /// A new cover cross-fades in from a soft blur; the old one fades out under it.
     static var artworkSwap: AnyTransition {
         .asymmetric(
@@ -380,5 +394,18 @@ extension AnyTransition {
                                  identity: IslandContentModifier.shown(anchor: .center)),
             removal: .opacity
         )
+    }
+}
+
+/// Half of the artwork's turn: edge-on at 90°, softened a little as it passes the edge.
+private struct ArtworkTurn: ViewModifier {
+    let angle: Double
+
+    func body(content: Content) -> some View {
+        content
+            .rotation3DEffect(.degrees(angle), axis: (x: 0, y: 1, z: 0), perspective: 0.5)
+            .blur(radius: abs(angle) / 90 * 2)
+            // Edge-on it's a sliver; hidden there so the outgoing cover never shows behind the new one.
+            .opacity(abs(angle) < 90 ? 1 : 0)
     }
 }

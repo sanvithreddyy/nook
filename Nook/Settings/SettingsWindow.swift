@@ -91,7 +91,8 @@ enum SettingsPane: String, CaseIterable, Identifiable {
                      "Modules", "Order", "Music", "Favorite button", "Output button", "Calendar", "Week starts on",
                      "Mark days with events", "Weekends in gray", "Batteries", "Include this Mac"]
         case .nowPlaying: ["Show what's playing", "Closed island", "Waveform", "Color the waveform from the artwork",
-                           "Show the title when the track changes", "Show the title on hover", "Music", "Media"]
+                           "Show the title when the track changes", "Show the title on hover", "Artwork",
+                           "Flip the artwork when the track changes", "Album art", "Music", "Media"]
         case .calendar: ["Show upcoming events", "Show a meeting in the notch", "Access", "Calendar access", "Events"]
         case .timer: ["Sound when it ends", "Alarm"]
         case .shelf: ["Open the shelf when a file is dragged to the notch", "Files", "Drop", "AirDrop"]

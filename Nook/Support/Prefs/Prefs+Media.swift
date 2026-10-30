@@ -6,6 +6,7 @@ extension Prefs {
     static let peekOnHover = "peekOnHover"
     static let showWaveform = "showWaveform"
     static let tintWaveform = "tintWaveform"
+    static let artworkFlip = "artworkFlip"
 
     static var mediaArea: PrefsArea {
         PrefsArea(id: "media", defaults: [
@@ -14,6 +15,7 @@ extension Prefs {
             peekOnHover: true,
             showWaveform: true,
             tintWaveform: true,
+            artworkFlip: true,
         ])
     }
 }

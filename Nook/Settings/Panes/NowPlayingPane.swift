@@ -7,6 +7,7 @@ struct NowPlayingPane: View {
     @AppStorage(Prefs.expandOnHover) private var expandOnHover = true
     @AppStorage(Prefs.showWaveform) private var showWaveform = true
     @AppStorage(Prefs.tintWaveform) private var tintWaveform = true
+    @AppStorage(Prefs.artworkFlip) private var artworkFlip = true
 
     var body: some View {
         SettingsPage(title: "Now Playing", area: Prefs.mediaArea) {
@@ -22,6 +23,10 @@ struct NowPlayingPane: View {
                                description: expandOnHover ? "Hovering opens the island instead. Turn off \"Open when the pointer rests on it\" in General to use this." : nil,
                                isOn: $peekOnHover)
                     .disabled(expandOnHover)
+            }
+            .disabled(!enabled)
+            SettingsSection("Artwork") {
+                SettingsToggle("Flip the artwork when the track changes", isOn: $artworkFlip)
             }
             .disabled(!enabled)
         }
