@@ -390,7 +390,7 @@ final class NotchCoordinator {
         if !hide, let level = pendingLowBattery {
             pendingLowBattery = nil
             // Skip it if the Mac was plugged in, or the warning turned off, while the island was hidden.
-            if battery.reading?.onAC == false, Prefs.bool(Prefs.lowBatteryWarning) {
+            if battery.reading?.onAC == false, Prefs.bool(Prefs.battery), Prefs.bool(Prefs.lowBatteryWarning) {
                 warnLowBattery(level)
             }
         }
@@ -534,8 +534,7 @@ final class NotchCoordinator {
         }
     }
 
-    /// Settings' "Preview on the notch": open the island on its first home page and keep it open
-    /// until the preview ends.
+    /// Settings' "Preview on the notch", following the switch and the page Settings shows.
     private func observePreview() {
         withObservationTracking {
             _ = IslandPreview.shared.isOn
@@ -548,7 +547,6 @@ final class NotchCoordinator {
         }
     }
 
-    /// A notice the preview put up, taken down when the preview moves on.
     /// The notice the preview put up, taken down when the preview moves on unless a real one replaced it.
     private var previewNotice: NotchNotification?
     /// The preview was showing something last time, so turning it off has something to undo.
@@ -651,6 +649,8 @@ final class NotchCoordinator {
     }
 
     private func trackChanged() {
+        // A player letting go of its track changes what "only the app that's playing" hides.
+        updateFullscreen()
         guard nowPlaying.hasTrack, nowPlaying.isPlaying || nowPlayingVisible else {
             refreshActivity()
             return

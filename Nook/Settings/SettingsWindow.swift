@@ -24,7 +24,6 @@ final class SettingsWindowController {
             window.contentViewController = NSHostingController(rootView: SettingsView())
             window.setContentSize(NSSize(width: 820, height: 600))
             window.center()
-            // The preview holds the island open only while Settings is there to change it.
             // The preview holds the island only while Settings is there to change it: closed, minimized,
             // or Nook sent to the background (Command-Tab, hidden), it ends.
             let center = NotificationCenter.default

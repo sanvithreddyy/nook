@@ -33,8 +33,15 @@ struct ShortcutRuleTests {
         #expect(Shortcut(event: press("q", code: 12, [.command, .shift])) == nil)
     }
 
-    @Test func plainLettersStayTyping() {
+    @Test func plainAndOptionLettersStayTyping() {
         #expect(Shortcut(event: press("n", code: 45, [])) == nil)
+        // Option-E types é.
+        #expect(Shortcut(event: press("e", code: 14, [.option])) == nil)
+    }
+
+    @Test func aSavedCommandShortcutIsntAllowed() {
+        #expect(Shortcut(keyCode: 45, modifiers: 768, label: "⇧⌘N").isAllowed == false)
+        #expect(Shortcut(keyCode: 45, modifiers: 4096, label: "⌃N").isAllowed == true)
     }
 
     @Test func controlOrOptionMakesAShortcut() {

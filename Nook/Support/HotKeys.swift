@@ -29,8 +29,9 @@ final class HotKeys {
     func update() {
         guard !isSuspended else { return }
         var wanted: [ShortcutAction: Shortcut] = [:]
+        // One saved before the rule tightened, or edited by hand, isn't registered either.
         for action in ShortcutAction.allCases {
-            if let shortcut = Shortcut.saved(action) { wanted[action] = shortcut }
+            if let shortcut = Shortcut.saved(action), shortcut.isAllowed { wanted[action] = shortcut }
         }
         guard wanted != current else { return }
         current = wanted
@@ -78,14 +79,19 @@ final class HotKeys {
 }
 
 extension Shortcut {
-    /// The shortcut a key press makes, or nil for keys it shouldn't take. A shortcut here works in every
-    /// app and wins over their menus, so it needs Control or Option: a plain letter would stop that
-    /// letter typing anywhere, and Command with a key (Close, Settings, Quit) belongs to the app in
-    /// front. Function keys can stand alone.
+    /// A shortcut here works in every app and wins over their menus, so it needs Control, or Option
+    /// with Command: a plain letter or an Option letter (é is Option-E) would stop that character typing
+    /// anywhere, and Command with a key (Close, Settings, Quit) belongs to the app in front. Function
+    /// keys can stand alone.
+    var isAllowed: Bool {
+        Self.functionKeys[UInt16(keyCode)] != nil
+            || modifiers & UInt32(controlKey) != 0
+            || (modifiers & UInt32(optionKey) != 0 && modifiers & UInt32(cmdKey) != 0)
+    }
+
+    /// The shortcut a key press makes, or nil for one it shouldn't take (see `isAllowed`).
     init?(event: NSEvent) {
         let flags = event.modifierFlags.intersection([.command, .option, .control, .shift])
-        let isFunctionKey = Self.functionKeys[event.keyCode] != nil
-        guard isFunctionKey || !flags.intersection([.option, .control]).isEmpty else { return nil }
         var carbon: UInt32 = 0
         if flags.contains(.command) { carbon |= UInt32(cmdKey) }
         if flags.contains(.option) { carbon |= UInt32(optionKey) }
@@ -101,6 +107,7 @@ extension Shortcut {
             ?? (event.characters(byApplyingModifiers: []) ?? event.charactersIgnoringModifiers)?.uppercased() ?? ""
         guard !key.isEmpty else { return nil }
         self.init(keyCode: UInt32(event.keyCode), modifiers: carbon, label: label + key)
+        guard isAllowed else { return nil }
     }
 
     private static let functionKeys: [UInt16: String] = [

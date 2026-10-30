@@ -21,6 +21,14 @@ struct CalendarActivityTests {
         #expect(model.eventForLiveActivity(now: now, leadMinutes: 10, stayMinutes: -1)?.id == "one-on-one")
     }
 
+    @Test func aMeetingThatJustStartedBeatsTheNext() {
+        let model = CalendarModel()
+        // The 10:00 started a minute ago; the 10:10 is nine minutes out. The 10:00 is the one to join.
+        model.debugSet([event("ten", startsIn: -1, lasts: 30), event("ten-ten", startsIn: 9, lasts: 30)])
+        #expect(model.eventForLiveActivity(now: now, leadMinutes: 10, stayMinutes: 5)?.id == "ten")
+        #expect(model.eventForLiveActivity(now: now, leadMinutes: 10, stayMinutes: -1)?.id == "ten")
+    }
+
     @Test func aMeetingUnderWayShowsWhenNothingIsNext() {
         let model = CalendarModel()
         model.debugSet([event("workshop", startsIn: -60, lasts: 240)])

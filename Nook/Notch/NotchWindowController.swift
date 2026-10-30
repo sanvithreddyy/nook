@@ -179,7 +179,9 @@ final class NotchWindowController {
         if let outside = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown], handler: { [weak self] _ in
             // Clicking another app also ends Settings' preview, which would otherwise hold the island open.
             IslandPreview.shared.isOn = false
-            self?.model.collapse()
+            // The page the preview showed isn't one you left open, so "Last page" doesn't keep it.
+            guard let self else { return }
+            self.model.collapse(remembering: !self.model.isPreviewing)
         }) { monitors.append(outside) }
     }
 
@@ -247,7 +249,7 @@ final class NotchWindowController {
     private func startDwell() {
         hoverIntentTask?.cancel()
         hoverIntentTask = Task { [weak self] in
-            try? await Task.sleep(for: .seconds(Prefs.double(Prefs.hoverDelay)))
+            try? await Task.sleep(for: .seconds(max(Prefs.double(Prefs.hoverDelay), 0.05)))
             guard !Task.isCancelled else { return }
             self?.hoverDwelled()
         }

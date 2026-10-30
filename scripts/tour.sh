@@ -8,7 +8,8 @@ out=build/tour; rm -rf $out; mkdir -p $out
 app=build/Build/Products/Debug/Nook.app/Contents/MacOS/Nook
 pkill -f "$app" 2>/dev/null || true
 # Recording happens over whatever is on screen, fullscreen apps included.
-trap nook_unlock EXIT
+# On any exit, the recording and the tour's Nook stop too (background jobs don't get Control-C).
+trap 'kill ${rec:-} ${appPID:-} 2>/dev/null || true; nook_unlock' EXIT
 nook_show
 screen_w=$(osascript -l JavaScript -e 'ObjC.import("AppKit"); $.NSScreen.screens.objectAtIndex(0).frame.size.width' 2>/dev/null || echo 1512)
 w=820; h=260; x=$(( (${screen_w%.*} - w) / 2 ))

@@ -5,7 +5,7 @@ import SwiftUI
 struct ShortcutsPane: View {
     var body: some View {
         SettingsPage(title: "Keyboard Shortcuts", area: Prefs.shortcutsArea) {
-            SettingsSection(footer: "Click a shortcut, then press the keys. Each one needs Control or Option, so it never takes over an app's own Command shortcuts. Escape cancels; Delete clears it. One another app has already claimed won't work.") {
+            SettingsSection(footer: "Click a shortcut, then press the keys. Each one needs Control, or Option with Command, so it never takes over an app's own shortcuts or a typed character. Escape cancels; Delete clears it. One another app has already claimed won't work.") {
                 ForEach(ShortcutAction.allCases) { action in
                     SettingsRow(action.title) { ShortcutRecorder(action: action) }
                 }

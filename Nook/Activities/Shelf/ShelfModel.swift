@@ -152,8 +152,7 @@ final class ShelfModel {
         if Prefs.bool(Prefs.shelfDropMissing) { current.removeAll(where: \.isMissing) }
         guard current != items else { return }
         items = current
-        // Sample files shown for screenshots never replace the real shelf.
-        if !isPreview { save() }
+        save()
     }
 
     /// The shelf shows sample files for screenshots (a debug run), so nothing is saved.
@@ -173,6 +172,8 @@ final class ShelfModel {
     }
 
     private func save() {
+        // Sample files shown for screenshots never replace the real shelf.
+        guard !isPreview else { return }
         guard let data = try? JSONEncoder().encode(items) else { return }
         try? data.write(to: indexURL, options: .atomic)
     }

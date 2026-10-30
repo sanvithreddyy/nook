@@ -140,8 +140,8 @@ final class CalendarModel {
 
     /// The timed event starting within the lead time, or one under way for less than Settings'
     /// "once it starts" time, unless its meeting card was dismissed.
-    /// A meeting about to start comes first, so one that's still going ("until it ends") never hides
-    /// the next one's countdown.
+    /// A meeting in its first five minutes comes first: it's the one to join. After that a meeting
+    /// about to start wins over one still going ("until it ends"), so the next countdown shows.
     func eventForLiveActivity(now: Date = .now, leadMinutes: Int = Prefs.int(Prefs.calendarLeadMinutes),
                               stayMinutes: Int = Prefs.int(Prefs.calendarStayMinutes)) -> CalendarEvent? {
         let lead = TimeInterval(max(leadMinutes, 1) * 60)
@@ -153,7 +153,8 @@ final class CalendarModel {
                 && event.start.timeIntervalSince(now) <= lead
                 && (stayMinutes < 0 || now.timeIntervalSince(event.start) < TimeInterval(stayMinutes * 60))
         }
-        return candidates.first { $0.start > now } ?? candidates.first
+        let justStarted = candidates.first { $0.start <= now && now.timeIntervalSince($0.start) < 5 * 60 }
+        return justStarted ?? candidates.first { $0.start > now } ?? candidates.first
     }
 
     /// Its meeting card was dismissed, so it shouldn't chime or show its title either.

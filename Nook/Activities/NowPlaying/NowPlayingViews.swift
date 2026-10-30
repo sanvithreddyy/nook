@@ -296,7 +296,7 @@ private struct SideButton: View {
         case .shuffle:
             SideGlyph(symbol: "shuffle", lit: nowPlaying.isShuffled, label: "Shuffle") { nowPlaying.toggleShuffle() }
         case .repeatMode:
-            SideGlyph(symbol: nowPlaying.repeatMode == 2 ? "repeat.1" : "repeat", lit: nowPlaying.repeatMode != 1,
+            SideGlyph(symbol: nowPlaying.repeatMode == 2 ? "repeat.1" : "repeat", lit: nowPlaying.repeatMode == 2 || nowPlaying.repeatMode == 3,
                       label: "Repeat", value: ["Off", "One", "All"][max(min(nowPlaying.repeatMode, 3), 1) - 1]) { nowPlaying.cycleRepeat() }
         case .back15:
             SideGlyph(symbol: "gobackward.15", label: "Back 15 seconds") { nowPlaying.skip(by: -15) }
