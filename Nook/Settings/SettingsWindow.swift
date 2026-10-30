@@ -11,6 +11,8 @@ final class SettingsWindowController {
                                   styleMask: [.titled, .closable, .miniaturizable, .fullSizeContentView],
                                   backing: .buffered, defer: false)
             window.title = "Nook"
+            // Each page carries its own title; the window's would float over the page as it scrolls.
+            window.titleVisibility = .hidden
             window.titlebarAppearsTransparent = true
             window.toolbarStyle = .unified
             window.isReleasedWhenClosed = false

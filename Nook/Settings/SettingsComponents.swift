@@ -41,6 +41,7 @@ struct SettingsPage<Content: View>: View {
             .frame(maxWidth: 640, alignment: .leading)
             .frame(maxWidth: .infinity)
         }
+        .softTopEdge()
         .confirmationDialog("Reset \(title) settings?", isPresented: $confirmingReset) {
             Button("Reset", role: .destructive) { if let area { Prefs.reset(area) } }
         } message: {
@@ -151,6 +152,15 @@ struct SettingsToggle: View {
 }
 
 extension View {
+    /// Rows fade as they scroll up under the window's toolbar instead of running into it.
+    @ViewBuilder func softTopEdge() -> some View {
+        if #available(macOS 26.0, *) {
+            scrollEdgeEffectStyle(.soft, for: .top)
+        } else {
+            self
+        }
+    }
+
     /// A segmented picker sized to its options, label hidden (the row carries it).
     func segmentedStyle() -> some View {
         pickerStyle(.segmented).labelsHidden().fixedSize()
