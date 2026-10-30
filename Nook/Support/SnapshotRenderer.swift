@@ -54,7 +54,7 @@ enum SnapshotRenderer {
 
     static var sampleFiles: [URL] {
         let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
-        return ["scripts/build.sh", "project.yml", "scripts/tour.sh"].map { root.appendingPathComponent($0) }
+        return ["project.yml", "scripts/build.sh", "scripts/tour.sh", "Nook/Info.plist"].map { root.appendingPathComponent($0) }
     }
 
     private static func render(_ c: NotchCoordinator, wallpaper: NSImage?, to url: URL) {

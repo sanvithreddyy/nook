@@ -163,7 +163,7 @@ final class NotchCoordinator {
                 }
                 if args.contains("-preview-shelf") {
                     let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
-                    shelf.debugPreview(["scripts/build.sh", "project.yml", "Nook/Info.plist"].map { root.appendingPathComponent($0) })
+                    shelf.debugPreview(["project.yml", "scripts/build.sh", "Nook/Info.plist"].map { root.appendingPathComponent($0) })
                 }
                 if args.contains("-expand") {
                     model.expand(card: args.contains("-shelf") ? .shelf : args.contains("-timer-card") ? .timer : nil)

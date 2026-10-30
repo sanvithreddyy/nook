@@ -1,7 +1,8 @@
 import AppKit
 import SwiftUI
 
-/// Every spring the island uses (mass 1, stiffness / damping). Exits are damped like their entrances, so a shrinking island never dips
+/// Every spring the island uses (mass 1, stiffness / damping). Exits are damped like their
+/// entrances, so a shrinking island never dips
 /// past its size, and feedback (press, hover) answers within about a quarter of a second.
 enum Motion {
     static var hoverIn: Animation? { spring(440, 31) }
