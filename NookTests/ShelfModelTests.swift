@@ -2,17 +2,23 @@ import Foundation
 import Testing
 
 
-/// Removing things from the shelf must never destroy a user's file.
+/// Removing things from the shelf must never destroy a user's file. A class, so each test's folder is
+/// removed when the test ends.
 @MainActor
-struct ShelfModelTests {
+final class ShelfModelTests {
+    let base: URL
     let root: URL
     let elsewhere: URL
 
     init() throws {
-        let base = FileManager.default.temporaryDirectory.appendingPathComponent("NookShelfTests-\(UUID().uuidString)")
+        base = FileManager.default.temporaryDirectory.appendingPathComponent("NookShelfTests-\(UUID().uuidString)")
         root = base.appendingPathComponent("Nook")
         elsewhere = base.appendingPathComponent("Documents")
         try FileManager.default.createDirectory(at: elsewhere, withIntermediateDirectories: true)
+    }
+
+    deinit {
+        try? FileManager.default.removeItem(at: base)
     }
 
     private func makeFile(_ name: String, in folder: URL) throws -> URL {
