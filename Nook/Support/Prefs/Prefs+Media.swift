@@ -51,7 +51,7 @@ extension Prefs {
             artworkFlip: true,
             pausedLinger: 5,
             peekDuration: 3.0,
-            hideWhenPlayerFront: false,
+            hideWhenPlayerFront: true,
             mediaIgnoredApps: "",
         ])
     }

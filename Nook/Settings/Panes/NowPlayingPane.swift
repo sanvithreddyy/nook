@@ -11,7 +11,7 @@ struct NowPlayingPane: View {
     @AppStorage(Prefs.artworkFlip) private var artworkFlip = true
     @AppStorage(Prefs.pausedLinger) private var pausedLinger = 5
     @AppStorage(Prefs.peekDuration) private var peekDuration = 3.0
-    @AppStorage(Prefs.hideWhenPlayerFront) private var hideWhenPlayerFront = false
+    @AppStorage(Prefs.hideWhenPlayerFront) private var hideWhenPlayerFront = true
     @AppStorage(Prefs.mediaIgnoredApps) private var ignoredText = ""
 
     var body: some View {
@@ -29,7 +29,7 @@ struct NowPlayingPane: View {
                     .menuStyle()
                 }
                 .disabled(!enabled)
-                SettingsToggle("Hide while the player is in front", description: "The closed island leaves the music out while you're in the app that's playing. The open island still shows the player.",
+                SettingsToggle("Hide while the player is in front", description: "The closed island leaves out what's playing while its app is in front, as when you watch a video. The open island still shows the player.",
                                isOn: $hideWhenPlayerFront)
                     .disabled(!enabled)
             }
