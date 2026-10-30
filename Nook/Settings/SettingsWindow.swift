@@ -136,7 +136,8 @@ enum SettingsPane: String, CaseIterable, Identifiable {
                          "Show its title under the island", "Sound", "Chime", "Hide all-day events", "All-day",
                          "Calendars", "Calendar colors"]
         case .timer: ["Sound when it ends", "Alarm"]
-        case .shelf: ["Open the shelf when a file is dragged to the notch", "Files", "Drop", "AirDrop"]
+        case .shelf: ["Open the shelf when a file is dragged to the notch", "Files", "Drop", "AirDrop", "Catch area",
+                      "Tight", "Wide", "Remove files that are gone", "Share"]
         case .huds: ["Replace the volume HUD", "Replace the brightness HUD", "Accessibility access", "Style",
                      "Ledge", "Slider", "Steps", "Outline", "Show the level as a number", "Percentage", "Stays for",
                      "Duration"]

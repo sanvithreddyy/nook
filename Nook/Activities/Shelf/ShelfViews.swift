@@ -37,6 +37,7 @@ struct ShelfPage: View {
         .padding(.top, model.notch.size.height + 12)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .animation(Motion.reshape, value: model.isDraggingFile)
+        .onAppear { shelf.refresh() }
         .contextMenu {
             Button("Add Files…") { shelf.chooseFiles() }
             if !shelf.isEmpty {
@@ -259,6 +260,7 @@ private struct ShelfTile: View {
             Button("Open") { shelf.open(item) }
             Button("Show in Finder") { shelf.reveal(item) }
             Button("AirDrop") { AirDrop.send([item.url]) }
+            ShareLink(item: item.url) { Text("Share") }
             Button("Copy") { shelf.copy(item) }
             Divider()
             Button("Remove from Shelf") { shelf.remove(item) }

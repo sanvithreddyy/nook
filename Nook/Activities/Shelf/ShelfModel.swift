@@ -137,19 +137,31 @@ final class ShelfModel {
             try? FileManager.default.moveItem(at: indexURL, to: aside)
             return
         }
-        // Follow files that moved. Items that can't be found right now stay, so an unplugged
-        // disk doesn't empty the shelf.
-        items = stored.map { item in
-            var stale = false
-            guard let url = try? URL(resolvingBookmarkData: item.bookmark, options: [.withoutUI, .withoutMounting], bookmarkDataIsStale: &stale)
-            else { return item }
-            var updated = item
-            updated.path = url.path
-            if item.isOwned, !isInShelfFolder(url) { updated.isOwned = false }
-            if stale, let fresh = try? url.bookmarkData() { updated.bookmark = fresh }
-            return updated
-        }
+        items = stored.map(followed)
         if items != stored { save() }
+    }
+
+    /// Follows files that moved since the shelf last looked, and lets go of ones that are gone when
+    /// Settings asks. Runs as the shelf opens.
+    func refresh() {
+        var current = items.map(followed)
+        if Prefs.bool(Prefs.shelfDropMissing) { current.removeAll(where: \.isMissing) }
+        guard current != items else { return }
+        items = current
+        save()
+    }
+
+    /// Where an item's file is now, by its bookmark. Items that can't be found right now stay as
+    /// they are, so an unplugged disk doesn't empty the shelf.
+    private func followed(_ item: ShelfItem) -> ShelfItem {
+        var stale = false
+        guard let url = try? URL(resolvingBookmarkData: item.bookmark, options: [.withoutUI, .withoutMounting], bookmarkDataIsStale: &stale)
+        else { return item }
+        var updated = item
+        updated.path = url.path
+        if item.isOwned, !isInShelfFolder(url) { updated.isOwned = false }
+        if stale, let fresh = try? url.bookmarkData() { updated.bookmark = fresh }
+        return updated
     }
 
     private func save() {

@@ -132,13 +132,15 @@ final class NotchWindowController {
     }
 
     /// Where a file drag opens the shelf: the island, or the menu-bar strip a little either side of
-    /// the notch. Kept out of app windows below, so drags into a browser's tab bar don't trigger it.
+    /// the notch. Kept out of app windows below, so drags into a browser's tab bar don't trigger it,
+    /// unless Settings asks for the wide area, which reaches further along and a little below.
     func catchesDrag(at point: CGPoint) -> Bool {
         guard !model.isSuppressed else { return false }
         let frame = panel.frame
-        let width = model.notch.size.width + 120
-        let strip = CGRect(x: frame.midX - width / 2, y: frame.maxY - model.notch.size.height,
-                           width: width, height: model.notch.size.height)
+        let wide = Prefs.bool(Prefs.shelfCatchWide)
+        let width = model.notch.size.width + (wide ? 420 : 120)
+        let height = model.notch.size.height + (wide ? 30 : 0)
+        let strip = CGRect(x: frame.midX - width / 2, y: frame.maxY - height, width: width, height: height)
         return hitRect().union(strip).contains(point)
     }
 
