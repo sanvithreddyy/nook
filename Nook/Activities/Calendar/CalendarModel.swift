@@ -13,6 +13,8 @@ struct CalendarEvent: Identifiable, Equatable {
     let joinURL: URL?
     /// EventKit's identifier, for opening the event in Calendar.
     var eventIdentifier: String? = nil
+    /// You said no to it: it stays in the calendar but doesn't count down, chime or show its title.
+    var isDeclined = false
 
     /// "Google Meet", "Zoom"… for the join link's host.
     var meetingService: String? {
@@ -138,17 +140,24 @@ final class CalendarModel {
 
     /// The timed event starting within the lead time, or one under way for less than Settings'
     /// "once it starts" time, unless its meeting card was dismissed.
-    func eventForLiveActivity(now: Date = .now) -> CalendarEvent? {
-        let lead = TimeInterval(max(Prefs.int(Prefs.calendarLeadMinutes), 1) * 60)
-        let stay = Prefs.int(Prefs.calendarStayMinutes)
-        return events.first { event in
+    /// A meeting about to start comes first, so one that's still going ("until it ends") never hides
+    /// the next one's countdown.
+    func eventForLiveActivity(now: Date = .now, leadMinutes: Int = Prefs.int(Prefs.calendarLeadMinutes),
+                              stayMinutes: Int = Prefs.int(Prefs.calendarStayMinutes)) -> CalendarEvent? {
+        let lead = TimeInterval(max(leadMinutes, 1) * 60)
+        let candidates = events.filter { event in
             !event.isAllDay
+                && !event.isDeclined
                 && !dismissed.contains(event.id)
                 && event.end > now
                 && event.start.timeIntervalSince(now) <= lead
-                && (stay < 0 || now.timeIntervalSince(event.start) < TimeInterval(stay * 60))
+                && (stayMinutes < 0 || now.timeIntervalSince(event.start) < TimeInterval(stayMinutes * 60))
         }
+        return candidates.first { $0.start > now } ?? candidates.first
     }
+
+    /// Its meeting card was dismissed, so it shouldn't chime or show its title either.
+    func isDismissed(_ id: String) -> Bool { dismissed.contains(id) }
 
     /// Dismiss on the meeting card: stop showing that event in the notch. Kept until Nook quits.
     func dismiss(_ id: String) {
@@ -162,6 +171,9 @@ final class CalendarModel {
     }
 
     #if DEBUG
+    /// Events as given, for tests.
+    func debugSet(_ events: [CalendarEvent]) { self.events = events }
+
     /// Sample week for screenshots; never touches EventKit. `meetingSoon` starts the design review in 4 minutes,
     /// `startsIn` in that many seconds (to watch it start).
     func debugPreview(meetingSoon: Bool = false, startsIn: Double? = nil) {
@@ -255,7 +267,8 @@ final class CalendarModel {
                               color: Color(cgColor: event.calendar.cgColor),
                               isAllDay: event.isAllDay,
                               joinURL: cachedMeetingLink(for: event, into: &seenLinks),
-                              eventIdentifier: event.eventIdentifier)
+                              eventIdentifier: event.eventIdentifier,
+                              isDeclined: event.attendees?.first(where: \.isCurrentUser)?.participantStatus == .declined)
             }
         linkCache = seenLinks
         if fetched != events { events = Array(fetched) }

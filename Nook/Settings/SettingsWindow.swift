@@ -165,7 +165,7 @@ enum SettingsPane: String, CaseIterable, Identifiable {
         case .huds: ["Preview on the notch", "Replace the volume HUD", "Replace the brightness HUD", "Accessibility access", "Style",
                      "Ledge", "Slider", "Steps", "Outline", "Show the level as a number", "Percentage", "Stays for",
                      "Duration"]
-        case .battery: ["Preview on the notch", "Charging and battery notices", "Warn at", "Low battery", "Plugging in shows for",
+        case .battery: ["Preview on the notch", "Charging and battery notices", "Warn at", "Low battery", "Plugging in and unplugging show for",
                         "Low Power Mode on and off", "Warn when the battery runs low", "Sound"]
         case .connectivity: ["Preview on the notch", "Show when Bluetooth devices connect", "AirPods", "Headphones", "Stays for"]
         case .lock: ["Show lock and unlock"]

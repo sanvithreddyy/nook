@@ -12,6 +12,8 @@ struct CalendarPane: View {
     @AppStorage(Prefs.calendarChime) private var chime = ""
     @AppStorage(Prefs.calendarHidden) private var hiddenText = ""
     @State private var status = EKEventStore.authorizationStatus(for: .event)
+    /// Read when the page opens and when access changes, not on every redraw.
+    @State private var calendars: [(id: String, title: String, account: String, color: Color)] = []
     private let poll = Timer.publish(every: 1.5, on: .main, in: .common).autoconnect()
 
     var body: some View {
@@ -73,7 +75,6 @@ struct CalendarPane: View {
             }
             .disabled(!enabled)
             if enabled, status == .fullAccess {
-                let calendars = CalendarModel.allCalendars()
                 SettingsSection("Calendars") {
                     ForEach(calendars, id: \.id) { calendar in
                         CalendarSwitch(title: calendar.title, account: calendar.account, color: calendar.color, isOn: showing(calendar.id))
@@ -82,6 +83,7 @@ struct CalendarPane: View {
             }
         }
         .onReceive(poll) { _ in status = EKEventStore.authorizationStatus(for: .event) }
+        .onChange(of: status, initial: true) { _, _ in calendars = CalendarModel.allCalendars() }
     }
 
     /// On while the calendar's events show; reads the hidden list so the switch updates with it.

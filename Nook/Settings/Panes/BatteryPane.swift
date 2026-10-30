@@ -14,7 +14,7 @@ struct BatteryPane: View {
             SettingsSection {
                 SettingsToggle("Charging and battery notices", isOn: $enabled)
                 Group {
-                    SettingsRow("Plugging in shows for", value: String(format: "%.1f s", duration), wide: true) {
+                    SettingsRow("Plugging in and unplugging show for", value: String(format: "%.1f s", duration), wide: true) {
                         Slider(value: $duration, in: 1.5...5, step: 0.5)
                     }
                     SettingsToggle("Low Power Mode on and off", isOn: $lowPower)

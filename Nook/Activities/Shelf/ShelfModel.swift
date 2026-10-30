@@ -14,8 +14,11 @@ struct ShelfItem: Identifiable, Codable, Equatable {
 
     var url: URL { URL(fileURLWithPath: path) }
     var name: String { url.lastPathComponent }
-    /// The file couldn't be found at launch (an unplugged disk, a deleted file). Kept, shown dimmed.
-    var isMissing: Bool { !FileManager.default.fileExists(atPath: path) }
+    /// The file can't be found (an unplugged disk, a deleted file) or sits in a Trash. Shown dimmed,
+    /// and let go when the shelf opens if Settings asks.
+    var isMissing: Bool {
+        !FileManager.default.fileExists(atPath: path) || url.pathComponents.contains { $0 == ".Trash" || $0 == ".Trashes" }
+    }
 }
 
 @Observable
@@ -72,6 +75,7 @@ final class ShelfModel {
     #if DEBUG
     /// Shows files on the shelf for screenshots without saving them.
     func debugPreview(_ urls: [URL]) {
+        isPreview = true
         items = urls.compactMap { url in
             (try? url.bookmarkData()).map { ShelfItem(id: UUID(), bookmark: $0, path: url.path, isOwned: false, addedAt: .now) }
         }
@@ -148,8 +152,12 @@ final class ShelfModel {
         if Prefs.bool(Prefs.shelfDropMissing) { current.removeAll(where: \.isMissing) }
         guard current != items else { return }
         items = current
-        save()
+        // Sample files shown for screenshots never replace the real shelf.
+        if !isPreview { save() }
     }
+
+    /// The shelf shows sample files for screenshots (a debug run), so nothing is saved.
+    @ObservationIgnored private var isPreview = false
 
     /// Where an item's file is now, by its bookmark. Items that can't be found right now stay as
     /// they are, so an unplugged disk doesn't empty the shelf.

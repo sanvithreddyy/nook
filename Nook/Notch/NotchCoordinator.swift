@@ -21,7 +21,7 @@ final class NotchCoordinator {
     private let battery = BatteryMonitor()
     private let bluetooth = BluetoothMonitor()
     private let volume = VolumeService()
-    private let hotKeys = HotKeys()
+    private let hotKeys = HotKeys.shared
     private let brightness = BrightnessService()
     private let keys = MediaKeyTap()
     private let fileDrags = FileDragWatcher()
@@ -80,7 +80,8 @@ final class NotchCoordinator {
         bluetooth.onConnect = { [weak self] device in
             guard Prefs.bool(Prefs.connectivity) else { return }
             self?.lastConnect = (device.name, .now)
-            self?.model.post(.device(name: device.name, symbol: device.symbol, battery: nil), for: .seconds(3))
+            self?.model.post(.device(name: device.name, symbol: device.symbol, battery: nil),
+                             for: .seconds(Prefs.double(Prefs.deviceNoticeDuration)))
             // Levels arrive a beat after connecting, as for the notice.
             Task { [weak self] in
                 try? await Task.sleep(for: .seconds(3))
@@ -385,8 +386,8 @@ final class NotchCoordinator {
         window?.setSuppressed(hide)
         if !hide, let level = pendingLowBattery {
             pendingLowBattery = nil
-            // Skip it if the Mac was plugged in while the island was hidden.
-            if battery.reading?.onAC == false {
+            // Skip it if the Mac was plugged in, or the warning turned off, while the island was hidden.
+            if battery.reading?.onAC == false, Prefs.bool(Prefs.lowBatteryWarning) {
                 warnLowBattery(level)
             }
         }
@@ -436,19 +437,25 @@ final class NotchCoordinator {
         let now = Date()
         // A start a moment ago still counts: the 30 s recheck can land just after it.
         guard Prefs.bool(Prefs.calendar),
-              let next = calendar.upcoming(now: now).first(where: { $0.start > now.addingTimeInterval(-2) && !startedEvents.contains($0.id) })
+              let next = calendar.upcoming(now: now).first(where: {
+                  $0.start > now.addingTimeInterval(-2) && !startedEvents.contains($0.id) && !$0.isDeclined
+              })
         else { return }
         let wait = max(next.start.timeIntervalSince(now), 0)
         eventStartTask = Task { [weak self] in
             try? await Task.sleep(for: .seconds(wait))
             guard !Task.isCancelled, let self else { return }
-            self.eventStarted(next)
+            // The wait runs on through sleep; a start that's long past (the lid was shut) passes quietly.
+            if Date().timeIntervalSince(next.start) < 5 { self.eventStarted(next) }
             self.scheduleEventStart()
         }
     }
 
     private func eventStarted(_ event: CalendarEvent) {
         guard startedEvents.insert(event.id).inserted else { return }
+        // "Leave the notch" takes it away as it starts, not at the next half-minute check.
+        refreshActivity()
+        guard !calendar.isDismissed(event.id) else { return }
         let sound = Prefs.string(Prefs.calendarChime)
         if !sound.isEmpty { NSSound(named: sound)?.play() }
         if Prefs.bool(Prefs.calendarPeekAtStart), !model.isExpanded, model.notification == nil {
@@ -662,7 +669,7 @@ final class NotchCoordinator {
     private func outputChanged(to symbol: String?, name: String) {
         guard Prefs.bool(Prefs.connectivity), let symbol else { return }
         if let last = lastConnect, last.name == name, Date.now.timeIntervalSince(last.at) < 8 { return }
-        model.post(.audioSwitched(symbol: symbol), for: .seconds(2.6))
+        model.post(.audioSwitched(symbol: symbol), for: .seconds(Prefs.double(Prefs.deviceNoticeDuration)))
     }
 
     // MARK: Timer

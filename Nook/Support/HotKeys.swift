@@ -2,8 +2,9 @@ import AppKit
 import Carbon.HIToolbox
 
 /// Shortcuts that work from any app, through the system hotkey API: no Accessibility access, and the
-/// key never reaches the app in front.
+/// key never reaches the app in front. One for the app's lifetime, which the event handler relies on.
 final class HotKeys {
+    static let shared = HotKeys()
     var onPress: ((ShortcutAction) -> Void)?
 
     private var registered: [EventHotKeyRef] = []
@@ -11,8 +12,22 @@ final class HotKeys {
     private var handler: EventHandlerRef?
     private var current: [ShortcutAction: Shortcut] = [:]
 
+    /// Off while Settings records a shortcut, so pressing one Nook already has records it instead of
+    /// running it.
+    var isSuspended = false {
+        didSet {
+            guard isSuspended != oldValue else { return }
+            current = [:]
+            unregisterAll()
+            update()
+        }
+    }
+
+    private init() {}
+
     /// Registers what Settings has, when it changed since last time.
     func update() {
+        guard !isSuspended else { return }
         var wanted: [ShortcutAction: Shortcut] = [:]
         for action in ShortcutAction.allCases {
             if let shortcut = Shortcut.saved(action) { wanted[action] = shortcut }
@@ -63,12 +78,14 @@ final class HotKeys {
 }
 
 extension Shortcut {
-    /// The shortcut a key press makes, or nil for keys that can't stand alone: a plain letter would
-    /// stop that letter from typing anywhere, so a modifier is needed except for function keys.
+    /// The shortcut a key press makes, or nil for keys it shouldn't take. A shortcut here works in every
+    /// app and wins over their menus, so it needs Control or Option: a plain letter would stop that
+    /// letter typing anywhere, and Command with a key (Close, Settings, Quit) belongs to the app in
+    /// front. Function keys can stand alone.
     init?(event: NSEvent) {
         let flags = event.modifierFlags.intersection([.command, .option, .control, .shift])
         let isFunctionKey = Self.functionKeys[event.keyCode] != nil
-        guard isFunctionKey || !flags.intersection([.command, .option, .control]).isEmpty else { return nil }
+        guard isFunctionKey || !flags.intersection([.option, .control]).isEmpty else { return nil }
         var carbon: UInt32 = 0
         if flags.contains(.command) { carbon |= UInt32(cmdKey) }
         if flags.contains(.option) { carbon |= UInt32(optionKey) }
@@ -79,8 +96,9 @@ extension Shortcut {
         if flags.contains(.option) { label += "⌥" }
         if flags.contains(.shift) { label += "⇧" }
         if flags.contains(.command) { label += "⌘" }
+        // The key itself, as printed on it: Shift's own character (@ for 2) would mislabel ⌃⇧2.
         let key = Self.functionKeys[event.keyCode] ?? Self.namedKeys[event.keyCode]
-            ?? event.charactersIgnoringModifiers?.uppercased() ?? ""
+            ?? (event.characters(byApplyingModifiers: []) ?? event.charactersIgnoringModifiers)?.uppercased() ?? ""
         guard !key.isEmpty else { return nil }
         self.init(keyCode: UInt32(event.keyCode), modifiers: carbon, label: label + key)
     }
