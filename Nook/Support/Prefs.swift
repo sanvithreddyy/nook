@@ -2,109 +2,35 @@ import Foundation
 import CoreGraphics
 
 /// UserDefaults keys. Views read them with `@AppStorage(Prefs.x)`, services with `Prefs.bool(.x)`.
+/// Each area keeps its keys and defaults in its own file (Support/Prefs/Prefs+Area.swift), listed in
+/// `areas`; Settings uses the same list to reset a page, and to export and import everything.
 enum Prefs {
-    static let hideMenuBarIcon = "hideMenuBarIcon"
-    static let display = "display"                      // DisplayChoice raw value
-    static let hideInFullscreen = "hideInFullscreen"
-    static let enableHaptics = "enableHaptics"
-    static let expandOnHover = "expandOnHover"
-    static let swipeGestures = "swipeGestures"
-    /// Apple's status colours (green charging, orange timer…), or white; low battery stays red.
-    static let statusColors = "statusColors"
-    /// A second activity (a timer, a meeting about to start) shows as its own drop beside the island.
-    static let showCompanion = "showCompanion"
-    /// The Settings window's look: SettingsAppearance raw value. The island is always black.
-    static let settingsAppearance = "settingsAppearance"
-
-    /// The open island's home: HomeLayout raw value, modules per page side by side (2 or 3),
-    /// the modules' order and the ones turned off (comma lists of HomeModule), HomeSize raw value.
-    static let homeLayout = "homeLayout"
-    static let homeColumns = "homeColumns"
-    static let homeOrder = "homeOrder"
-    static let homeHidden = "homeHidden"
-    static let homeSize = "homeSize"
-
-    static let nowPlaying = "nowPlaying"
-    static let peekOnTrackChange = "peekOnTrackChange"
-    static let peekOnHover = "peekOnHover"
-    static let showWaveform = "showWaveform"
-    static let tintWaveform = "tintWaveform"
-    /// The Music module's favourite star (shown only for players that take favourites) and output button.
-    static let musicFavorite = "musicFavorite"
-    static let musicOutput = "musicOutput"
-
-    static let volumeHUD = "volumeHUD"
-    static let brightnessHUD = "brightnessHUD"
-    static let hudStyle = "hudStyle"                    // HUDStyle raw value
-
-    static let timerSound = "timerSound"                // a system sound name, or "" for none
-
-    static let battery = "battery"
-    static let lowBatteryThreshold = "lowBatteryThreshold"
-    /// The Batteries module lists this Mac's own battery first.
-    static let batteriesIncludeMac = "batteriesIncludeMac"
-
-    static let connectivity = "connectivity"
-
-    static let calendar = "calendar"
-    static let calendarLeadMinutes = "calendarLeadMinutes"
-    /// The Calendar module's month: WeekStart raw value, a dot under days with events, weekends in grey.
-    static let calendarWeekStart = "calendarWeekStart"
-    static let calendarDots = "calendarDots"
-    static let calendarDimWeekends = "calendarDimWeekends"
-
-    static let lockActivity = "lockActivity"
-
-    static let shelf = "shelf"
+    /// Every area's defaults. An area lists every key it owns here, so reset and export see it.
+    static var areas: [PrefsArea] {
+        [generalArea, homeArea, mediaArea, hudsArea, timerArea, batteryArea, connectivityArea, calendarArea, lockArea, shelfArea, shortcutsArea, advancedArea]
+    }
 
     static func registerDefaults() {
-        UserDefaults.standard.register(defaults: [
-            hideMenuBarIcon: false,
-            display: DisplayChoice.builtIn.rawValue,
-            // Off by default: detection of other apps' fullscreen spaces is heuristic.
-            hideInFullscreen: false,
-            enableHaptics: true,
-            // On: pointing at the notch opens it.
-            expandOnHover: true,
-            swipeGestures: true,
-            statusColors: true,
-            showCompanion: true,
-            settingsAppearance: SettingsAppearance.light.rawValue,
-            // Side by side, two to a page: Music and Calendar together.
-            homeLayout: HomeLayout.sideBySide.rawValue,
-            homeColumns: 2,
-            homeOrder: HomeOrder.string(HomeModule.allCases),
-            homeHidden: "",
-            homeSize: HomeSize.medium.rawValue,
-            nowPlaying: true,
-            peekOnTrackChange: true,
-            peekOnHover: true,
-            showWaveform: true,
-            tintWaveform: true,
-            musicFavorite: true,
-            musicOutput: true,
-            volumeHUD: false,
-            brightnessHUD: false,
-            hudStyle: HUDStyle.ledge.rawValue,
-            timerSound: "Glass",
-            battery: true,
-            lowBatteryThreshold: 20,
-            batteriesIncludeMac: true,
-            connectivity: true,
-            // On: the expanded island shows the week. Access is asked for from the island, not at launch.
-            calendar: true,
-            calendarLeadMinutes: 10,
-            calendarWeekStart: WeekStart.system.rawValue,
-            // Off, as Apple's Calendar widget has it; a choice for seeing busy days at a glance.
-            calendarDots: false,
-            calendarDimWeekends: true,
-            lockActivity: true,
-            shelf: true,
-        ])
+        var all: [String: Any] = [:]
+        for area in areas { all.merge(area.defaults) { first, _ in first } }
+        UserDefaults.standard.register(defaults: all)
     }
 
     static func bool(_ key: String) -> Bool { UserDefaults.standard.bool(forKey: key) }
     static func int(_ key: String) -> Int { UserDefaults.standard.integer(forKey: key) }
+    static func double(_ key: String) -> Double { UserDefaults.standard.double(forKey: key) }
+    static func string(_ key: String) -> String { UserDefaults.standard.string(forKey: key) ?? "" }
+
+    /// Puts an area back to how Nook ships.
+    static func reset(_ area: PrefsArea) {
+        for key in area.defaults.keys { UserDefaults.standard.removeObject(forKey: key) }
+    }
+}
+
+/// One area's settings: a name for Settings, and every key it owns with its default.
+struct PrefsArea {
+    let id: String
+    let defaults: [String: Any]
 }
 
 /// The Settings window's look: the system's, or always light or dark.
