@@ -93,17 +93,29 @@ struct MusicModule: View {
                 .sharedElement("artwork")
                 .frame(width: 64 * k, height: 64 * k)
                 .animation(Motion.ease(.easeOut(duration: 0.25)), value: nowPlaying.artworkToken)
+                // Only a line that changed moves: the title blurs over to the next one, and an artist
+                // who plays on stays still.
                 VStack(alignment: .leading, spacing: 0) {
-                    MarqueeText(id: nowPlaying.trackID + "t") {
-                        Text(nowPlaying.title)
-                            .font(.system(size: 15 * k, weight: .semibold))
-                            .foregroundStyle(.white)
+                    ZStack(alignment: .leading) {
+                        MarqueeText(id: nowPlaying.trackID + "t") {
+                            Text(nowPlaying.title)
+                                .font(.system(size: 15 * k, weight: .semibold))
+                                .foregroundStyle(.white)
+                        }
+                        .id(nowPlaying.title)
+                        .transition(.lineChange)
                     }
-                    Text(nowPlaying.artist)
-                        .font(.system(size: 15 * k))
-                        .foregroundStyle(.white.opacity(0.6))
-                        .lineLimit(1)
+                    ZStack(alignment: .leading) {
+                        Text(nowPlaying.artist)
+                            .font(.system(size: 15 * k))
+                            .foregroundStyle(.white.opacity(0.6))
+                            .lineLimit(1)
+                            .id(nowPlaying.artist)
+                            .transition(.lineChange)
+                    }
                 }
+                .animation(Motion.ease(.easeOut(duration: 0.2)), value: nowPlaying.title)
+                .animation(Motion.ease(.easeOut(duration: 0.2)), value: nowPlaying.artist)
                 .padding(.top, 12 * k)
                 Waveform(isPlaying: nowPlaying.isPlaying, tint: tintWaveform ? nowPlaying.tint : .white)
                     .padding(.top, 15 * k)
@@ -434,6 +446,17 @@ extension AnyTransition {
                 .animation(Motion.ease(.easeOut(duration: 0.12))?.delay(0.11)),
             removal: .modifier(active: ArtworkTurn(angle: 90), identity: ArtworkTurn(angle: 0))
                 .animation(Motion.ease(.easeIn(duration: 0.11)))
+        )
+    }
+
+    /// A line of text that changed: the old words blur out quickly and the new ones blur in after.
+    static var lineChange: AnyTransition {
+        let hidden = IslandContentModifier(opacity: 0, blur: 6, scaleX: 1, scaleY: 1, anchor: .leading)
+        return .asymmetric(
+            insertion: .modifier(active: hidden, identity: IslandContentModifier.shown(anchor: .leading))
+                .animation(Motion.ease(.easeOut(duration: 0.12))?.delay(0.09)),
+            removal: .modifier(active: hidden, identity: IslandContentModifier.shown(anchor: .leading))
+                .animation(Motion.ease(.easeOut(duration: 0.09)))
         )
     }
 

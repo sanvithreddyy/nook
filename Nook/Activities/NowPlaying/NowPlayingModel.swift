@@ -135,6 +135,17 @@ final class NowPlayingModel {
         canFavorite = true
     }
 
+    /// The next sample track by the same artist, to watch a track change.
+    func debugNextTrack() {
+        title = "Sometimes (Original Mix)"
+        trackID = "preview-2"
+        let sample = "/System/Library/Desktop Pictures/.thumbnails/Big Sur Coastline.heic"
+        if let data = FileManager.default.contents(atPath: sample) { loadArtwork(data) }
+        elapsedAtTimestamp = 0
+        elapsedTimestamp = Date()
+        onTrackChange?()
+    }
+
     func previewPaused() {
         setPlaying(false)
     }

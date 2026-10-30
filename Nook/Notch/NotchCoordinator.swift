@@ -157,6 +157,13 @@ final class NotchCoordinator {
                     refreshActivity()
                 }
                 if args.contains("-preview-drag") { model.setDraggingFile(true) }
+                // -preview-next-in <s>: the sample track changes that many seconds later.
+                if let i = args.firstIndex(of: "-preview-next-in"), args.indices.contains(i + 1), let delay = Double(args[i + 1]) {
+                    Task {
+                        try? await Task.sleep(for: .seconds(delay))
+                        nowPlaying.debugNextTrack()
+                    }
+                }
                 if args.contains("-preview-timer") {
                     // -later: the drop splits off after a pause and merges back, for recording the motion.
                     if args.contains("-short") {
