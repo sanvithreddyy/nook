@@ -5,7 +5,7 @@ struct NotchRootView: View {
 
     var body: some View {
         IslandView()
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+            .frame(width: model.panelSize.width, height: model.panelSize.height, alignment: .top)
             .opacity(model.isSuppressed ? 0 : 1)
             .animation(.easeOut(duration: 0.2), value: model.isSuppressed)
             .preferredColorScheme(.dark)

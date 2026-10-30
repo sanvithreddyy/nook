@@ -13,6 +13,8 @@ enum SnapshotRenderer {
     static func run(_ c: NotchCoordinator, into dir: URL) {
         Motion.isDisabled = true
         let m = c.model
+        // No panel in this mode; the island is drawn on a canvas of this size instead.
+        m.panelSize = size
         let wallpaper = NSImage(contentsOfFile: "/System/Library/Desktop Pictures/Sonoma.heic")
         let states: [(String, () -> Void)] = [
             ("01-idle", {}),
@@ -57,8 +59,9 @@ enum SnapshotRenderer {
         return ["project.yml", "scripts/build.sh", "scripts/tour.sh", "Nook/Info.plist"].map { root.appendingPathComponent($0) }
     }
 
+    private static let size = CGSize(width: 820, height: 260)
+
     private static func render(_ c: NotchCoordinator, wallpaper: NSImage?, to url: URL) {
-        let size = CGSize(width: 820, height: 260)
         let view = ZStack(alignment: .top) {
             if let wallpaper {
                 Image(nsImage: wallpaper)

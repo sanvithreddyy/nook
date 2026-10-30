@@ -288,6 +288,11 @@ final class NotchModel {
     static let cardEar: CGFloat = 12
     static let cardRadius: CGFloat = 34
 
+    /// The panel's size, set where it's placed. The root view asks for exactly this: asked for less
+    /// (the island's own size), SwiftUI's hosting view sometimes sized the panel down to the island,
+    /// which sent AppKit into a constraints loop and crashed.
+    var panelSize: CGSize = .zero
+
     /// The biggest island the panel must hold, with room for its shadow and the meeting drop beside it.
     /// Sized for the largest home any setting allows: resizing the panel while it's on screen sends
     /// AppKit into a constraints loop (it crashed when the home's layout changed), so it never resizes.

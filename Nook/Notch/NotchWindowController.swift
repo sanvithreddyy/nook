@@ -66,6 +66,7 @@ final class NotchWindowController {
         model.notch = screen.notchMetrics
         var size = model.maximumSize
         size.width = min(size.width, screen.frame.width)
+        model.panelSize = size
         let frame = NSRect(x: screen.frame.midX - size.width / 2,
                            y: screen.frame.maxY - size.height,
                            width: size.width,
