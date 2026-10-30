@@ -1,30 +1,66 @@
+import CoreGraphics
 import Testing
 
-/// Hovering opens the first card, so it has to be what the closed island is showing.
+/// Hovering opens the first page, so it has to be what the closed island is showing.
 struct IslandCardTests {
-    @Test func liveCardsOpenFirstInTheirOrder() {
-        let cards = IslandCard.available(live: [.nowPlaying, .timer], music: true, agenda: true, shelf: true)
-        #expect(cards == [.nowPlaying, .timer, .upNext, .shelf])
+    private let all: [HomeModule] = [.music, .calendar, .batteries]
+
+    @Test func musicOpensTheHomePageThatHoldsIt() {
+        let cards = IslandCard.available(live: [.nowPlaying], modules: all, perPage: 2, shelf: true)
+        #expect(cards == [.home([.music, .calendar]), .home([.batteries]), .shelf])
     }
 
-    @Test func aMeetingTheNotchCountsDownToOpensBeforePausedMusic() {
-        let cards = IslandCard.available(live: [.meeting(id: "m")], music: true, agenda: true, shelf: true)
-        #expect(cards == [.meeting(id: "m"), .nowPlaying, .shelf])
+    @Test func musicOrderedLastStillOpensFirst() {
+        let cards = IslandCard.available(live: [.nowPlaying], modules: [.calendar, .batteries, .music], perPage: 2, shelf: false)
+        #expect(cards == [.home([.music]), .home([.calendar, .batteries])])
     }
 
-    @Test func pausedMusicStillComesBeforeTheCalendar() {
-        let cards = IslandCard.available(live: [], music: true, agenda: true, shelf: true)
-        #expect(cards == [.nowPlaying, .upNext, .shelf])
+    @Test func aTimerTheNotchShowsOpensBeforeTheHome() {
+        let cards = IslandCard.available(live: [.timer, .nowPlaying], modules: all, perPage: 2, shelf: true)
+        #expect(cards == [.timer, .home([.music, .calendar]), .home([.batteries]), .shelf])
     }
 
-    @Test func aMeetingReplacesUpNext() {
-        let cards = IslandCard.available(live: [.timer, .meeting(id: "m")], music: false, agenda: true, shelf: false)
-        #expect(cards == [.timer, .meeting(id: "m")])
+    @Test func theDropBesideTheIslandComesAfterTheHome() {
+        let cards = IslandCard.available(live: [.nowPlaying, .calendar(id: "m")], modules: all, perPage: 3, shelf: true)
+        #expect(cards == [.home([.music, .calendar, .batteries]), .meeting(id: "m"), .shelf])
     }
 
-    @Test func nothingGoingOnOpensTheShelf() {
-        #expect(IslandCard.available(live: [], music: false, agenda: false, shelf: true) == [.shelf])
-        #expect(IslandCard.available(live: [], music: false, agenda: false, shelf: false).isEmpty)
+    @Test func oneAtATimeGivesEachModuleItsOwnPage() {
+        let cards = IslandCard.available(live: [], modules: all, perPage: 1, shelf: true)
+        #expect(cards == [.home([.music]), .home([.calendar]), .home([.batteries]), .shelf])
+    }
+
+    @Test func nothingGoingOnOpensTheHomeThenTheShelf() {
+        #expect(IslandCard.available(live: [], modules: [.calendar, .batteries], perPage: 2, shelf: true) == [.home([.calendar, .batteries]), .shelf])
+        #expect(IslandCard.available(live: [], modules: [], perPage: 2, shelf: true) == [.shelf])
+        #expect(IslandCard.available(live: [], modules: [], perPage: 2, shelf: false).isEmpty)
+    }
+}
+
+/// The saved order survives modules it doesn't know yet, and the home's size follows its modules.
+struct HomeConfigTests {
+    @Test func unknownAndMissingModulesAreHandled() {
+        #expect(HomeOrder.parse("batteries,weather,music") == [.batteries, .music])
+        #expect(HomeOrder.string([.calendar, .music]) == "calendar,music")
+    }
+
+    @Test func aPageIsAsWideAsItsModules() {
+        let two = HomeMetrics.pageSize([.music, .calendar], batteries: 0, scale: 1)
+        #expect(two.width == CGFloat(20 + 300 + 24 + 320 + 20))
+        #expect(two.height == CGFloat(180))
+        let large = HomeMetrics.pageSize([.music], batteries: 0, scale: 1.14)
+        #expect(abs(large.width - 340 * 1.14) < 0.001)
+    }
+
+    @Test func batteriesGrowWithTheirDevicesUpToFive() {
+        #expect(HomeMetrics.width(.batteries, batteries: 1) == CGFloat(3 * 76))
+        #expect(HomeMetrics.width(.batteries, batteries: 4) == CGFloat(4 * 76))
+        #expect(HomeMetrics.width(.batteries, batteries: 9) == CGFloat(5 * 76))
+    }
+
+    @Test func ownersNamesComeOffDeviceNames() {
+        #expect(DeviceBatteries.shortName("Owner’s AirPods Pro") == "AirPods Pro")
+        #expect(DeviceBatteries.shortName("Magic Keyboard") == "Magic Keyboard")
     }
 }
 
@@ -34,11 +70,11 @@ struct IslandCardTests {
 struct CardPagingTests {
     @Test func pagingStopsAtTheEnds() {
         let model = NotchModel()
-        model.setCards([.nowPlaying, .upNext, .shelf])
+        model.setCards([.home([.music, .calendar]), .timer, .shelf])
         model.expand()
-        #expect(model.card == .nowPlaying)
+        #expect(model.card == .home([.music, .calendar]))
         model.page(-1)
-        #expect(model.card == .nowPlaying)
+        #expect(model.card == .home([.music, .calendar]))
         model.page(1)
         model.page(1)
         model.page(1)
@@ -47,10 +83,10 @@ struct CardPagingTests {
 
     @Test func aCardThatGoesAwayMovesTheIslandToTheNextOne() {
         let model = NotchModel()
-        model.setCards([.nowPlaying, .shelf])
+        model.setCards([.home([.music, .calendar]), .shelf])
         model.expand()
-        model.setCards([.shelf])
-        #expect(model.card == .shelf)
+        model.setCards([.home([.calendar]), .shelf])
+        #expect(model.card == .home([.calendar]))
         #expect(model.isExpanded)
         model.setCards([])
         #expect(!model.isExpanded)

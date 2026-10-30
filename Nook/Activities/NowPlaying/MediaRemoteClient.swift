@@ -23,6 +23,9 @@ enum MediaCommand: Int {
     case togglePlayPause = 2
     case nextTrack = 4
     case previousTrack = 5
+    /// "LikeTrack" in MediaRemote's own command descriptions (checked with
+    /// MRMediaRemoteCopyCommandDescription on macOS 27); Apple Music shows it as Favorite.
+    case likeTrack = 21
 }
 
 /// Talks to MediaRemote through mediaremote-adapter (BSD-3, Vendor/MediaRemoteAdapter).

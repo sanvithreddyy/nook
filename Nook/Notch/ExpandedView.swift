@@ -1,32 +1,31 @@
 import SwiftUI
 
-/// The open island: one card at a time, as Apple's expanded views are. Each card lays out across
-/// the whole island, using the wings beside the notch the way Apple's use the space beside the camera.
-/// Takes the card from the island rather than reading the model, so it always redraws with the
-/// island (see TopRow).
+/// The open island, one page at a time: home pages of modules side by side, or a card that stands
+/// on its own (a meeting, a timer, the shelf). Takes the page from the island rather than reading the
+/// model, so it always redraws with the island (see TopRow).
 struct ExpandedView: View {
     @Environment(CalendarModel.self) private var calendar
+    @Environment(DeviceBatteries.self) private var batteries
+    @Environment(NotchModel.self) private var model
     let card: IslandCard
     let direction: PageDirection
-    let showsDropTargets: Bool
 
     var body: some View {
         ZStack(alignment: .top) {
             Group {
                 switch card {
-                case .nowPlaying: MusicCard()
+                case .home(let modules): HomePage(modules: modules)
                 case .meeting(let id): MeetingCard(eventID: id)
-                case .upNext: UpNextCard()
                 case .timer: TimerCard()
-                case .shelf: ShelfCard(showsDropTargets: showsDropTargets)
+                case .shelf: ShelfPage()
                 }
             }
             .id(card)
             .transition(.cardTurn(direction))
             PageDots()
         }
-        // The body starts inside the ears; content keeps 16 pt from its edge.
-        .padding(.horizontal, NotchModel.cardEar + Card.inset)
+        // The body starts inside the ears; content keeps its inset from its edge.
+        .padding(.horizontal, NotchModel.cardEar + inset)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         // Right-click anywhere on the card, not only on what's drawn.
         .contentShape(Rectangle())
@@ -35,13 +34,25 @@ struct ExpandedView: View {
             Divider()
             SettingsMenuItem()
         }
-        // Calendar access granted in System Settings shows up the next time the island opens,
-        // whichever card it opens on.
-        .onAppear { calendar.recheckAuthorization() }
+        .onAppear {
+            // Calendar access granted in System Settings shows up the next time the island opens,
+            // whichever card it opens on; device batteries are read fresh each time it opens.
+            calendar.recheckAuthorization()
+            batteries.refresh()
+        }
+    }
+
+    /// Home pages and the shelf keep 20 pt from the edge; the meeting and timer cards keep 16.
+    private var inset: CGFloat {
+        switch card {
+        case .home: HomeMetrics.inset * model.home.scale
+        case .shelf: ShelfMetrics.inset
+        case .meeting, .timer: Card.inset
+        }
     }
 }
 
-/// Spacing shared by every card.
+/// Spacing shared by the meeting and timer cards.
 enum Card {
     static let inset: CGFloat = 16
     /// Space between the notch line and the title under it.
@@ -86,9 +97,8 @@ struct SettingsMenuItem: View {
 extension IslandCard {
     var name: String {
         switch self {
-        case .nowPlaying: "Now Playing"
+        case .home(let modules): modules.map(\.title).formatted(.list(type: .and))
         case .meeting: "Meeting"
-        case .upNext: "Up Next"
         case .timer: "Timer"
         case .shelf: "Shelf"
         }

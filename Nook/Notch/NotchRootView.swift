@@ -47,8 +47,7 @@ private struct IslandView: View {
             // An open card spans the whole island, the strip beside the notch included,
             // the way Apple's expanded views use the space beside the camera.
             if model.isExpanded {
-                ExpandedView(card: model.card, direction: model.pageDirection,
-                             showsDropTargets: model.isDraggingFile || !model.shelfHasFiles)
+                ExpandedView(card: model.card, direction: model.pageDirection)
                     .id(model.expandToken)
                     .transition(.islandBody)
             }

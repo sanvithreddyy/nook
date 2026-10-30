@@ -73,6 +73,8 @@ enum SnapshotRenderer {
                 .environment(c.calendar)
                 .environment(c.shelf)
                 .environment(c.timer)
+                .environment(c.batteries)
+                .environment(c.outputs)
         }
         .frame(width: size.width, height: size.height)
         let renderer = ImageRenderer(content: view)

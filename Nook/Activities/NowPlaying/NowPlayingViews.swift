@@ -70,58 +70,64 @@ struct TrackPeek: View {
 
 // MARK: Expanded
 
-/// Apple's expanded music view on the notch: artwork in the wing beside the notch, title and artist just
-/// under the notch line with the waveform, the scrubber with both times, then three large controls.
-/// Shuffle and repeat are in the right-click menu.
-struct MusicCard: View {
+/// Apple's music card on the notch: the artwork with the title and artist beside
+/// it at one size, the waveform at the end of that line, a thick scrubber with both times, then the
+/// favourite star, the transport and the output. Shuffle and repeat are in the right-click menu.
+struct MusicModule: View {
     @Environment(NowPlayingModel.self) private var nowPlaying
-    @Environment(NotchModel.self) private var model
+    @Environment(\.homeScale) private var k
     @AppStorage(Prefs.tintWaveform) private var tintWaveform = true
-
-    private static let artwork: CGFloat = 56
-    /// Title and artist together, bottom-aligned with the artwork.
-    private static let textBlock: CGFloat = 34
+    @AppStorage(Prefs.musicFavorite) private var showFavorite = true
+    @AppStorage(Prefs.musicOutput) private var showOutput = true
 
     var body: some View {
-        // The text block ends level with the artwork and starts just under the notch,
-        // so the artwork's top follows the notch's height.
-        let top = max(12, model.notch.size.height + Card.titleGap + Self.textBlock - Self.artwork)
         VStack(spacing: 0) {
-            HStack(alignment: .bottom, spacing: 12) {
+            HStack(alignment: .top, spacing: 14 * k) {
                 ZStack {
-                    ArtworkImage(image: nowPlaying.artwork, cornerRadius: 12)
+                    ArtworkImage(image: nowPlaying.artwork, cornerRadius: 12 * k)
                         .id(nowPlaying.artworkToken)
                         .transition(.artworkSwap)
                 }
                 .sharedElement("artwork")
-                .frame(width: Self.artwork, height: Self.artwork)
+                .frame(width: 64 * k, height: 64 * k)
                 .animation(Motion.ease(.easeOut(duration: 0.25)), value: nowPlaying.artworkToken)
-                VStack(alignment: .leading, spacing: 1) {
-                    HStack(spacing: 10) {
-                        MarqueeText(id: nowPlaying.trackID + "t") {
-                            Text(nowPlaying.title)
-                                .font(.system(size: 14, weight: .semibold))
-                                .foregroundStyle(.white)
-                        }
-                        Waveform(isPlaying: nowPlaying.isPlaying, tint: tintWaveform ? nowPlaying.tint : .white)
+                VStack(alignment: .leading, spacing: 0) {
+                    MarqueeText(id: nowPlaying.trackID + "t") {
+                        Text(nowPlaying.title)
+                            .font(.system(size: 15 * k, weight: .semibold))
+                            .foregroundStyle(.white)
                     }
                     Text(nowPlaying.artist)
-                        .font(.system(size: 13))
-                        .foregroundStyle(.white.opacity(0.55))
+                        .font(.system(size: 15 * k))
+                        .foregroundStyle(.white.opacity(0.6))
                         .lineLimit(1)
                 }
-                .padding(.bottom, 1)
+                .padding(.top, 12 * k)
+                Waveform(isPlaying: nowPlaying.isPlaying, tint: tintWaveform ? nowPlaying.tint : .white)
+                    .padding(.top, 15 * k)
             }
-            .padding(.top, top)
             Scrubber()
-                .padding(.top, 12)
-            HStack(spacing: 30) {
-                ControlButton(symbol: "backward.fill", size: 20, label: "Previous") { nowPlaying.previous() }
-                ControlButton(symbol: nowPlaying.isPlaying ? "pause.fill" : "play.fill", size: 27,
+                .padding(.top, 16 * k)
+            HStack(spacing: 0) {
+                Group {
+                    if showFavorite, nowPlaying.canFavorite { FavoriteButton() }
+                }
+                .frame(width: 34 * k)
+                Spacer(minLength: 0)
+                ControlButton(symbol: "backward.fill", size: 20 * k, label: "Previous") { nowPlaying.previous() }
+                Spacer(minLength: 0)
+                ControlButton(symbol: nowPlaying.isPlaying ? "pause.fill" : "play.fill", size: 27 * k,
                               label: nowPlaying.isPlaying ? "Pause" : "Play", bounces: false) { nowPlaying.togglePlayPause() }
-                ControlButton(symbol: "forward.fill", size: 20, label: "Next") { nowPlaying.next() }
+                Spacer(minLength: 0)
+                ControlButton(symbol: "forward.fill", size: 20 * k, label: "Next") { nowPlaying.next() }
+                Spacer(minLength: 0)
+                Group {
+                    if showOutput { OutputButton() }
+                }
+                .frame(width: 34 * k)
             }
-            .padding(.top, 6)
+            .padding(.horizontal, -6 * k)
+            .padding(.top, 10 * k)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .contextMenu {
@@ -137,9 +143,11 @@ struct MusicCard: View {
     }
 }
 
-/// Elapsed time, the bar, time remaining, on one line. The bar thickens under the pointer and while dragged.
+/// Elapsed time, the bar, time remaining, on one line. A thick bar, as Apple's music card has it;
+/// it thickens further under the pointer and while dragged.
 struct Scrubber: View {
     @Environment(NowPlayingModel.self) private var nowPlaying
+    @Environment(\.homeScale) private var k
     @State private var dragElapsed: Double?
     @State private var hovering = false
 
@@ -149,16 +157,17 @@ struct Scrubber: View {
             let elapsed = dragElapsed ?? nowPlaying.elapsed(at: context.date)
             let fraction = duration > 0 ? min(max(elapsed / duration, 0), 1) : 0
             let active = hovering || dragElapsed != nil
-            HStack(spacing: 10) {
+            let thickness = (active ? 9 : 6) * k
+            HStack(spacing: 10 * k) {
                 Text(Self.format(elapsed))
-                    .frame(minWidth: 28, alignment: .leading)
+                    .frame(minWidth: 30 * k, alignment: .leading)
                 GeometryReader { geo in
                     ZStack(alignment: .leading) {
                         Capsule().fill(.white.opacity(0.18))
-                        Capsule().fill(.white.opacity(active ? 1 : 0.72))
-                            .frame(width: max(geo.size.width * fraction, active ? 7 : 4))
+                        Capsule().fill(.white.opacity(active ? 0.95 : 0.55))
+                            .frame(width: max(geo.size.width * fraction, thickness))
                     }
-                    .frame(height: active ? 7 : 4)
+                    .frame(height: thickness)
                     .frame(maxHeight: .infinity)
                     .contentShape(Rectangle())
                     .gesture(
@@ -173,17 +182,17 @@ struct Scrubber: View {
                             }
                     )
                 }
-                .frame(height: 14)
+                .frame(height: 14 * k)
                 .animation(Motion.ease(.spring(duration: 0.25, bounce: 0)), value: active)
                 .onHover { hovering = $0 }
                 .accessibilityElement()
                 .accessibilityLabel("Playback position")
                 .accessibilityValue("\(Self.format(elapsed)) of \(Self.format(duration))")
                 Text("−" + Self.format(max(duration - elapsed, 0)))
-                    .frame(minWidth: 34, alignment: .trailing)
+                    .frame(minWidth: 36 * k, alignment: .trailing)
             }
-            .font(.system(size: 11, weight: .medium).monospacedDigit())
-            .foregroundStyle(.white.opacity(0.5))
+            .font(.system(size: 12 * k, weight: .medium).monospacedDigit())
+            .foregroundStyle(.white.opacity(0.6))
         }
     }
 
@@ -217,6 +226,66 @@ struct ControlButton: View {
         }
         .buttonStyle(IslandButtonStyle())
         .accessibilityLabel(label)
+    }
+}
+
+/// Apple Music's star. Shown only for players that report favourites, so it never sits there dead.
+private struct FavoriteButton: View {
+    @Environment(NowPlayingModel.self) private var nowPlaying
+    @Environment(\.homeScale) private var k
+    @State private var clicks = 0
+
+    var body: some View {
+        Button {
+            clicks += 1
+            nowPlaying.favorite()
+        } label: {
+            Image(systemName: nowPlaying.isFavorite ? "star.fill" : "star")
+                .font(.system(size: 17 * k, weight: .semibold))
+                .foregroundStyle(.white.opacity(nowPlaying.isFavorite ? 0.95 : 0.55))
+                .contentTransition(.symbolEffect(.replace))
+                .symbolEffect(.bounce, options: .speed(1.4), value: clicks)
+                .frame(width: 34 * k, height: 34 * k)
+        }
+        .buttonStyle(PlatterButtonStyle())
+        .accessibilityLabel(nowPlaying.isFavorite ? "Favorited" : "Favorite")
+    }
+}
+
+/// Where the sound goes: the headphones' own glyph when they're the output, otherwise AirPlay's.
+/// Click to pick another output from the menu.
+private struct OutputButton: View {
+    @Environment(AudioOutputs.self) private var outputs
+    @Environment(NotchModel.self) private var model
+    @Environment(\.homeScale) private var k
+
+    var body: some View {
+        Button { outputs.showMenu(holding: model) } label: {
+            Image(systemName: outputs.symbol)
+                .font(.system(size: 17 * k, weight: .semibold))
+                .foregroundStyle(.white.opacity(0.75))
+                .contentTransition(.symbolEffect(.replace))
+                .frame(width: 34 * k, height: 34 * k)
+        }
+        .buttonStyle(PlatterButtonStyle())
+        .accessibilityLabel("Output: \(outputs.currentName)")
+        .help(outputs.currentName)
+    }
+}
+
+/// A small square platter under the pointer, as the music card's side buttons have.
+struct PlatterButtonStyle: ButtonStyle {
+    @Environment(\.homeScale) private var k
+    @State private var hovering = false
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .background(RoundedRectangle(cornerRadius: 9 * k, style: .continuous).fill(.white.opacity(configuration.isPressed ? 0.18 : (hovering ? 0.12 : 0))))
+            .scaleEffect(configuration.isPressed ? 0.92 : 1)
+            .animation(Motion.press, value: configuration.isPressed)
+            .animation(.easeOut(duration: 0.15), value: hovering)
+            .onHover { hovering = $0 }
+            .contentShape(Rectangle())
     }
 }
 

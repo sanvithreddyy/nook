@@ -19,13 +19,13 @@ enum LiveActivity: Equatable {
         }
     }
 
-    /// The card the island opens to for this activity.
+    /// The card the island opens to for this activity. Music opens the home page holding the
+    /// Music module, which depends on the home's layout (see `IslandCard.available`).
     var card: IslandCard? {
         switch self {
-        case .nowPlaying: .nowPlaying
         case .calendar(let id): .meeting(id: id)
         case .timer: .timer
-        case .locked, .unlocked: nil
+        case .nowPlaying, .locked, .unlocked: nil
         }
     }
 }
@@ -97,29 +97,43 @@ enum Presentation: Equatable {
     case expanded
 }
 
-/// What the open island shows: one card at a time, like the Dynamic Island's expanded views.
+/// What the open island shows, one page at a time: home pages of modules, and the cards that
+/// stand on their own (a meeting about to start, a timer, the shelf).
 enum IslandCard: Hashable {
-    case nowPlaying
+    /// Modules side by side (or one, laid out one at a time).
+    case home([HomeModule])
     /// An event about to start or under way, with Join and Dismiss.
     case meeting(id: String)
-    /// The next event and the month after it, or the calendar access prompt.
-    case upNext
     /// A running, paused or finished timer.
     case timer
     /// Files kept for later and AirDrop.
     case shelf
 
-    /// The cards the island can open to, most relevant first, so hovering opens what the closed island
-    /// shows. `live`: the cards for what the closed island shows, the island's own activity first, then
-    /// the drop beside it. `music`: a track is loaded, playing or paused. A meeting about to start stands
-    /// in for Up next, which would only repeat it. The shelf is always last: empty, it's a drop target.
-    static func available(live: [IslandCard], music: Bool, agenda: Bool, shelf: Bool) -> [IslandCard] {
-        var cards = live
-        if music, !cards.contains(.nowPlaying) { cards.append(.nowPlaying) }
-        let meeting = cards.contains { if case .meeting = $0 { true } else { false } }
-        if agenda, !meeting { cards.append(.upNext) }
-        if shelf { cards.append(.shelf) }
+    /// The pages the island can open to, most relevant first, so hovering opens what the closed
+    /// island shows. `live`: what's going on, the island's own activity first, then the drop beside it.
+    /// `modules`: the home's modules that have something to show, in their order, `perPage` to a page.
+    /// The home pages come next, then the drop's card, then the shelf, which is always last: empty,
+    /// it's a drop target.
+    static func available(live: [LiveActivity], modules: [HomeModule], perPage: Int, shelf: Bool) -> [IslandCard] {
+        let size = max(perPage, 1)
+        let pages = stride(from: 0, to: modules.count, by: size).map { start in
+            IslandCard.home(Array(modules[start..<min(start + size, modules.count)]))
+        }
+        var cards: [IslandCard] = []
+        func add(_ card: IslandCard?) {
+            if let card, !cards.contains(card) { cards.append(card) }
+        }
+        if let own = live.first {
+            add(own == .nowPlaying ? pages.first { $0.modules.contains(.music) } : own.card)
+        }
+        pages.forEach(add)
+        live.dropFirst().forEach { add($0.card) }
+        if shelf { add(.shelf) }
         return cards
+    }
+
+    var modules: [HomeModule] {
+        if case .home(let modules) = self { modules } else { [] }
     }
 }
 
@@ -173,10 +187,14 @@ final class NotchModel {
 
     var isHovering = false
     var isPressed = false
-    /// Up next has no events to show yet, only the calendar access prompt (a shorter card).
-    var calendarNeedsAccess = false
-    /// The shelf holds files (a taller card with the files row).
-    var shelfHasFiles = false
+    /// A menu from the open island (the output picker) is showing, so the island stays open under it.
+    var holdsOpen = false
+    /// The home as Settings has it. Set by the coordinator.
+    var home = HomeConfig()
+    /// Devices the Batteries module shows, which sets its width.
+    var batteryCount = 0
+    /// Files on the shelf, which set its page's width.
+    var shelfItems = 0
     /// A file drag from another app is under way, so the shelf shows its drop targets.
     private(set) var isDraggingFile = false
     /// A second activity beside the island's own: a timer or a meeting about to start, shown as its own
@@ -240,10 +258,10 @@ final class NotchModel {
                 return compact(leading: slot, trailing: slot)
             }
         case .expanded:
-            // Every card is as wide as the next, so switching cards only changes the height.
-            // The ears are outside the card's body, which is `cardWidth` wide.
-            return IslandLayout(size: CGSize(width: Self.cardWidth + Self.cardEar * 2, height: n.height + cardBody),
-                                topRadius: Self.cardEar, bottomRadius: 30)
+            // The ears are outside the card's body.
+            let body = cardSize(card)
+            return IslandLayout(size: CGSize(width: body.width + Self.cardEar * 2, height: n.height + body.height),
+                                topRadius: Self.cardEar, bottomRadius: Self.cardRadius)
         }
     }
 
@@ -253,27 +271,29 @@ final class NotchModel {
                      topRadius: 6, bottomRadius: Compact.bottomRadius, shift: (trailing - leading) / 2)
     }
 
-    /// Height of the open card below the notch line.
-    private var cardBody: CGFloat {
+    /// An open card's body, ears left out: its width, and its height below the notch line.
+    func cardSize(_ card: IslandCard) -> CGSize {
         switch card {
-        case .nowPlaying: 124
-        case .meeting: 104
-        case .upNext: calendarNeedsAccess ? 88 : 164
-        case .timer: 76
-        case .shelf: shelfHasFiles && !isDraggingFile ? 112 : 96
+        case .home(let modules): HomeMetrics.pageSize(modules, batteries: batteryCount, scale: home.scale)
+        case .meeting: CGSize(width: Self.cardWidth, height: 104)
+        case .timer: CGSize(width: Self.cardWidth, height: 76)
+        case .shelf: ShelfMetrics.size(items: shelfItems, dragging: isDraggingFile)
         }
     }
 
-    /// Width of an open card's body: the notch plus a wing either side wide enough for artwork.
+    /// Width of the meeting and timer cards' bodies: the notch plus a wing either side wide enough for a glyph.
     static let cardWidth: CGFloat = 360
     static let cardEar: CGFloat = 12
-    /// The tallest card body (Up next); the panel is sized for it.
-    static let tallestCardBody: CGFloat = 164
+    static let cardRadius: CGFloat = 34
 
     /// The biggest island the panel must hold, with room for its shadow and the meeting drop beside it.
+    /// Sized for the largest home any setting allows: resizing the panel while it's on screen sends
+    /// AppKit into a constraints loop (it crashed when the home's layout changed), so it never resizes.
     var maximumSize: CGSize {
-        let widest = max(Self.cardWidth + Self.cardEar * 2, notch.size.width + (notch.slot + 84) * 2)
-        return CGSize(width: widest + 120, height: notch.size.height + Self.tallestCardBody + 40)
+        let home = HomeMetrics.widestPage(HomeConfig(layout: .sideBySide, columns: 3, size: .large))
+        let body = CGSize(width: max(home.width, ShelfMetrics.maxWidth, Self.cardWidth), height: max(home.height, ShelfMetrics.height, 104))
+        let widest = max(body.width + Self.cardEar * 2, notch.size.width + (notch.slot + 84) * 2)
+        return CGSize(width: widest + 120, height: notch.size.height + body.height + 40)
     }
 
     // MARK: Live activity

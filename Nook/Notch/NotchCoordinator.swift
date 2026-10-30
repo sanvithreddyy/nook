@@ -8,6 +8,8 @@ final class NotchCoordinator {
     let nowPlaying = NowPlayingModel()
     let calendar = CalendarModel()
     let shelf = ShelfModel()
+    let batteries = DeviceBatteries()
+    let outputs = AudioOutputs()
     #if DEBUG
     /// Preview timers live in their own store, so a test timer never shows up in the real app.
     let timer = TimerModel(defaults: CommandLine.arguments.contains("-preview-timer") ? .preview : .standard)
@@ -45,6 +47,7 @@ final class NotchCoordinator {
         timer.onChange = { [weak self] in self?.refreshActivity() }
         timer.onDone = { [weak self] in self?.timerDone() }
 
+        battery.onReadingChange = { [weak self] reading, lowPower in self?.batteries.updateMac(reading, lowPower: lowPower) }
         battery.onPowerSourceChange = { [weak self] reading in
             guard Prefs.bool(Prefs.battery) else { return }
             self?.model.post(reading.onAC ? .charging(level: reading.level) : .onBattery(level: reading.level), for: .seconds(2.6))
@@ -67,6 +70,11 @@ final class NotchCoordinator {
             guard Prefs.bool(Prefs.connectivity) else { return }
             self?.lastConnect = (device.name, .now)
             self?.model.post(.device(name: device.name, symbol: device.symbol, battery: nil), for: .seconds(3))
+            // Levels arrive a beat after connecting, as for the notice.
+            Task { [weak self] in
+                try? await Task.sleep(for: .seconds(3))
+                self?.batteries.refresh(force: true)
+            }
         }
         volume.onOutputChange = { [weak self] symbol, name in self?.outputChanged(to: symbol, name: name) }
         bluetooth.onBattery = { [weak self] device, level in
@@ -76,6 +84,7 @@ final class NotchCoordinator {
             self.model.post(.device(name: device.name, symbol: device.symbol, battery: level), for: .seconds(2.5))
         }
         if Prefs.bool(Prefs.connectivity) { bluetooth.start() }
+        batteries.refresh(force: true)
 
         // Swallow a key only when Nook can both act on it and show the result;
         // otherwise the system handles it as usual.
@@ -113,6 +122,7 @@ final class NotchCoordinator {
         fileDrags.onActiveChange = { [weak self] active in self?.model.setDraggingFile(active) }
         fileDrags.start()
         observeShelf()
+        observeBatteries()
 
         #if DEBUG
         if DebugTour.isRequested { DebugTour.run(self) }
@@ -123,6 +133,13 @@ final class NotchCoordinator {
                 debugRefresh()
                 let args = CommandLine.arguments
                 if args.contains("-preview-calendar") { calendar.debugPreview(meetingSoon: args.contains("-preview-meeting")) }
+                if args.contains("-preview-batteries") { batteries.debugPreview() }
+                // -home-one, -home-three, -home-small, -home-large: a home layout for this run only.
+                if args.contains("-home-one") { debugHome.layout = .oneAtATime }
+                if args.contains("-home-three") { debugHome.columns = 3 }
+                if args.contains("-home-small") { debugHome.size = .small }
+                if args.contains("-home-large") { debugHome.size = .large }
+                applyPreferences()
                 // -preview-silent: what the island shows when nothing is playing.
                 if args.contains("-preview-silent") {
                     nowPlaying.debugClear()
@@ -186,6 +203,9 @@ final class NotchCoordinator {
     }
 
     #if DEBUG
+    /// A home layout set from the command line for captures, without touching saved settings.
+    private var debugHome = HomeConfig.current
+
     func debugRefresh() {
         nowPlayingVisible = true
         refreshActivity()
@@ -208,6 +228,8 @@ final class NotchCoordinator {
                 .environment(calendar)
                 .environment(shelf)
                 .environment(timer)
+                .environment(batteries)
+                .environment(outputs)
         }
         fileDrags.isInsideNotch = { [weak window] point in window?.catchesDrag(at: point) ?? false }
         window.isFileDragActive = { [weak self] in self?.fileDrags.isActive ?? false }
@@ -271,6 +293,14 @@ final class NotchCoordinator {
         }
         let style = HUDStyle.current
         if model.hudStyle != style { model.hudStyle = style }
+        var home = HomeConfig.current
+        #if DEBUG
+        if CommandLine.arguments.contains(where: { $0.hasPrefix("-home-") }) { home = debugHome }
+        #endif
+        if model.home != home {
+            withAnimation(model.isExpanded ? Motion.expand : nil) { model.home = home }
+        }
+        batteries.publish()
         watchPermissions()
         updateFullscreen()
         refreshActivity()
@@ -353,32 +383,46 @@ final class NotchCoordinator {
         refreshCards(live: live)
     }
 
-    /// Runs on every calendar change and on the 30 s tick too, so a meeting that starts or the last
-    /// event ending changes what the island opens to.
+    /// Runs on every calendar change and on the 30 s tick too, so a meeting that starts changes what
+    /// the island opens to. The home shows the modules that are on and have something to show.
     private func refreshCards(live: [LiveActivity]? = nil) {
-        let calendarOn = Prefs.bool(Prefs.calendar)
-        let needsAccess = calendar.access != .granted
-        let hasFiles = !shelf.isEmpty
-        if model.calendarNeedsAccess != needsAccess || model.shelfHasFiles != hasFiles {
+        let items = shelf.items.count
+        let devices = batteries.devices.count
+        if model.shelfItems != items || model.batteryCount != devices {
             withAnimation(model.isExpanded ? Motion.expand : nil) {
-                model.calendarNeedsAccess = needsAccess
-                model.shelfHasFiles = hasFiles
+                model.shelfItems = items
+                model.batteryCount = devices
             }
         }
-        model.setCards(IslandCard.available(
-            live: (live ?? liveActivities()).compactMap(\.card),
-            music: Prefs.bool(Prefs.nowPlaying) && nowPlaying.hasTrack,
-            agenda: calendarOn && (needsAccess || !calendar.upcoming().isEmpty),
-            shelf: Prefs.bool(Prefs.shelf)))
+        let modules = model.home.modules.filter { module in
+            switch module {
+            case .music: Prefs.bool(Prefs.nowPlaying) && nowPlaying.hasTrack
+            case .calendar: Prefs.bool(Prefs.calendar)
+            case .batteries: devices > 0
+            }
+        }
+        model.setCards(IslandCard.available(live: live ?? liveActivities(), modules: modules,
+                                            perPage: model.home.perPage, shelf: Prefs.bool(Prefs.shelf)))
     }
 
     private func observeShelf() {
         withObservationTracking {
-            _ = shelf.isEmpty
+            _ = shelf.items.count
         } onChange: { [weak self] in
             Task { @MainActor in
                 self?.refreshCards()
                 self?.observeShelf()
+            }
+        }
+    }
+
+    private func observeBatteries() {
+        withObservationTracking {
+            _ = batteries.devices.count
+        } onChange: { [weak self] in
+            Task { @MainActor in
+                self?.refreshCards()
+                self?.observeBatteries()
             }
         }
     }

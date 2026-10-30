@@ -13,6 +13,8 @@ final class BatteryMonitor {
     private(set) var isLowPowerMode = ProcessInfo.processInfo.isLowPowerModeEnabled
 
     var onPowerSourceChange: ((Reading) -> Void)?
+    /// Every reading, and Low Power Mode, for the Batteries module.
+    var onReadingChange: ((Reading?, Bool) -> Void)?
     var onLowBattery: ((Reading) -> Void)?
     var onLowPowerModeChange: ((Bool) -> Void)?
 
@@ -22,6 +24,7 @@ final class BatteryMonitor {
 
     func start() {
         reading = Self.read()
+        onReadingChange?(reading, isLowPowerMode)
         let context = Unmanaged.passUnretained(self).toOpaque()
         if let source = IOPSNotificationCreateRunLoopSource(powerSourceCallback, context)?.takeRetainedValue() {
             CFRunLoopAddSource(CFRunLoopGetMain(), source, .defaultMode)
@@ -36,6 +39,7 @@ final class BatteryMonitor {
         guard let new = Self.read() else { return }
         let old = reading
         reading = new
+        if new != old { onReadingChange?(new, isLowPowerMode) }
         guard let old else { return }
         if new.onAC != old.onAC {
             onPowerSourceChange?(new)
@@ -54,6 +58,7 @@ final class BatteryMonitor {
         guard on != isLowPowerMode else { return }
         isLowPowerMode = on
         onLowPowerModeChange?(on)
+        onReadingChange?(reading, on)
     }
 
     private static func read() -> Reading? {

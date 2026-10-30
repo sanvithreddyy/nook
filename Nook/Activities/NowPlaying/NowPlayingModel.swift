@@ -22,6 +22,9 @@ final class NowPlayingModel {
     private(set) var tint: Color = .white
     private(set) var isShuffled = false
     private(set) var repeatMode = 1
+    /// The player takes favourites (Apple Music does; browsers don't), and whether this track is one.
+    private(set) var canFavorite = false
+    private(set) var isFavorite = false
     /// Changes whenever the track changes; drives the artwork flip and the quick peek.
     private(set) var trackID = ""
 
@@ -69,6 +72,14 @@ final class NowPlayingModel {
     func next() { client.send(.nextTrack) }
     func previous() { client.send(.previousTrack) }
 
+    /// MediaRemote has a command to favourite but none to take a favourite back, so a favourite
+    /// stays until it's removed in the player.
+    func favorite() {
+        guard canFavorite, !isFavorite else { return }
+        isFavorite = true
+        client.send(.likeTrack)
+    }
+
     func seek(to seconds: Double) {
         elapsedAtTimestamp = seconds
         elapsedTimestamp = Date()
@@ -103,6 +114,8 @@ final class NowPlayingModel {
         elapsedAtTimestamp = duration * 0.3
         elapsedTimestamp = Date()
         isPlaying = true
+        // As Apple Music reports it, so captures show the star.
+        canFavorite = true
     }
 
     func previewPaused() {
@@ -147,6 +160,8 @@ final class NowPlayingModel {
         }
         if carries("shuffleMode"), let shuffle = number("shuffleMode") { isShuffled = shuffle != 1 }
         if carries("repeatMode"), let mode = number("repeatMode") { repeatMode = Int(mode) }
+        if carries("supportsIsLiked") { canFavorite = bool("supportsIsLiked") ?? false }
+        if carries("isLiked") { isFavorite = bool("isLiked") ?? false }
 
         // A restart (Previous, repeat-one) leaves elapsed at 0 → 0, so its diff carries only a new timestamp.
         let carriesElapsed = carries("elapsedTimeMicros", "timestampEpochMicros") && micros("elapsedTimeMicros") != nil

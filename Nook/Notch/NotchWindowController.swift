@@ -64,7 +64,8 @@ final class NotchWindowController {
     func place(on screen: NSScreen) {
         self.screen = screen
         model.notch = screen.notchMetrics
-        let size = model.maximumSize
+        var size = model.maximumSize
+        size.width = min(size.width, screen.frame.width)
         let frame = NSRect(x: screen.frame.midX - size.width / 2,
                            y: screen.frame.maxY - size.height,
                            width: size.width,
@@ -216,11 +217,12 @@ final class NotchWindowController {
                 collapseTask = Task { [weak self] in
                     // A small overshoot past the edge doesn't close it.
                     try? await Task.sleep(for: .milliseconds(250))
-                    // Stay open while the scrubber is dragged past the edge, or while a file drag
-                    // lingers near the island looking for the drop area.
+                    // Stay open while the scrubber is dragged past the edge, while a file drag
+                    // lingers near the island looking for the drop area, or under the island's menu.
                     while !Task.isCancelled, let self,
                           (self.dragBeganOnIsland && NSEvent.pressedMouseButtons & 1 != 0)
-                            || (self.isFileDragActive() && self.isNearIsland(NSEvent.mouseLocation)) {
+                            || (self.isFileDragActive() && self.isNearIsland(NSEvent.mouseLocation))
+                            || self.model.holdsOpen {
                         try? await Task.sleep(for: .milliseconds(50))
                     }
                     guard !Task.isCancelled, let self, !self.model.isHovering else { return }
