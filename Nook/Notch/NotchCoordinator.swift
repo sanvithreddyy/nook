@@ -21,6 +21,7 @@ final class NotchCoordinator {
     private let battery = BatteryMonitor()
     private let bluetooth = BluetoothMonitor()
     private let volume = VolumeService()
+    private let hotKeys = HotKeys()
     private let brightness = BrightnessService()
     private let keys = MediaKeyTap()
     private let fileDrags = FileDragWatcher()
@@ -47,6 +48,7 @@ final class NotchCoordinator {
             self?.scheduleEventStart()
         }
 
+        hotKeys.onPress = { [weak self] action in self?.shortcut(action) }
         timer.onChange = { [weak self] in self?.refreshActivity() }
         timer.onDone = { [weak self] in self?.timerDone() }
 
@@ -310,6 +312,7 @@ final class NotchCoordinator {
         if model.hudStyle != style { model.hudStyle = style }
         let openTo = OpenTo.current
         if model.openTo != openTo { model.openTo = openTo }
+        hotKeys.update()
         let ignored = MediaSources.ignored
         if nowPlaying.ignoredApps != ignored {
             nowPlaying.ignoredApps = ignored
@@ -380,6 +383,31 @@ final class NotchCoordinator {
         model.post(.lowBattery(level: level), for: .seconds(4))
         let sound = Prefs.string(Prefs.lowBatterySound)
         if !sound.isEmpty { NSSound(named: sound)?.play() }
+    }
+
+    // MARK: Shortcuts
+
+    private func shortcut(_ action: ShortcutAction) {
+        switch action {
+        case .toggleIsland:
+            if model.isExpanded { model.collapse() } else if !model.isSuppressed { model.expand() }
+        case .playPause:
+            nowPlaying.togglePlayPause()
+        case .nextTrack:
+            nowPlaying.next()
+        case .previousTrack:
+            nowPlaying.previous()
+        case .timer:
+            // Pauses or resumes one that's going; otherwise starts the last length again, or five minutes.
+            switch timer.state {
+            case .running, .paused: timer.toggle()
+            case .idle, .done: timer.start(minutes: timer.total > 0 ? max(Int(timer.total / 60), 1) : 5)
+            }
+        case .shelf:
+            if Prefs.bool(Prefs.shelf), !model.isSuppressed { model.expand(card: .shelf) }
+        case .settings:
+            SettingsWindowController.shared.show()
+        }
     }
 
     // MARK: Events starting

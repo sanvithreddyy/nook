@@ -90,7 +90,7 @@ final class SettingsWindowController {
 }
 
 enum SettingsPane: String, CaseIterable, Identifiable {
-    case general, home, nowPlaying, calendar, timer, shelf, huds, battery, connectivity, lock, advanced, about
+    case general, home, nowPlaying, calendar, timer, shelf, huds, battery, connectivity, lock, shortcuts, advanced, about
     var id: String { rawValue }
 
     var title: String {
@@ -105,6 +105,7 @@ enum SettingsPane: String, CaseIterable, Identifiable {
         case .timer: "Timer"
         case .shelf: "Shelf"
         case .lock: "Lock Screen"
+        case .shortcuts: "Keyboard Shortcuts"
         case .advanced: "Advanced"
         case .about: "About"
         }
@@ -145,6 +146,7 @@ enum SettingsPane: String, CaseIterable, Identifiable {
                         "Low Power Mode on and off", "Warn when the battery runs low", "Sound"]
         case .connectivity: ["Show when Bluetooth devices connect", "AirPods", "Headphones", "Stays for"]
         case .lock: ["Show lock and unlock"]
+        case .shortcuts: ["Shortcut", "Keyboard", "Hotkey", "Record Shortcut"] + ShortcutAction.allCases.map(\.title)
         case .advanced: ["Export Settings", "Import Settings", "Reset All Settings", "Backup"]
         case .about: ["Version", "Acknowledgements"]
         }
@@ -194,7 +196,7 @@ struct SettingsView: View {
                         ForEach([SettingsPane.huds, .battery, .connectivity, .lock]) { Text($0.title).tag($0) }
                     }
                     Section("Nook") {
-                        ForEach([SettingsPane.advanced, .about]) { Text($0.title).tag($0) }
+                        ForEach([SettingsPane.shortcuts, .advanced, .about]) { Text($0.title).tag($0) }
                     }
                 } else {
                     ForEach(SettingsPane.allCases.filter { $0.match(query) != nil }) { pane in
@@ -229,6 +231,7 @@ struct SettingsView: View {
                 case .timer: TimerPane()
                 case .shelf: ShelfPane()
                 case .lock: LockPane()
+                case .shortcuts: ShortcutsPane()
                 case .advanced: AdvancedPane()
                 case .about: AboutPane()
                 }
