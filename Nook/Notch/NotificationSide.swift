@@ -36,10 +36,7 @@ struct NotificationSide: View {
                 }
             case .device(_, let symbol, let battery):
                 if edge == .leading {
-                    Image(systemName: symbol)
-                        .symbolRenderingMode(.hierarchical)
-                        .font(.system(size: 18, weight: .medium))
-                        .foregroundStyle(.white)
+                    TurningDevice(symbol: symbol)
                         .concentric(.leading, height: model.notch.size.height)
                 } else {
                     BatteryRing(level: battery.map { Double($0) / 100 })
@@ -96,6 +93,59 @@ extension View {
             .padding(edge == .leading ? .leading : .trailing, Compact.ear)
             .frame(maxWidth: .infinity, alignment: edge == .leading ? .leading : .trailing)
     }
+}
+
+/// A device that just connected turns once about its vertical axis, front to side and back, the way
+/// a product turns on a stand. A symbol is flat, so at the edge it swaps to the side view's symbol.
+/// Devices without one (over-ear headphones) stay still.
+private struct TurningDevice: View {
+    let symbol: String
+    @State private var angle = 0.0
+    @State private var sideways = false
+
+    var body: some View {
+        let side = Self.sides[symbol]
+        Image(systemName: sideways ? side ?? symbol : symbol)
+            .symbolRenderingMode(.hierarchical)
+            .font(.system(size: 18, weight: .medium))
+            .foregroundStyle(.white)
+            .rotation3DEffect(.degrees(angle), axis: (x: 0, y: 1, z: 0), perspective: 0.5)
+            .task {
+                guard side != nil, !Motion.reduceMotion, !Motion.isDisabled else { return }
+                do {
+                    // After the glyph has sharpened in: slow off the front, quick past each edge,
+                    // a beat on the side, and slow back onto the front, about 2 s in all, so it's
+                    // facing front again well before the notice goes.
+                    try await Task.sleep(for: .milliseconds(300))
+                    try await turn(to: 90, easeIn: true, seconds: 0.45)
+                    sideways = true
+                    angle = -90
+                    try await turn(to: 0, easeIn: false, seconds: 0.35)
+                    try await Task.sleep(for: .milliseconds(100))
+                    try await turn(to: 90, easeIn: true, seconds: 0.35)
+                    sideways = false
+                    angle = -90
+                    try await turn(to: 0, easeIn: false, seconds: 0.5)
+                } catch {
+                    angle = 0
+                    sideways = false
+                }
+            }
+    }
+
+    private func turn(to target: Double, easeIn: Bool, seconds: Double) async throws {
+        withAnimation(easeIn ? .easeIn(duration: seconds) : .easeOut(duration: seconds)) { angle = target }
+        try await Task.sleep(for: .seconds(seconds))
+    }
+
+    /// One bud from the side, for each pair that has a symbol for it.
+    static let sides: [String: String] = [
+        "airpods": "airpod.right",
+        "airpods.pro": "airpodpro.right", "airpodspro": "airpodpro.right", "airpods.pro.gen3": "airpodpro.right",
+        "airpods.gen3": "airpod.gen3.right", "airpods.gen4": "airpod.gen3.right",
+        "beats.fit.pro": "beats.fit.pro.right", "beats.studiobuds": "beats.studiobuds.right",
+        "beats.powerbeats.pro": "beats.powerbeats.pro.right",
+    ]
 }
 
 /// Sound moved to these headphones: Apple's blue disc with the turn-back arrow, which swings in.
@@ -161,7 +211,7 @@ struct BatteryGlyph: View {
 }
 
 /// A device's battery as a ring in Apple's green. Before the level is known a short arc turns;
-/// once it's known the ring fills to it.
+/// once it's known the ring shows it, fading in rather than sweeping.
 struct BatteryRing: View {
     let level: Double?
 
@@ -186,15 +236,13 @@ struct BatteryRing: View {
 
 private struct FillingArc: View {
     let level: Double
-    @State private var shown = 0.0
 
     var body: some View {
         Circle()
-            .trim(from: 0, to: shown)
+            .trim(from: 0, to: level)
             .stroke(Color.status(.green), style: BatteryRing.style)
             .rotationEffect(.degrees(-90))
-            .onAppear { withAnimation(Motion.ease(.spring(duration: 0.7, bounce: 0.1))) { shown = level } }
-            .onChange(of: level) { _, new in withAnimation(Motion.level) { shown = new } }
+            .animation(Motion.level, value: level)
     }
 }
 
