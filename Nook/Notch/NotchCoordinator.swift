@@ -250,6 +250,8 @@ final class NotchCoordinator {
         for name in [NSWorkspace.activeSpaceDidChangeNotification, NSWorkspace.didActivateApplicationNotification] {
             observers.append(workspace.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
                 Task { @MainActor in
+                    // The player's app may have come to the front, or left it.
+                    self?.refreshActivity()
                     // Space switches finish animating after the notification; check again once settled.
                     self?.updateFullscreen()
                     try? await Task.sleep(for: .milliseconds(450))
@@ -296,6 +298,11 @@ final class NotchCoordinator {
         if model.hudStyle != style { model.hudStyle = style }
         let openTo = OpenTo.current
         if model.openTo != openTo { model.openTo = openTo }
+        let ignored = MediaSources.ignored
+        if nowPlaying.ignoredApps != ignored {
+            nowPlaying.ignoredApps = ignored
+            refreshActivity()
+        }
         window?.panel.sharingType = Prefs.bool(Prefs.hideFromCapture) ? .none : .readOnly
         var home = HomeConfig.current
         #if DEBUG
@@ -363,7 +370,7 @@ final class NotchCoordinator {
     /// to start. The first is the island's own activity; the next becomes the drop beside it.
     private func liveActivities() -> [LiveActivity] {
         var live: [LiveActivity] = []
-        if Prefs.bool(Prefs.nowPlaying), nowPlaying.hasTrack, nowPlayingVisible { live.append(.nowPlaying) }
+        if Prefs.bool(Prefs.nowPlaying), nowPlaying.hasTrack, nowPlayingVisible, !playerInFront { live.append(.nowPlaying) }
         var timed: [(activity: LiveActivity, due: Date)] = []
         if timer.isActive { timed.append((.timer, .now.addingTimeInterval(timer.remaining()))) }
         if Prefs.bool(Prefs.calendar), let meeting = calendar.eventForLiveActivity() { timed.append((.calendar(id: meeting.id), meeting.start)) }
@@ -456,15 +463,24 @@ final class NotchCoordinator {
         }
     }
 
+    /// The player's own app is in front and Settings asks for the island to leave it alone then.
+    private var playerInFront: Bool {
+        Prefs.bool(Prefs.hideWhenPlayerFront) && nowPlaying.bundleIdentifier != nil
+            && NSWorkspace.shared.frontmostApplication?.bundleIdentifier == nowPlaying.bundleIdentifier
+    }
+
     private func playbackChanged() {
         pauseGraceTask?.cancel()
         if nowPlaying.isPlaying {
             nowPlayingVisible = true
             refreshActivity()
         } else {
-            // A paused track lingers briefly so a quick pause/resume doesn't flicker the island.
+            // A paused track lingers so a quick pause/resume doesn't flicker the island; as long as
+            // Settings says, or until the player lets go of the track.
+            let linger = Prefs.int(Prefs.pausedLinger)
+            guard linger >= 0 else { return }
             pauseGraceTask = Task { [weak self] in
-                try? await Task.sleep(for: .seconds(5))
+                try? await Task.sleep(for: .seconds(linger))
                 guard !Task.isCancelled, let self else { return }
                 if self.model.isHovering || self.model.isExpanded {
                     self.playbackChanged()
@@ -484,7 +500,7 @@ final class NotchCoordinator {
         nowPlayingVisible = true
         refreshActivity()
         if Prefs.bool(Prefs.peekOnTrackChange), model.liveActivity == .nowPlaying, !model.isExpanded, model.notification == nil {
-            model.showPeek(.track)
+            model.showPeek(.track, for: .seconds(Prefs.double(Prefs.peekDuration)))
         }
     }
 

@@ -78,8 +78,8 @@ struct MusicModule: View {
     @Environment(NowPlayingModel.self) private var nowPlaying
     @Environment(\.homeScale) private var k
     @AppStorage(Prefs.tintWaveform) private var tintWaveform = true
-    @AppStorage(Prefs.musicFavorite) private var showFavorite = true
-    @AppStorage(Prefs.musicOutput) private var showOutput = true
+    @AppStorage(Prefs.musicLeftButton) private var leftButton = MusicButton.favorite
+    @AppStorage(Prefs.musicRightButton) private var rightButton = MusicButton.output
     @AppStorage(Prefs.artworkFlip) private var flip = true
 
     var body: some View {
@@ -111,10 +111,8 @@ struct MusicModule: View {
             Scrubber()
                 .padding(.top, 16 * k)
             HStack(spacing: 0) {
-                Group {
-                    if showFavorite, nowPlaying.canFavorite { FavoriteButton() }
-                }
-                .frame(width: 34 * k)
+                SideButton(kind: leftButton)
+                    .frame(width: 34 * k)
                 Spacer(minLength: 0)
                 ControlButton(symbol: "backward.fill", size: 20 * k, label: "Previous") { nowPlaying.previous() }
                 Spacer(minLength: 0)
@@ -123,10 +121,8 @@ struct MusicModule: View {
                 Spacer(minLength: 0)
                 ControlButton(symbol: "forward.fill", size: 20 * k, label: "Next") { nowPlaying.next() }
                 Spacer(minLength: 0)
-                Group {
-                    if showOutput { OutputButton() }
-                }
-                .frame(width: 34 * k)
+                SideButton(kind: rightButton)
+                    .frame(width: 34 * k)
             }
             .padding(.horizontal, -6 * k)
             .padding(.top, 10 * k)
@@ -151,6 +147,7 @@ struct Scrubber: View {
     @Environment(NowPlayingModel.self) private var nowPlaying
     @Environment(\.homeScale) private var k
     @Environment(\.displayScale) private var displayScale
+    @AppStorage(Prefs.musicShowsTotal) private var showsTotal = false
     @State private var dragElapsed: Double?
     @State private var hovering = false
     /// Steps while playing, so the time and bar move on.
@@ -196,8 +193,11 @@ struct Scrubber: View {
             .accessibilityElement()
             .accessibilityLabel("Playback position")
             .accessibilityValue("\(Self.format(elapsed)) of \(Self.format(duration))")
-            Text("−" + Self.format(max(duration - elapsed, 0)))
+            // Click to switch between what's left and the track's length, as Music's own player does.
+            Text(showsTotal ? Self.format(duration) : "−" + Self.format(max(duration - elapsed, 0)))
                 .frame(minWidth: 36 * k, alignment: .trailing)
+                .contentShape(Rectangle())
+                .onTapGesture { showsTotal.toggle() }
         }
         .font(.system(size: 12 * k, weight: .medium).monospacedDigit())
         .foregroundStyle(.white.opacity(0.6))
@@ -261,6 +261,56 @@ struct ControlButton: View {
         }
         .buttonStyle(IslandButtonStyle())
         .accessibilityLabel(label)
+    }
+}
+
+/// One of the player's side buttons, as Settings has it. The star shows only for players that take
+/// favourites, so it never sits there dead.
+private struct SideButton: View {
+    @Environment(NowPlayingModel.self) private var nowPlaying
+    let kind: MusicButton
+
+    var body: some View {
+        switch kind {
+        case .none:
+            EmptyView()
+        case .favorite:
+            if nowPlaying.canFavorite { FavoriteButton() }
+        case .output:
+            OutputButton()
+        case .shuffle:
+            SideGlyph(symbol: "shuffle", lit: nowPlaying.isShuffled, label: "Shuffle") { nowPlaying.toggleShuffle() }
+        case .repeatMode:
+            SideGlyph(symbol: nowPlaying.repeatMode == 2 ? "repeat.1" : "repeat", lit: nowPlaying.repeatMode != 1,
+                      label: "Repeat") { nowPlaying.cycleRepeat() }
+        case .back15:
+            SideGlyph(symbol: "gobackward.15", label: "Back 15 seconds") { nowPlaying.skip(by: -15) }
+        case .forward15:
+            SideGlyph(symbol: "goforward.15", label: "Forward 15 seconds") { nowPlaying.skip(by: 15) }
+        }
+    }
+}
+
+/// A side button's glyph on its platter. `lit`: a mode that's on shows bright, off shows dim;
+/// a plain action sits between.
+private struct SideGlyph: View {
+    @Environment(\.homeScale) private var k
+    let symbol: String
+    var lit: Bool?
+    let label: String
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: symbol)
+                .font(.system(size: 17 * k, weight: .semibold))
+                .foregroundStyle(.white.opacity(lit.map { $0 ? 0.95 : 0.45 } ?? 0.75))
+                .contentTransition(.symbolEffect(.replace))
+                .frame(width: 34 * k, height: 34 * k)
+        }
+        .buttonStyle(PlatterButtonStyle())
+        .accessibilityLabel(label)
+        .accessibilityValue(lit.map { $0 ? "On" : "Off" } ?? "")
     }
 }
 

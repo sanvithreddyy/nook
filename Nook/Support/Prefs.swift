@@ -132,6 +132,25 @@ enum SwipeSensitivity: String, CaseIterable, Identifiable {
     static var current: SwipeSensitivity { SwipeSensitivity(rawValue: Prefs.string(Prefs.swipeSensitivity)) ?? .medium }
 }
 
+/// What one of the music player's side buttons does.
+enum MusicButton: String, CaseIterable, Identifiable {
+    case none, favorite, output, shuffle
+    case repeatMode = "repeat"
+    case back15, forward15
+    var id: String { rawValue }
+    var title: String {
+        switch self {
+        case .none: "Nothing"
+        case .favorite: "Favorite"
+        case .output: "Output"
+        case .shuffle: "Shuffle"
+        case .repeatMode: "Repeat"
+        case .back15: "Back 15 seconds"
+        case .forward15: "Forward 15 seconds"
+        }
+    }
+}
+
 /// The page the island opens on when nothing asks for a particular one.
 enum OpenTo: String, CaseIterable, Identifiable {
     /// The page for what the closed island shows: the music, a meeting, a timer.

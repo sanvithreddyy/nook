@@ -10,8 +10,14 @@ final class NowPlayingModel {
     private(set) var isPlaying = false
     private(set) var playbackRate: Double = 0
     private(set) var bundleIdentifier: String? {
-        didSet { if bundleIdentifier != oldValue { appIcon = Self.icon(for: bundleIdentifier) } }
+        didSet {
+            guard bundleIdentifier != oldValue else { return }
+            appIcon = Self.icon(for: bundleIdentifier)
+            if let bundleIdentifier { MediaSources.remember(bundleIdentifier) }
+        }
     }
+    /// Apps Settings leaves out; what they play counts as nothing playing. Set by the coordinator.
+    var ignoredApps: Set<String> = []
     /// Icon of the app that is playing, resolved once per app change.
     private(set) var appIcon: NSImage?
     private(set) var artwork: NSImage?
@@ -38,7 +44,7 @@ final class NowPlayingModel {
     @ObservationIgnored private var state: [String: NowPlayingUpdate.Value] = [:]
     @ObservationIgnored private var artworkGeneration = 0
 
-    var hasTrack: Bool { !title.isEmpty }
+    var hasTrack: Bool { !title.isEmpty && !(bundleIdentifier.map(ignoredApps.contains) ?? false) }
 
     private static func icon(for bundleIdentifier: String?) -> NSImage? {
         guard let bundleIdentifier,
@@ -84,6 +90,17 @@ final class NowPlayingModel {
         elapsedAtTimestamp = seconds
         elapsedTimestamp = Date()
         client.seek(to: seconds)
+    }
+
+    /// Back or forward from where the track is, within it.
+    func skip(by seconds: Double) {
+        guard duration > 0 else { return }
+        seek(to: min(max(elapsed(at: .now) + seconds, 0), duration))
+    }
+
+    /// Off, all, one, off, as the player's own repeat button goes.
+    func cycleRepeat() {
+        setRepeat(repeatMode == 1 ? 3 : repeatMode == 3 ? 2 : 1)
     }
 
     func toggleShuffle() {

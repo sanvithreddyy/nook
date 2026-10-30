@@ -10,9 +10,11 @@ extension Prefs {
     static let homeSize = "homeSize"
 
     /// Module options, kept with the home so resetting Home resets them.
-    /// Music: the favourite star (shown only for players that take favourites) and the output button.
-    static let musicFavorite = "musicFavorite"
-    static let musicOutput = "musicOutput"
+    /// Music: what the player's two side buttons do (MusicButton raw values), and whether the time
+    /// right of the bar is the track's length instead of what's left.
+    static let musicLeftButton = "musicLeftButton"
+    static let musicRightButton = "musicRightButton"
+    static let musicShowsTotal = "musicShowsTotal"
     /// Calendar: WeekStart raw value, a dot under days with events, weekends in grey.
     static let calendarWeekStart = "calendarWeekStart"
     static let calendarDots = "calendarDots"
@@ -28,8 +30,9 @@ extension Prefs {
             homeOrder: HomeOrder.string(HomeModule.allCases),
             homeHidden: "",
             homeSize: HomeSize.medium.rawValue,
-            musicFavorite: true,
-            musicOutput: true,
+            musicLeftButton: MusicButton.favorite.rawValue,
+            musicRightButton: MusicButton.output.rawValue,
+            musicShowsTotal: false,
             calendarWeekStart: WeekStart.system.rawValue,
             // Off, as Apple's Calendar widget has it; a choice for seeing busy days at a glance.
             calendarDots: false,

@@ -123,10 +123,12 @@ enum SettingsPane: String, CaseIterable, Identifiable {
                         "Hairline outline", "Outline", "Border", "Hide from screenshots and recordings", "Screen recording",
                         "Screenshot", "App", "Open at login", "Hide the menu bar icon"]
         case .home: ["Preview on the notch", "Layout", "Side by Side", "One at a Time", "Modules side by side", "Size",
-                     "Modules", "Order", "Music", "Favorite button", "Output button", "Calendar", "Week starts on",
+                     "Modules", "Order", "Music", "Left button", "Right button", "Favorite", "Output", "Shuffle", "Repeat",
+                     "Back 15 seconds", "Forward 15 seconds", "Time after the bar", "Time left", "Length", "Remaining", "Calendar", "Week starts on",
                      "Mark days with events", "Weekends in gray", "Batteries", "Include this Mac"]
         case .nowPlaying: ["Show what's playing", "Closed island", "Waveform", "Color the waveform from the artwork",
-                           "Show the title when the track changes", "Show the title on hover", "Artwork",
+                           "Show the title when the track changes", "Show the title on hover", "Artwork", "Keep a paused player",
+                           "Paused", "Hide while the player is in front", "Show it for", "Peek", "Apps", "Sources", "Browser",
                            "Flip the artwork when the track changes", "Album art", "Music", "Media"]
         case .calendar: ["Show upcoming events", "Show a meeting in the notch", "Access", "Calendar access", "Events"]
         case .timer: ["Sound when it ends", "Alarm"]

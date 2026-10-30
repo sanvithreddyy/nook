@@ -123,14 +123,29 @@ private struct ReorderDrop: DropDelegate {
 }
 
 private struct MusicModuleOptions: View {
-    @AppStorage(Prefs.musicFavorite) private var favorite = true
-    @AppStorage(Prefs.musicOutput) private var output = true
+    @AppStorage(Prefs.musicLeftButton) private var left = MusicButton.favorite
+    @AppStorage(Prefs.musicRightButton) private var right = MusicButton.output
+    @AppStorage(Prefs.musicShowsTotal) private var showsTotal = false
 
     var body: some View {
-        SettingsSection("Music") {
-            SettingsToggle("Favorite button", description: "Shows for players that take favorites, like Music.", isOn: $favorite)
-            SettingsToggle("Output button", description: "Shows where the sound goes; click it to switch.", isOn: $output)
+        SettingsSection("Music", footer: left == .favorite || right == .favorite ? "Favorite shows only for players that take favorites, like Music." : nil) {
+            SettingsRow("Left button") { buttonPicker("Left button", $left) }
+            SettingsRow("Right button") { buttonPicker("Right button", $right) }
+            SettingsRow("Time after the bar", description: "Clicking the time on the player switches it too.") {
+                Picker("Time after the bar", selection: $showsTotal) {
+                    Text("Time left").tag(false)
+                    Text("Length").tag(true)
+                }
+                .segmentedStyle()
+            }
         }
+    }
+
+    private func buttonPicker(_ title: String, _ selection: Binding<MusicButton>) -> some View {
+        Picker(title, selection: selection) {
+            ForEach(MusicButton.allCases) { Text($0.title).tag($0) }
+        }
+        .menuStyle()
     }
 }
 
