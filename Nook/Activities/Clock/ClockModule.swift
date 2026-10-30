@@ -2,29 +2,43 @@ import SwiftUI
 
 /// A place on the world clock.
 struct ClockCity: Identifiable, Hashable {
+    let name: String
     let timeZone: TimeZone
-    var id: String { timeZone.identifier }
+    var id: String { "\(name)@\(timeZone.identifier)" }
 
-    /// "America/New_York" → "New York".
-    var name: String {
-        (timeZone.identifier.split(separator: "/").last.map(String.init) ?? timeZone.identifier)
-            .replacingOccurrences(of: "_", with: " ")
+    init(name: String, timeZone: TimeZone) {
+        self.name = name
+        self.timeZone = timeZone
+    }
+
+    /// Named after its zone: "America/New_York" → "New York".
+    init(timeZone: TimeZone) {
+        let city = timeZone.identifier.split(separator: "/").last.map(String.init) ?? timeZone.identifier
+        self.init(name: city.replacingOccurrences(of: "_", with: " "), timeZone: timeZone)
+    }
+
+    /// The cities Settings picked (four at most), or here and three of Apple's usual ones before any
+    /// were picked.
+    static func saved(_ json: String) -> [ClockCity] {
+        json.isEmpty ? defaults : Place.list(from: json).prefix(4).map { ClockCity(name: $0.name, timeZone: $0.timeZone) }
     }
 
     /// "+16HRS", "−3HRS", "+5:30HRS" from here; "+0HRS" here, as the widget writes it.
-    func offset(at date: Date) -> String {
-        let seconds = timeZone.secondsFromGMT(for: date) - TimeZone.current.secondsFromGMT(for: date)
+    func offset(at date: Date, from here: TimeZone = .current) -> String {
+        let seconds = timeZone.secondsFromGMT(for: date) - here.secondsFromGMT(for: date)
         let sign = seconds < 0 ? "−" : "+"
         let hours = abs(seconds) / 3600, minutes = abs(seconds) % 3600 / 60
         return minutes == 0 ? "\(sign)\(hours)HRS" : "\(sign)\(hours):\(String(format: "%02d", minutes))HRS"
     }
 
     /// "Today", "Tomorrow" or "Yesterday" there, against here.
-    func day(at date: Date) -> String {
+    func day(at date: Date, from here: TimeZone = .current) -> String {
         var there = Calendar(identifier: .gregorian)
         there.timeZone = timeZone
+        var ours = Calendar(identifier: .gregorian)
+        ours.timeZone = here
         let a = there.dateComponents([.year, .month, .day], from: date)
-        let b = Calendar.current.dateComponents([.year, .month, .day], from: date)
+        let b = ours.dateComponents([.year, .month, .day], from: date)
         let difference = Calendar(identifier: .gregorian).dateComponents([.day], from: b, to: a).day ?? 0
         return difference > 0 ? "Tomorrow" : difference < 0 ? "Yesterday" : "Today"
     }
@@ -34,8 +48,8 @@ struct ClockCity: Identifiable, Hashable {
         let here = ClockCity(timeZone: .current)
         let others = ["America/Los_Angeles", "America/New_York", "Europe/London", "Asia/Tokyo", "Australia/Sydney"]
             .compactMap(TimeZone.init(identifier:))
-            .filter { $0.identifier != here.id }
-            .map(ClockCity.init(timeZone:))
+            .filter { $0.identifier != here.timeZone.identifier }
+            .map { ClockCity(timeZone: $0) }
         return [here] + others.prefix(3)
     }
 }
@@ -44,9 +58,10 @@ struct ClockCity: Identifiable, Hashable {
 /// from here. A face is white in its daytime and dark at night, as Apple draws them; the second hand ticks.
 struct ClockModule: View {
     @Environment(\.homeScale) private var k
-    let cities = ClockCity.defaults
+    @AppStorage(Prefs.clockPlaces) private var placesJSON = ""
 
     var body: some View {
+        let cities = ClockCity.saved(placesJSON)
         TimelineView(.periodic(from: .now, by: 1)) { context in
             HStack(spacing: 0) {
                 ForEach(cities) { city in

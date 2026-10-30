@@ -142,6 +142,18 @@ final class NotchCoordinator {
                 let startsIn = args.firstIndex(of: "-preview-meeting-in").flatMap { args.indices.contains($0 + 1) ? Double(args[$0 + 1]) : nil }
                 if args.contains("-preview-calendar") { calendar.debugPreview(meetingSoon: args.contains("-preview-meeting"), startsIn: startsIn) }
                 if args.contains("-preview-batteries") { batteries.debugPreview() }
+                // -preview-places: real weather for Chicago and Tokyo and four clock cities, for this run
+                // only (nothing is saved).
+                if args.contains("-preview-places") {
+                    let place = { (name: String, lat: Double, lon: Double, zone: String) in Place(name: name, latitude: lat, longitude: lon, timeZoneID: zone) }
+                    UserDefaults.standard.setVolatileDomain([
+                        Prefs.weatherCurrentLocation: false,
+                        Prefs.weatherPlaces: Place.json([place("Chicago", 41.878, -87.63, "America/Chicago"), place("Tokyo", 35.68, 139.69, "Asia/Tokyo")]),
+                        Prefs.clockPlaces: Place.json([place("Chicago", 0, 0, "America/Chicago"), place("Hyderabad", 0, 0, "Asia/Kolkata"),
+                                                       place("London", 0, 0, "Europe/London"), place("Tokyo", 0, 0, "Asia/Tokyo")]),
+                    ], forName: UserDefaults.argumentDomain)
+                    weather.refresh(force: true)
+                }
                 // -preview-modules: sample weather, reminders and shortcuts, for designing those modules.
                 if args.contains("-preview-modules") {
                     weather.debugPreview()
@@ -310,6 +322,17 @@ final class NotchCoordinator {
             if lastCalendarFilter != nil { calendar.reloadIfRunning() }
             lastCalendarFilter = calendarFilter
         }
+        // The weather's places and the reminders' list, read again only when they change.
+        let weatherPlaces = "\(Prefs.bool(Prefs.weatherCurrentLocation))|" + Prefs.string(Prefs.weatherPlaces)
+        if weatherPlaces != lastWeatherPlaces {
+            lastWeatherPlaces = weatherPlaces
+            weather.refresh(force: true)
+        }
+        let remindersList = Prefs.string(Prefs.remindersList) + "|\(model.home.modules.contains(.reminders))"
+        if remindersList != lastRemindersList {
+            lastRemindersList = remindersList
+            reminders.update()
+        }
         let connectivityEnabled = Prefs.bool(Prefs.connectivity)
         if connectivityEnabled != lastConnectivityEnabled {
             if lastConnectivityEnabled != nil {
@@ -427,6 +450,8 @@ final class NotchCoordinator {
 
     // MARK: Events starting
 
+    private var lastWeatherPlaces: String?
+    private var lastRemindersList: String?
     private var lastCalendarFilter: String?
     private var eventStartTask: Task<Void, Never>?
     /// Events already marked as they started, so a recheck doesn't chime twice.
@@ -515,9 +540,9 @@ final class NotchCoordinator {
             case .music: Prefs.bool(Prefs.nowPlaying) && nowPlaying.hasTrack
             case .calendar: Prefs.bool(Prefs.calendar)
             case .batteries: devices > 0
-            case .weather: weather.report != nil
             case .shortcuts: !shortcuts.names.isEmpty
-            case .reminders, .clock, .timer: true
+            // Shown before there's anything in them, to hold the button that sets them up.
+            case .weather, .reminders, .clock, .timer: true
             }
         }
         model.setCards(IslandCard.available(live: live ?? liveActivities(), modules: modules,
@@ -607,12 +632,10 @@ final class NotchCoordinator {
         }
     }
 
-    /// Modules with nothing to show stay off the home: devices with a battery, a weather report,
-    /// shortcuts to run.
+    /// Modules with nothing to show stay off the home: devices with a battery, shortcuts to run.
     private func observeModuleData() {
         withObservationTracking {
             _ = batteries.devices.count
-            _ = weather.report == nil
             _ = shortcuts.names.isEmpty
         } onChange: { [weak self] in
             Task { @MainActor in

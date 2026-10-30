@@ -28,5 +28,11 @@
 	<string>Nook shows a notice in the notch when headphones and other devices connect.</string>
 	<key>NSCalendarsFullAccessUsageDescription</key>
 	<string>Nook shows your next event in the notch.</string>
+	<key>NSLocationUsageDescription</key>
+	<string>Nook shows the weather where you are in the notch.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Nook shows the weather where you are in the notch.</string>
+	<key>NSRemindersFullAccessUsageDescription</key>
+	<string>Nook shows a list of your reminders in the notch, where you can tick them off and add new ones.</string>
 </dict>
 </plist>

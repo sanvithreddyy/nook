@@ -40,7 +40,7 @@ struct IslandCardTests {
 /// The saved order survives modules it doesn't know yet, and the home's size follows its modules.
 struct HomeConfigTests {
     @Test func unknownAndMissingModulesAreHandled() {
-        #expect(HomeOrder.parse("batteries,weather,music") == [.batteries, .music])
+        #expect(HomeOrder.parse("batteries,stocks,music") == [.batteries, .music])
         #expect(HomeOrder.string([.calendar, .music]) == "calendar,music")
     }
 

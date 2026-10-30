@@ -7,6 +7,8 @@ struct ExpandedView: View {
     @Environment(CalendarModel.self) private var calendar
     @Environment(DeviceBatteries.self) private var batteries
     @Environment(ShortcutsModel.self) private var shortcuts
+    @Environment(WeatherModel.self) private var weather
+    @Environment(RemindersModel.self) private var reminders
     @Environment(NotchModel.self) private var model
     let card: IslandCard
     let direction: PageDirection
@@ -43,10 +45,13 @@ struct ExpandedView: View {
         }
         .onAppear {
             // Calendar access granted in System Settings shows up the next time the island opens,
-            // whichever card it opens on; device batteries and shortcuts are read fresh each time it opens.
+            // whichever card it opens on, and Reminders access too; device batteries, shortcuts and a
+            // stale forecast are read fresh each time it opens.
             calendar.recheckAuthorization()
+            reminders.recheckAuthorization()
             batteries.refresh()
             shortcuts.refresh()
+            weather.refresh()
         }
     }
 

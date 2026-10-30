@@ -37,10 +37,14 @@ targets:
         LSMinimumSystemVersion: "15.0"
         NSCalendarsFullAccessUsageDescription: Nook shows your next event in the notch.
         NSBluetoothAlwaysUsageDescription: Nook shows a notice in the notch when headphones and other devices connect.
+        NSRemindersFullAccessUsageDescription: Nook shows a list of your reminders in the notch, where you can tick them off and add new ones.
+        NSLocationUsageDescription: Nook shows the weather where you are in the notch.
+        NSLocationWhenInUseUsageDescription: Nook shows the weather where you are in the notch.
     entitlements:
       path: Nook/Nook.entitlements
       properties:
         com.apple.security.personal-information.calendars: true
+        com.apple.security.personal-information.location: true
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.sanvith.nook

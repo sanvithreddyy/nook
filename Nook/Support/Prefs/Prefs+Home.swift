@@ -21,6 +21,13 @@ extension Prefs {
     static let calendarDimWeekends = "calendarDimWeekends"
     /// Batteries: this Mac's own battery first.
     static let batteriesIncludeMac = "batteriesIncludeMac"
+    /// World Clock: the cities shown (Place JSON); empty is here and three of Apple's usual cities.
+    static let clockPlaces = "clockPlaces"
+    /// Weather: this Mac's location, then the cities added (Place JSON), one at a time.
+    static let weatherCurrentLocation = "weatherCurrentLocation"
+    static let weatherPlaces = "weatherPlaces"
+    /// Reminders: the list shown (a calendar identifier); empty is the default list.
+    static let remindersList = "remindersList"
 
     static var homeArea: PrefsArea {
         PrefsArea(id: "home", defaults: [
@@ -38,6 +45,10 @@ extension Prefs {
             calendarDots: false,
             calendarDimWeekends: true,
             batteriesIncludeMac: true,
+            clockPlaces: "",
+            weatherCurrentLocation: true,
+            weatherPlaces: "",
+            remindersList: "",
         ])
     }
 }

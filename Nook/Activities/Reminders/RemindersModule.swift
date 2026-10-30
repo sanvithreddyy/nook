@@ -1,8 +1,9 @@
+import AppKit
 import SwiftUI
 
 /// Apple's Reminders widget (medium) on the notch: on the left the list's round icon in its colour,
-/// how many are left and the list's name; on the right the first few with their circles. Click a
-/// circle to tick it off.
+/// how many are left and the list's name; on the right the first few with their circles, then a New
+/// Reminder row as Reminders has. Click a circle to tick it off; type in the last row to add one.
 struct RemindersModule: View {
     @Environment(RemindersModel.self) private var reminders
     @Environment(\.homeScale) private var k
@@ -27,19 +28,30 @@ struct RemindersModule: View {
             }
             .frame(width: 80 * k, alignment: .leading)
             .frame(maxHeight: .infinity, alignment: .leading)
-            if reminders.items.isEmpty {
-                Text("No Reminders")
-                    .font(.system(size: 13 * k, weight: .medium))
-                    .foregroundStyle(.white.opacity(0.5))
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else {
+            if reminders.access == .granted {
                 VStack(alignment: .leading, spacing: 0) {
-                    ForEach(Array(reminders.items.prefix(4).enumerated()), id: \.element.id) { index, item in
+                    ForEach(Array(reminders.items.prefix(3).enumerated()), id: \.element.id) { index, item in
                         ReminderRow(item: item, separated: index > 0)
                             .transition(.opacity)
                     }
+                    NewReminderRow(separated: !reminders.items.isEmpty)
                     Spacer(minLength: 0)
                 }
+            } else {
+                Button {
+                    if reminders.access == .denied {
+                        NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Reminders")!)
+                    } else {
+                        reminders.requestAccess()
+                    }
+                } label: {
+                    Text(reminders.access == .denied ? "Allow in Settings" : "Show Reminders")
+                        .font(.system(size: 12 * k, weight: .semibold))
+                        .padding(.horizontal, 12 * k)
+                        .frame(height: 26 * k)
+                }
+                .buttonStyle(CardButtonStyle(style: .primary))
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
         .padding(.vertical, 4 * k)
@@ -83,5 +95,47 @@ private struct ReminderRow: View {
                     }
                 }
         }
+    }
+}
+
+/// Reminders' New Reminder row: a plus in the list's colour, then a field. Return adds the reminder and
+/// leaves the field ready for the next, Escape stops. The island stays open while the field is in use.
+private struct NewReminderRow: View {
+    @Environment(RemindersModel.self) private var reminders
+    @Environment(NotchModel.self) private var model
+    @Environment(\.homeScale) private var k
+    let separated: Bool
+    @State private var title = ""
+    @FocusState private var focused: Bool
+
+    var body: some View {
+        HStack(spacing: 9 * k) {
+            Image(systemName: focused ? "circle" : "plus.circle.fill")
+                .font(.system(size: 17 * k, weight: focused ? .light : .regular))
+                .foregroundStyle(focused ? .white.opacity(0.32) : reminders.listColor)
+                .frame(width: 17 * k, height: 17 * k)
+            TextField("New Reminder", text: $title, prompt: Text("New Reminder").foregroundStyle(reminders.listColor))
+                .textFieldStyle(.plain)
+                .font(.system(size: 13 * k, weight: .medium))
+                .foregroundStyle(.white)
+                .focused($focused)
+                .onSubmit {
+                    reminders.add(title)
+                    title = ""
+                }
+                .onExitCommand {
+                    title = ""
+                    focused = false
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .frame(height: 30 * k)
+                .overlay(alignment: .top) {
+                    if separated {
+                        Rectangle().fill(.white.opacity(0.12)).frame(height: 1)
+                    }
+                }
+        }
+        .onChange(of: focused) { _, now in model.holdsOpen = now }
+        .onDisappear { if focused { model.holdsOpen = false } }
     }
 }

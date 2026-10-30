@@ -43,6 +43,9 @@ struct HomePane: View {
             MusicModuleOptions()
             CalendarModuleOptions()
             BatteriesModuleOptions()
+            WeatherModuleOptions()
+            RemindersModuleOptions()
+            ClockModuleOptions()
         }
     }
 
@@ -170,6 +173,54 @@ private struct BatteriesModuleOptions: View {
     var body: some View {
         SettingsSection("Batteries", footer: "AirPods and their case, Magic Keyboard, Mouse and Trackpad, and other Bluetooth devices that report a level. iPhone and Apple Watch don't share theirs with apps.") {
             SettingsToggle("Include this Mac", isOn: $includeMac)
+        }
+    }
+}
+
+private struct WeatherModuleOptions: View {
+    @AppStorage(Prefs.weatherCurrentLocation) private var currentLocation = true
+    @AppStorage(Prefs.weatherPlaces) private var places = ""
+
+    var body: some View {
+        SettingsSection("Weather", footer: "One place at a time; click its name on the island for the next. Forecasts from Open-Meteo.") {
+            SettingsToggle("My Location", description: "The weather where this Mac is.", isOn: $currentLocation)
+            PlaceList(json: $places, limit: 8)
+        }
+    }
+}
+
+private struct RemindersModuleOptions: View {
+    @AppStorage(Prefs.remindersList) private var list = ""
+
+    var body: some View {
+        let lists = RemindersModel.allLists()
+        SettingsSection("Reminders", footer: lists.isEmpty ? "Click Show Reminders on the island to let Nook read your lists." : nil) {
+            SettingsRow("List") {
+                Picker("List", selection: $list) {
+                    Text("Default List").tag("")
+                    if !lists.isEmpty { Divider() }
+                    ForEach(lists, id: \.id) { Text($0.title).tag($0.id) }
+                }
+                .menuStyle()
+                .disabled(lists.isEmpty)
+            }
+        }
+    }
+}
+
+private struct ClockModuleOptions: View {
+    @AppStorage(Prefs.clockPlaces) private var places = ""
+
+    var body: some View {
+        // Each city's time, kept current while Settings is open.
+        TimelineView(.everyMinute) { context in
+            SettingsSection("World Clock", footer: "Up to four cities, as the World Clock widget shows.") {
+                PlaceList(json: $places,
+                          defaults: ClockCity.defaults.map { Place(name: $0.name, latitude: 0, longitude: 0, timeZoneID: $0.timeZone.identifier) },
+                          limit: 4) { place in
+                    context.date.formatted(Date.FormatStyle(date: .omitted, time: .shortened, timeZone: place.timeZone))
+                }
+            }
         }
     }
 }
