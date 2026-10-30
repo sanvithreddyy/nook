@@ -11,7 +11,7 @@ trap restore EXIT
 defaults write com.sanvith.nook hideInFullscreen -bool false
 $app "$@" >/dev/null 2>&1 &
 pid=$!
-sleep 4
+sleep ${WAIT:-4}
 w=$(osascript -l JavaScript -e 'ObjC.import("AppKit"); $.NSScreen.screens.objectAtIndex(0).frame.size.width' 2>/dev/null || echo 1512)
-cw=780; x=$(( (${w%.*} - cw) / 2 ))
-screencapture -x -R$x,0,$cw,215 "$out"
+cw=${CW:-780}; x=$(( (${w%.*} - cw) / 2 ))
+screencapture -x -R$x,0,$cw,${CH:-215} "$out"
