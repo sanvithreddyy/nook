@@ -2,13 +2,15 @@
 # Records the debug tour (every island state) to build/tour/tour.mov and extracts one still per step.
 set -euo pipefail
 cd "${0:A:h}/.."
+source scripts/lib/one-at-a-time.sh
+nook_lock
 out=build/tour; rm -rf $out; mkdir -p $out
 app=build/Build/Products/Debug/Nook.app/Contents/MacOS/Nook
 pkill -f "$app" 2>/dev/null || true
 # Recording happens over whatever is on screen, fullscreen apps included.
 # Keep the island visible over fullscreen apps for the run, then restore the user's setting.
 saved=$(defaults read com.sanvith.nook hideInFullscreen 2>/dev/null || echo unset)
-restore() { if [[ $saved == unset ]]; then defaults delete com.sanvith.nook hideInFullscreen 2>/dev/null; else defaults write com.sanvith.nook hideInFullscreen -bool $saved; fi; }
+restore() { if [[ $saved == unset ]]; then defaults delete com.sanvith.nook hideInFullscreen 2>/dev/null; else defaults write com.sanvith.nook hideInFullscreen -bool $([[ $saved == 1 ]] && echo true || echo false); fi; nook_unlock; }
 trap restore EXIT
 defaults write com.sanvith.nook hideInFullscreen -bool false
 screen_w=$(osascript -l JavaScript -e 'ObjC.import("AppKit"); $.NSScreen.screens.objectAtIndex(0).frame.size.width' 2>/dev/null || echo 1512)

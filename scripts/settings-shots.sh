@@ -3,6 +3,9 @@
 # without taking keyboard focus.
 set -euo pipefail
 cd "${0:A:h}/.."
+source scripts/lib/one-at-a-time.sh
+nook_lock
+trap nook_unlock EXIT
 out=build/settings; rm -rf $out; mkdir -p $out
 app=build/Build/Products/Debug/Nook.app/Contents/MacOS/Nook
 $app -settings-capture 2>/dev/null | while read -r tag pane id; do

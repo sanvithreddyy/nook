@@ -3,10 +3,12 @@
 # Usage: scripts/capture.sh out.png -preview-playing -expand ...
 set -uo pipefail
 cd "${0:A:h}/.."
+source scripts/lib/one-at-a-time.sh
+nook_lock
 out=$1; shift
 app=build/Build/Products/Debug/Nook.app/Contents/MacOS/Nook
 saved=$(defaults read com.sanvith.nook hideInFullscreen 2>/dev/null || echo unset)
-restore() { kill $pid 2>/dev/null; if [[ $saved == unset ]]; then defaults delete com.sanvith.nook hideInFullscreen 2>/dev/null; else defaults write com.sanvith.nook hideInFullscreen -bool $saved; fi; }
+restore() { kill $pid 2>/dev/null; if [[ $saved == unset ]]; then defaults delete com.sanvith.nook hideInFullscreen 2>/dev/null; else defaults write com.sanvith.nook hideInFullscreen -bool $([[ $saved == 1 ]] && echo true || echo false); fi; nook_unlock; }
 trap restore EXIT
 defaults write com.sanvith.nook hideInFullscreen -bool false
 $app "$@" >/dev/null 2>&1 &
