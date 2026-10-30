@@ -13,20 +13,38 @@ enum SettingsTheme {
     }
 }
 
-/// A scrolling settings page with a title.
+/// A scrolling settings page with a title. With an area, the page ends with Reset to Defaults.
 struct SettingsPage<Content: View>: View {
     let title: String
+    var area: PrefsArea?
     @ViewBuilder var content: Content
+    @State private var confirmingReset = false
+
+    init(title: String, area: PrefsArea? = nil, @ViewBuilder content: () -> Content) {
+        self.title = title
+        self.area = area
+        self.content = content()
+    }
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
                 Text(title).font(.title2.weight(.semibold))
                 content
+                if area != nil {
+                    Button("Reset to Defaults…") { confirmingReset = true }
+                        .frame(maxWidth: .infinity, alignment: .trailing)
+                        .padding(.top, 20)
+                }
             }
             .padding(24)
             .frame(maxWidth: 640, alignment: .leading)
             .frame(maxWidth: .infinity)
+        }
+        .confirmationDialog("Reset \(title) settings?", isPresented: $confirmingReset) {
+            Button("Reset", role: .destructive) { if let area { Prefs.reset(area) } }
+        } message: {
+            Text("Everything on this page goes back to how Nook comes.")
         }
     }
 }

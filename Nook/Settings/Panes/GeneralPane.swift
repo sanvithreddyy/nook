@@ -15,7 +15,7 @@ struct GeneralPane: View {
     @State private var loginError: String?
 
     var body: some View {
-        SettingsPage(title: "General") {
+        SettingsPage(title: "General", area: Prefs.generalArea) {
             SettingsSection("Island") {
                 SettingsRow("Show on") {
                     Picker("Show on", selection: $display) {

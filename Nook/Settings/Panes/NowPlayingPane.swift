@@ -9,7 +9,7 @@ struct NowPlayingPane: View {
     @AppStorage(Prefs.tintWaveform) private var tintWaveform = true
 
     var body: some View {
-        SettingsPage(title: "Now Playing") {
+        SettingsPage(title: "Now Playing", area: Prefs.mediaArea) {
             SettingsSection {
                 SettingsToggle("Show what's playing", isOn: $enabled)
             }

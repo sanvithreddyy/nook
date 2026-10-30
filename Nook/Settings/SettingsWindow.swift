@@ -60,7 +60,7 @@ final class SettingsWindowController {
 }
 
 enum SettingsPane: String, CaseIterable, Identifiable {
-    case general, home, nowPlaying, calendar, timer, shelf, huds, battery, connectivity, lock, about
+    case general, home, nowPlaying, calendar, timer, shelf, huds, battery, connectivity, lock, advanced, about
     var id: String { rawValue }
 
     var title: String {
@@ -75,8 +75,42 @@ enum SettingsPane: String, CaseIterable, Identifiable {
         case .timer: "Timer"
         case .shelf: "Shelf"
         case .lock: "Lock Screen"
+        case .advanced: "Advanced"
         case .about: "About"
         }
+    }
+
+    /// Every row label on the page, and a few words people might search for instead.
+    /// A test checks each row label in Settings/Panes is listed here.
+    var keywords: [String] {
+        switch self {
+        case .general: ["Island", "Show on", "Display", "Open when the pointer rests on it", "Hover", "Swipe gestures",
+                        "Haptic feedback", "Hide when an app is full screen", "Appearance", "Theme", "Dark", "Light",
+                        "Status colors", "Second activity beside the island", "App", "Open at login", "Hide the menu bar icon"]
+        case .home: ["Preview on the notch", "Layout", "Side by Side", "One at a Time", "Modules side by side", "Size",
+                     "Modules", "Order", "Music", "Favorite button", "Output button", "Calendar", "Week starts on",
+                     "Mark days with events", "Weekends in gray", "Batteries", "Include this Mac"]
+        case .nowPlaying: ["Show what's playing", "Closed island", "Waveform", "Color the waveform from the artwork",
+                           "Show the title when the track changes", "Show the title on hover", "Music", "Media"]
+        case .calendar: ["Show upcoming events", "Show a meeting in the notch", "Access", "Calendar access", "Events"]
+        case .timer: ["Sound when it ends", "Alarm"]
+        case .shelf: ["Open the shelf when a file is dragged to the notch", "Files", "Drop", "AirDrop"]
+        case .huds: ["Replace the volume HUD", "Replace the brightness HUD", "Accessibility access", "Style",
+                     "Ledge", "Slider", "Steps", "Outline"]
+        case .battery: ["Charging and battery notices", "Warn at", "Low battery"]
+        case .connectivity: ["Show when Bluetooth devices connect", "AirPods", "Headphones"]
+        case .lock: ["Show lock and unlock"]
+        case .advanced: ["Export Settings", "Import Settings", "Reset All Settings", "Backup"]
+        case .about: ["Version", "Acknowledgements"]
+        }
+    }
+
+    /// The label that matched a search, when it wasn't the page's own title.
+    func match(_ query: String) -> String? {
+        let query = query.trimmingCharacters(in: .whitespaces)
+        guard !query.isEmpty else { return nil }
+        if title.localizedCaseInsensitiveContains(query) { return title }
+        return keywords.first { $0.localizedCaseInsensitiveContains(query) }
     }
 }
 
@@ -89,24 +123,44 @@ final class SettingsNavigation {
 
 struct SettingsView: View {
     @Bindable private var navigation = SettingsNavigation.shared
+    @State private var query = ""
     private var pane: SettingsPane { navigation.pane }
 
     var body: some View {
         NavigationSplitView {
-            // Plain names in groups.
+            // Plain names in groups; while searching, the pages that match, each with what matched.
             List(selection: $navigation.pane) {
-                Text(SettingsPane.general.title).tag(SettingsPane.general)
-                Section("Island") {
-                    ForEach([SettingsPane.home, .nowPlaying, .calendar, .timer, .shelf]) { Text($0.title).tag($0) }
-                }
-                Section("Notices") {
-                    ForEach([SettingsPane.huds, .battery, .connectivity, .lock]) { Text($0.title).tag($0) }
-                }
-                Section("Nook") {
-                    Text(SettingsPane.about.title).tag(SettingsPane.about)
+                if query.trimmingCharacters(in: .whitespaces).isEmpty {
+                    Text(SettingsPane.general.title).tag(SettingsPane.general)
+                    Section("Island") {
+                        ForEach([SettingsPane.home, .nowPlaying, .calendar, .timer, .shelf]) { Text($0.title).tag($0) }
+                    }
+                    Section("Notices") {
+                        ForEach([SettingsPane.huds, .battery, .connectivity, .lock]) { Text($0.title).tag($0) }
+                    }
+                    Section("Nook") {
+                        ForEach([SettingsPane.advanced, .about]) { Text($0.title).tag($0) }
+                    }
+                } else {
+                    ForEach(SettingsPane.allCases.filter { $0.match(query) != nil }) { pane in
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text(pane.title)
+                            if let hit = pane.match(query), hit != pane.title {
+                                Text(hit).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                            }
+                        }
+                        .tag(pane)
+                    }
                 }
             }
-            .navigationSplitViewColumnWidth(min: 160, ideal: 180, max: 220)
+            .searchable(text: $query, placement: .sidebar, prompt: "Search")
+            .onChange(of: query) { _, new in
+                // The best match shows straight away, so typing a setting's name is enough to get to it.
+                if let first = SettingsPane.allCases.first(where: { $0.match(new) != nil }), pane.match(new) == nil {
+                    navigation.pane = first
+                }
+            }
+            .navigationSplitViewColumnWidth(min: 170, ideal: 190, max: 230)
         } detail: {
             Group {
                 switch pane {
@@ -120,6 +174,7 @@ struct SettingsView: View {
                 case .timer: TimerPane()
                 case .shelf: ShelfPane()
                 case .lock: LockPane()
+                case .advanced: AdvancedPane()
                 case .about: AboutPane()
                 }
             }

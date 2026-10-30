@@ -11,7 +11,7 @@ struct HomePane: View {
     @Bindable private var preview = IslandPreview.shared
 
     var body: some View {
-        SettingsPage(title: "Home") {
+        SettingsPage(title: "Home", area: Prefs.homeArea) {
             SettingsSection(footer: "Keeps the island open while you change things here, with what's playing and your real events.") {
                 SettingsToggle("Preview on the notch", isOn: $preview.isOn)
             }
@@ -125,13 +125,11 @@ private struct ReorderDrop: DropDelegate {
 private struct MusicModuleOptions: View {
     @AppStorage(Prefs.musicFavorite) private var favorite = true
     @AppStorage(Prefs.musicOutput) private var output = true
-    @AppStorage(Prefs.tintWaveform) private var tintWaveform = true
 
     var body: some View {
         SettingsSection("Music") {
             SettingsToggle("Favorite button", description: "Shows for players that take favorites, like Music.", isOn: $favorite)
             SettingsToggle("Output button", description: "Shows where the sound goes; click it to switch.", isOn: $output)
-            SettingsToggle("Color the waveform from the artwork", isOn: $tintWaveform)
         }
     }
 }

@@ -9,6 +9,17 @@ extension Prefs {
     static let homeHidden = "homeHidden"
     static let homeSize = "homeSize"
 
+    /// Module options, kept with the home so resetting Home resets them.
+    /// Music: the favourite star (shown only for players that take favourites) and the output button.
+    static let musicFavorite = "musicFavorite"
+    static let musicOutput = "musicOutput"
+    /// Calendar: WeekStart raw value, a dot under days with events, weekends in grey.
+    static let calendarWeekStart = "calendarWeekStart"
+    static let calendarDots = "calendarDots"
+    static let calendarDimWeekends = "calendarDimWeekends"
+    /// Batteries: this Mac's own battery first.
+    static let batteriesIncludeMac = "batteriesIncludeMac"
+
     static var homeArea: PrefsArea {
         PrefsArea(id: "home", defaults: [
             // Side by side, two to a page: Music and Calendar together.
@@ -17,6 +28,13 @@ extension Prefs {
             homeOrder: HomeOrder.string(HomeModule.allCases),
             homeHidden: "",
             homeSize: HomeSize.medium.rawValue,
+            musicFavorite: true,
+            musicOutput: true,
+            calendarWeekStart: WeekStart.system.rawValue,
+            // Off, as Apple's Calendar widget has it; a choice for seeing busy days at a glance.
+            calendarDots: false,
+            calendarDimWeekends: true,
+            batteriesIncludeMac: true,
         ])
     }
 }
