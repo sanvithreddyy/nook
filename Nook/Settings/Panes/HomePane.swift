@@ -210,11 +210,18 @@ private struct RemindersModuleOptions: View {
 
 private struct ClockModuleOptions: View {
     @AppStorage(Prefs.clockPlaces) private var places = ""
+    @AppStorage(Prefs.clockStyle) private var style = ClockStyle.analog
 
     var body: some View {
         // Each city's time, kept current while Settings is open.
         TimelineView(.everyMinute) { context in
             SettingsSection("World Clock", footer: "Up to four cities, as the World Clock widget shows.") {
+                SettingsRow("Style") {
+                    Picker("Style", selection: $style) {
+                        ForEach(ClockStyle.allCases) { Text($0.title).tag($0) }
+                    }
+                    .segmentedStyle()
+                }
                 PlaceList(json: $places,
                           defaults: ClockCity.defaults.map { Place(name: $0.name, latitude: 0, longitude: 0, timeZoneID: $0.timeZone.identifier) },
                           limit: 4) { place in

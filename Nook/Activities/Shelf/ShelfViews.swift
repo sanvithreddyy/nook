@@ -27,8 +27,10 @@ enum AirDrop {
 let shelfDropTypes: [UTType] = [.fileURL, .url, .image, .plainText]
 
 /// The shelf's page, laid out like a Finder window's icons: the files kept here, then AirDrop after
-/// a divider. While a file is dragged, a slot at the end of the row shows where it will land and
-/// lights up, Finder-style, when the drop is over the island.
+/// a divider, the row in the middle of the island. While a file is dragged, a slot at the end of the
+/// row shows where it will land and lights up, Finder-style, when the drop is over the island. The row
+/// never scrolls, so a sideways swipe always turns the page: past six places the last becomes a stack
+/// of the rest, which opens them all.
 struct ShelfPage: View {
     @Environment(ShelfModel.self) private var shelf
     @Environment(NotchModel.self) private var model
@@ -36,7 +38,6 @@ struct ShelfPage: View {
     var body: some View {
         HStack(alignment: .top, spacing: 0) {
             FilesRow(dragging: model.isDraggingFile)
-                .frame(maxWidth: .infinity, alignment: .leading)
             Rectangle()
                 .fill(.white.opacity(0.16))
                 .frame(width: 1, height: 52)
@@ -70,9 +71,12 @@ enum ShelfMetrics {
     static let minWidth: CGFloat = 320
     static let maxWidth: CGFloat = 640
 
-    /// As wide as its icons (plus the landing slot while dragging), between the two limits; more scroll.
+    /// Places in the row; past this the last one is a stack of the rest.
+    static let places = 6
+
+    /// As wide as its places (the landing slot among them while dragging), between the two limits.
     static func size(items: Int, dragging: Bool) -> CGSize {
-        let slots = CGFloat(items + (dragging ? 1 : 0))
+        let slots = CGFloat(min(items + (dragging ? 1 : 0), places))
         let files = items == 0 && !dragging ? tile * 2 : slots * tile
         let width = inset * 2 + files + separator + tile
         return CGSize(width: min(max(width, minWidth), maxWidth), height: height)
@@ -160,34 +164,89 @@ private struct FilesRow: View {
                 Text("Drop files here")
                     .font(.system(size: 13, weight: .medium))
                     .foregroundStyle(.white.opacity(0.5))
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 52)
+                    .frame(width: ShelfMetrics.tile * 2, height: 52)
             }
             .buttonStyle(.plain)
             .help("Click to choose files")
             .transition(.opacity)
         } else {
-            ScrollViewReader { proxy in
-                ScrollView(.horizontal) {
-                    HStack(alignment: .top, spacing: 0) {
-                        ForEach(shelf.items) { item in
-                            ShelfTile(item: item)
-                                .transition(.scale(scale: 0.8).combined(with: .opacity))
-                        }
-                        if dragging {
-                            LandingSlot()
-                                .id("slot")
-                                .transition(.scale(scale: 0.6, anchor: .leading).combined(with: .opacity))
-                        }
-                    }
+            // The landing slot takes a place while dragging; a stack takes the last when files overflow.
+            let room = ShelfMetrics.places - (dragging ? 1 : 0)
+            let overflows = shelf.items.count > room
+            let shown = overflows ? Array(shelf.items.prefix(room - 1)) : shelf.items
+            HStack(alignment: .top, spacing: 0) {
+                ForEach(shown) { item in
+                    ShelfTile(item: item)
+                        .transition(.scale(scale: 0.8).combined(with: .opacity))
                 }
-                .scrollIndicators(.never)
-                .onChange(of: dragging) { _, now in
-                    if now { withAnimation(Motion.content) { proxy.scrollTo("slot", anchor: .trailing) } }
+                if overflows {
+                    StackTile(hidden: Array(shelf.items.dropFirst(room - 1)))
+                        .transition(.opacity)
+                }
+                if dragging {
+                    LandingSlot()
+                        .transition(.scale(scale: 0.6, anchor: .leading).combined(with: .opacity))
                 }
             }
             .animation(Motion.peekIn, value: shelf.items.map(\.id))
         }
+    }
+}
+
+/// The files that don't fit, as a Dock stack: up to three of them fanned behind each other with how
+/// many there are. Click to see every file on the shelf.
+private struct StackTile: View {
+    @Environment(NotchModel.self) private var model
+    let hidden: [ShelfItem]
+    @State private var showing = false
+    @State private var hovering = false
+
+    var body: some View {
+        Button { showing = true } label: {
+            VStack(spacing: 6) {
+                ZStack {
+                    ForEach(Array(hidden.prefix(3).enumerated().reversed()), id: \.element.id) { index, item in
+                        Thumbnail(url: item.url)
+                            .frame(width: 44, height: 44)
+                            .rotationEffect(.degrees(Double(index) * -6))
+                            .offset(x: CGFloat(index) * 3, y: CGFloat(index) * -2)
+                    }
+                }
+                .frame(width: 52, height: 52)
+                Text("\(hidden.count) More")
+                    .font(.system(size: 11.5))
+                    .foregroundStyle(.white)
+                    .lineLimit(1)
+            }
+            .frame(width: ShelfMetrics.tile - 4)
+            .padding(.vertical, 2)
+            .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(.white.opacity(hovering || showing ? 0.08 : 0)))
+            .contentShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .padding(.horizontal, 2)
+        .onHover { inside in withAnimation(.easeOut(duration: 0.15)) { hovering = inside } }
+        .popover(isPresented: $showing, arrowEdge: .bottom) { AllFiles() }
+        // The island stays open under the list, as it does under the output menu.
+        .onChange(of: showing) { _, now in model.holdsOpen = now }
+        .accessibilityLabel("\(hidden.count) more files")
+    }
+}
+
+/// Every file on the shelf in a Finder-style grid, for when the row can't show them all.
+private struct AllFiles: View {
+    @Environment(ShelfModel.self) private var shelf
+
+    var body: some View {
+        ScrollView {
+            LazyVGrid(columns: Array(repeating: GridItem(.fixed(ShelfMetrics.tile), spacing: 0), count: 4), spacing: 8) {
+                ForEach(shelf.items) { ShelfTile(item: $0) }
+            }
+            .padding(12)
+        }
+        .frame(width: ShelfMetrics.tile * 4 + 24, height: min(CGFloat((shelf.items.count + 3) / 4) * 84 + 24, 300))
+        .background(.black)
+        .environment(\.colorScheme, .dark)
     }
 }
 

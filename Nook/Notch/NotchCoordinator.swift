@@ -151,6 +151,8 @@ final class NotchCoordinator {
                         Prefs.weatherPlaces: Place.json([place("Chicago", 41.878, -87.63, "America/Chicago"), place("Tokyo", 35.68, 139.69, "Asia/Tokyo")]),
                         Prefs.clockPlaces: Place.json([place("Chicago", 0, 0, "America/Chicago"), place("Hyderabad", 0, 0, "Asia/Kolkata"),
                                                        place("London", 0, 0, "Europe/London"), place("Tokyo", 0, 0, "Asia/Tokyo")]),
+                        // -preview-digital: the clock in digits.
+                        Prefs.clockStyle: args.contains("-preview-digital") ? ClockStyle.digital.rawValue : ClockStyle.analog.rawValue,
                     ], forName: UserDefaults.argumentDomain)
                     weather.refresh(force: true)
                 }
@@ -195,7 +197,11 @@ final class NotchCoordinator {
                 }
                 if args.contains("-preview-shelf") {
                     let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
-                    shelf.debugPreview(["project.yml", "scripts/build.sh", "Nook/Info.plist"].map { root.appendingPathComponent($0) })
+                    // -preview-shelf-full: more files than the row has places, for the stack.
+                    let files = args.contains("-preview-shelf-full")
+                        ? ["project.yml", "scripts/build.sh", "Nook/Info.plist", "scripts/tour.sh", "scripts/capture.sh", "scripts/cpu.sh", "scripts/test.sh", "scripts/snapshots.sh"]
+                        : ["project.yml", "scripts/build.sh", "Nook/Info.plist"]
+                    shelf.debugPreview(files.map { root.appendingPathComponent($0) })
                 }
                 if args.contains("-expand") {
                     // -page <n>: the nth page, to capture each page.

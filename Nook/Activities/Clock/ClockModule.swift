@@ -54,20 +54,47 @@ struct ClockCity: Identifiable, Hashable {
     }
 }
 
+/// How the World Clock tells the time: Apple's faces, or the time in digits as Clock's list shows it.
+enum ClockStyle: String, CaseIterable, Identifiable {
+    case analog, digital
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .analog: "Analog"
+        case .digital: "Digital"
+        }
+    }
+}
+
 /// Apple's World Clock widget on the notch: four clocks, each with its city, its day and how far it is
 /// from here. A face is white in its daytime and dark at night, as Apple draws them; the second hand ticks.
 struct ClockModule: View {
     @Environment(\.homeScale) private var k
     @AppStorage(Prefs.clockPlaces) private var placesJSON = ""
+    @AppStorage(Prefs.clockStyle) private var style = ClockStyle.analog
 
     var body: some View {
         let cities = ClockCity.saved(placesJSON)
-        TimelineView(.periodic(from: .now, by: 1)) { context in
+        // Faces tick each second; digits change on the minute.
+        let minute = Calendar.current.dateInterval(of: .minute, for: .now)?.start ?? .now
+        TimelineView(.periodic(from: minute, by: style == .analog ? 1 : 60)) { context in
             HStack(spacing: 0) {
                 ForEach(cities) { city in
                     VStack(spacing: 0) {
-                        ClockFace(date: context.date, timeZone: city.timeZone)
-                            .frame(width: 66 * k, height: 66 * k)
+                        Group {
+                            switch style {
+                            case .analog:
+                                ClockFace(date: context.date, timeZone: city.timeZone)
+                                    .frame(width: 66 * k)
+                            case .digital:
+                                // One size for all, set by how many share the width: "10:30 PM" fits four across.
+                                DigitalTime(date: context.date, timeZone: city.timeZone, size: cities.count > 3 ? 22 : cities.count > 2 ? 26 : 30)
+                                    .padding(.horizontal, 3 * k)
+                            }
+                        }
+                        .frame(height: 66 * k)
                         Text(city.name)
                             .font(.system(size: 12.5 * k, weight: .semibold))
                             .foregroundStyle(.white)
@@ -88,6 +115,31 @@ struct ClockModule: View {
             .frame(maxHeight: .infinity)
         }
     }
+}
+
+/// The time there in large light digits, AM or PM small beside them where the Mac uses a 12-hour clock,
+/// as Clock's World Clock list writes it.
+private struct DigitalTime: View {
+    @Environment(\.homeScale) private var k
+    let date: Date
+    let timeZone: TimeZone
+    let size: CGFloat
+
+    var body: some View {
+        let style = Date.FormatStyle(timeZone: timeZone)
+        let digits = Text(date.formatted(style.hour(.defaultDigits(amPM: .omitted)).minute()))
+            .font(.system(size: size * k, weight: .light).monospacedDigit())
+        let half = Text(Self.twelveHour ? " " + date.formatted(style.hour(.defaultDigits(amPM: .abbreviated))).filter(\.isLetter) : "")
+            .font(.system(size: 11 * k, weight: .semibold))
+        // One text, so a time too wide for its column shrinks rather than overlapping its neighbour.
+        Text("\(digits)\(half)")
+            .foregroundStyle(.white)
+            .lineLimit(1)
+            .minimumScaleFactor(0.6)
+            .contentTransition(.numericText())
+    }
+
+    private static let twelveHour = DateFormatter.dateFormat(fromTemplate: "j", options: 0, locale: .current)?.contains("a") ?? false
 }
 
 /// An analog face with its twelve numbers, the hour and minute hands narrowing to a thin neck at the

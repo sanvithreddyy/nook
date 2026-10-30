@@ -17,6 +17,10 @@ struct CalendarModule: View {
         if let i = args.firstIndex(of: "-select-day"), i + 1 < args.count, let days = Int(args[i + 1]) {
             _selected = State(initialValue: Calendar.current.date(byAdding: .day, value: days, to: Calendar.current.startOfDay(for: .now)))
         }
+        // -month-offset N: the month grid turned N months from this one.
+        if let i = args.firstIndex(of: "-month-offset"), i + 1 < args.count, let months = Int(args[i + 1]) {
+            _monthOffset = State(initialValue: months)
+        }
         #endif
     }
 
@@ -165,9 +169,6 @@ private struct MonthGrid: View {
     let pick: (Date) -> Void
     @State private var hovering = false
 
-    /// This month and the next: the events Nook reads reach that far.
-    private static let months = 2
-
     var body: some View {
         let cal = calendarStarting(on: WeekStart(rawValue: weekStart) ?? .system)
         let thisMonth = cal.dateInterval(of: .month, for: today)?.start ?? today
@@ -177,16 +178,32 @@ private struct MonthGrid: View {
         let rows = (lead + days + 6) / 7
         // Six-week months tighten their rows to stay in the module's height.
         let row = min(21, (HomeMetrics.height - 31) / CGFloat(rows)) * k
-        let busy = dots && calendar.access == .granted ? calendar.busyDays : []
+        let busy = dots && calendar.access == .granted ? calendar.busyDays.union(calendar.browsedBusyDays) : []
 
+        // The year joins the month's name once it isn't this year's.
+        let sameYear = cal.component(.year, from: month) == cal.component(.year, from: today)
         VStack(spacing: 0) {
             HStack(spacing: 0) {
-                ModuleHeading(text: month.formatted(.dateTime.month(.wide)))
+                ModuleHeading(text: month.formatted(sameYear ? .dateTime.month(.wide) : .dateTime.month(.wide).year()))
                 Spacer(minLength: 0)
-                if hovering {
-                    HStack(spacing: 2 * k) {
-                        Chevron(symbol: "chevron.left", label: "Previous month", enabled: offset > 0) { offset -= 1 }
-                        Chevron(symbol: "chevron.right", label: "Next month", enabled: offset < Self.months - 1) { offset += 1 }
+                // The date picker's controls: back, today, forward. They stay while another month shows.
+                if hovering || offset != 0 {
+                    HStack(spacing: 1 * k) {
+                        Chevron(symbol: "chevron.left", label: "Previous month") { offset -= 1 }
+                        Button {
+                            offset = 0
+                            pick(today)
+                        } label: {
+                            Circle()
+                                .fill(.white.opacity(offset == 0 ? 0.2 : 0.7))
+                                .frame(width: 6 * k, height: 6 * k)
+                                .frame(width: 14 * k, height: 14 * k)
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .help("Today")
+                        .accessibilityLabel("Today")
+                        Chevron(symbol: "chevron.right", label: "Next month") { offset += 1 }
                     }
                     .transition(.opacity)
                 }
@@ -224,6 +241,8 @@ private struct MonthGrid: View {
         .contentTransition(.numericText())
         .animation(Motion.content, value: offset)
         .onHover { inside in withAnimation(.easeOut(duration: 0.15)) { hovering = inside } }
+        // A month outside the events Nook keeps is read when it shows.
+        .onChange(of: offset, initial: true) { _, now in calendar.browse(now == 0 ? nil : month) }
     }
 
     /// Calendar's weekday numbering from 0: Sunday and Saturday.
@@ -277,19 +296,17 @@ private struct Chevron: View {
     @Environment(\.homeScale) private var k
     let symbol: String
     let label: String
-    let enabled: Bool
     let action: () -> Void
 
     var body: some View {
         Button(action: action) {
             Image(systemName: symbol)
                 .font(.system(size: 10 * k, weight: .bold))
-                .foregroundStyle(.white.opacity(enabled ? 0.7 : 0.2))
+                .foregroundStyle(.white.opacity(0.7))
                 .frame(width: 16 * k, height: 14 * k)
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .disabled(!enabled)
         .accessibilityLabel(label)
     }
 }

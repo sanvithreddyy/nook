@@ -23,6 +23,8 @@ extension Prefs {
     static let batteriesIncludeMac = "batteriesIncludeMac"
     /// World Clock: the cities shown (Place JSON); empty is here and three of Apple's usual cities.
     static let clockPlaces = "clockPlaces"
+    /// World Clock: ClockStyle raw value, faces or the time in digits.
+    static let clockStyle = "clockStyle"
     /// Weather: this Mac's location, then the cities added (Place JSON), one at a time.
     static let weatherCurrentLocation = "weatherCurrentLocation"
     static let weatherPlaces = "weatherPlaces"
@@ -46,6 +48,7 @@ extension Prefs {
             calendarDimWeekends: true,
             batteriesIncludeMac: true,
             clockPlaces: "",
+            clockStyle: ClockStyle.analog.rawValue,
             weatherCurrentLocation: true,
             weatherPlaces: "",
             remindersList: "",

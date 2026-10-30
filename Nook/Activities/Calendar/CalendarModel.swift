@@ -35,6 +35,11 @@ final class CalendarModel {
     }
     /// Every day in the window with at least one event, at the start of the day.
     private(set) var busyDays: Set<Date> = []
+    /// A month the Calendar module was turned to outside the window, read while it shows.
+    private(set) var browsed: [CalendarEvent] = [] {
+        didSet { browsedBusyDays = Self.days(covering: browsed) }
+    }
+    private(set) var browsedBusyDays: Set<Date> = []
     private(set) var access: Access = .notDetermined
     /// The day the window was last read on; a new day refetches.
     private(set) var weekStart = Calendar.current.startOfDay(for: .now)
@@ -102,7 +107,7 @@ final class CalendarModel {
         let start = calendar.startOfDay(for: day)
         guard let end = calendar.date(byAdding: .day, value: 1, to: start) else { return [] }
         let isToday = calendar.isDate(day, inSameDayAs: now)
-        return events
+        return (window.isEmpty || window.contains(start) ? events : browsed)
             .filter { $0.start < end && $0.end > start && (!isToday || $0.isAllDay || $0.end > now) }
             .sorted { ($0.isAllDay ? 0 : 1, $0.start) < ($1.isAllDay ? 0 : 1, $1.start) }
     }
@@ -249,13 +254,44 @@ final class CalendarModel {
         let start = calendar.dateInterval(of: .month, for: today)?.start ?? today
         let end = max(calendar.date(byAdding: .month, value: 2, to: start) ?? today,
                       calendar.date(byAdding: .day, value: Self.windowDays, to: today) ?? today)
+        window = start..<end
+        var seenLinks: [String: URL?] = [:]
+        let fetched = fetch(from: start, to: end) { cachedMeetingLink(for: $0, into: &seenLinks) }
+        linkCache = seenLinks
+        if fetched != events { events = fetched }
+        if let browsedMonth { browse(browsedMonth) }
+        onChange?()
+    }
+
+    /// The days events were last read for; a day outside them comes from the browsed month.
+    @ObservationIgnored private var window: Range<Date> = Date.distantPast..<Date.distantPast
+    @ObservationIgnored private var browsedMonth: Date?
+
+    /// Reads a month the module turned to, if it's outside the window; nil (or a month inside it)
+    /// lets the browsed events go.
+    func browse(_ month: Date?) {
+        let calendar = Calendar.current
+        guard isAuthorized, let month, let interval = calendar.dateInterval(of: .month, for: month),
+              !(window.contains(interval.start) && window.contains(interval.end.addingTimeInterval(-1)))
+        else {
+            browsedMonth = nil
+            if !browsed.isEmpty { browsed = [] }
+            return
+        }
+        browsedMonth = interval.start
+        let fetched = fetch(from: interval.start, to: interval.end) { _ in nil }
+        if fetched != browsed { browsed = fetched }
+    }
+
+    /// Events between two dates from the calendars Settings shows, as the module lists them.
+    private func fetch(from start: Date, to end: Date, link: (EKEvent) -> URL?) -> [CalendarEvent] {
         // Calendars Settings leaves out are never read.
         let hidden = Set(Prefs.string(Prefs.calendarHidden).split(separator: ",").map(String.init))
         let calendars = store.calendars(for: .event).filter { !hidden.contains($0.calendarIdentifier) }
         let hideAllDay = Prefs.bool(Prefs.calendarHideAllDay)
+        guard !calendars.isEmpty else { return [] }
         let predicate = store.predicateForEvents(withStart: start, end: end, calendars: calendars)
-        var seenLinks: [String: URL?] = [:]
-        let fetched = (calendars.isEmpty ? [] : store.events(matching: predicate))
+        return store.events(matching: predicate)
             .filter { $0.status != .canceled && !(hideAllDay && $0.isAllDay) }
             .sorted { $0.startDate < $1.startDate }
             .prefix(1000)
@@ -267,13 +303,10 @@ final class CalendarModel {
                               end: event.endDate,
                               color: Color(cgColor: event.calendar.cgColor),
                               isAllDay: event.isAllDay,
-                              joinURL: cachedMeetingLink(for: event, into: &seenLinks),
+                              joinURL: link(event),
                               eventIdentifier: event.eventIdentifier,
                               isDeclined: event.attendees?.first(where: \.isCurrentUser)?.participantStatus == .declined)
             }
-        linkCache = seenLinks
-        if fetched != events { events = Array(fetched) }
-        onChange?()
     }
 
     private func cachedMeetingLink(for event: EKEvent, into seen: inout [String: URL?]) -> URL? {

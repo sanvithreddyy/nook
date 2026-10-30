@@ -26,8 +26,8 @@ struct WeatherModule: View {
                             }
                             .contentShape(Rectangle())
                         }
+                        // Not disabled with one place: a disabled button dims its label.
                         .buttonStyle(.plain)
-                        .disabled(weather.reports.count < 2)
                         .help(weather.reports.count > 1 ? "Next place" : "")
                         Text("\(report.temperature)°")
                             .font(.system(size: 44 * k, weight: .light))
