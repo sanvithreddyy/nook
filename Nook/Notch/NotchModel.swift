@@ -189,6 +189,8 @@ final class NotchModel {
     var isPressed = false
     /// A menu from the open island (the output picker) is showing, so the island stays open under it.
     var holdsOpen = false
+    /// Settings is previewing the home on the notch, so the island stays open while the pointer is away.
+    var isPreviewing = false
     /// The home as Settings has it. Set by the coordinator.
     var home = HomeConfig()
     /// Devices the Batteries module shows, which sets its width.

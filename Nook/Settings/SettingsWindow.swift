@@ -1,7 +1,4 @@
 import AppKit
-import Combine
-import EventKit
-import ServiceManagement
 import SwiftUI
 
 final class SettingsWindowController {
@@ -20,6 +17,10 @@ final class SettingsWindowController {
             window.contentViewController = NSHostingController(rootView: SettingsView())
             window.setContentSize(NSSize(width: 820, height: 600))
             window.center()
+            // The preview holds the island open only while Settings is there to change it.
+            NotificationCenter.default.addObserver(forName: NSWindow.willCloseNotification, object: window, queue: .main) { _ in
+                MainActor.assumeIsolated { IslandPreview.shared.isOn = false }
+            }
             self.window = window
             applyAppearance()
         }
@@ -59,12 +60,13 @@ final class SettingsWindowController {
 }
 
 enum SettingsPane: String, CaseIterable, Identifiable {
-    case general, nowPlaying, calendar, timer, shelf, huds, battery, connectivity, lock, about
+    case general, home, nowPlaying, calendar, timer, shelf, huds, battery, connectivity, lock, about
     var id: String { rawValue }
 
     var title: String {
         switch self {
         case .general: "General"
+        case .home: "Home"
         case .nowPlaying: "Now Playing"
         case .huds: "Volume & Brightness"
         case .battery: "Battery"
@@ -95,7 +97,7 @@ struct SettingsView: View {
             List(selection: $navigation.pane) {
                 Text(SettingsPane.general.title).tag(SettingsPane.general)
                 Section("Island") {
-                    ForEach([SettingsPane.nowPlaying, .calendar, .timer, .shelf]) { Text($0.title).tag($0) }
+                    ForEach([SettingsPane.home, .nowPlaying, .calendar, .timer, .shelf]) { Text($0.title).tag($0) }
                 }
                 Section("Notices") {
                     ForEach([SettingsPane.huds, .battery, .connectivity, .lock]) { Text($0.title).tag($0) }
@@ -109,6 +111,7 @@ struct SettingsView: View {
             Group {
                 switch pane {
                 case .general: GeneralPane()
+                case .home: HomePane()
                 case .nowPlaying: NowPlayingPane()
                 case .huds: HUDPane()
                 case .battery: BatteryPane()
@@ -124,351 +127,5 @@ struct SettingsView: View {
         .frame(minWidth: 760, minHeight: 520)
         // Otherwise a solid bar sits behind the toolbar once the sidebar is toggled or the window is inactive.
         .toolbarBackgroundVisibility(.hidden, for: .windowToolbar)
-    }
-}
-
-private struct GeneralPane: View {
-    @AppStorage(Prefs.display) private var display = DisplayChoice.builtIn.rawValue
-    @AppStorage(Prefs.hideInFullscreen) private var hideInFullscreen = false
-    @AppStorage(Prefs.expandOnHover) private var expandOnHover = true
-    @AppStorage(Prefs.swipeGestures) private var swipeGestures = true
-    @AppStorage(Prefs.enableHaptics) private var haptics = true
-    @AppStorage(Prefs.hideMenuBarIcon) private var hideMenuBarIcon = false
-    @AppStorage(Prefs.statusColors) private var statusColors = true
-    @AppStorage(Prefs.showCompanion) private var showCompanion = true
-    @AppStorage(Prefs.settingsAppearance) private var appearance = SettingsAppearance.light
-    @State private var loginError: String?
-
-    var body: some View {
-        SettingsPage(title: "General") {
-            SettingsSection("Island") {
-                SettingsRow("Show on") {
-                    Picker("Show on", selection: $display) {
-                        ForEach(DisplayChoice.allCases) { Text($0.label).tag($0.rawValue) }
-                    }
-                    .menuStyle()
-                }
-                SettingsToggle("Open when the pointer rests on it", isOn: $expandOnHover)
-                SettingsToggle("Swipe gestures", description: "Two fingers down opens and up closes. Sideways skips tracks, or turns cards when the island is open.",
-                               isOn: $swipeGestures)
-                SettingsToggle("Haptic feedback", isOn: $haptics)
-                SettingsToggle("Hide when an app is full screen", isOn: $hideInFullscreen)
-            }
-            SettingsSection("Appearance") {
-                SettingsRow("Theme", description: "For this window. The island is always black.") {
-                    Picker("Theme", selection: $appearance) {
-                        ForEach(SettingsAppearance.allCases) { Text($0.title).tag($0) }
-                    }
-                    .segmentedStyle()
-                    .onChange(of: appearance) { _, _ in SettingsWindowController.shared.applyAppearance() }
-                }
-                SettingsRow("Status colors", description: "Green for charging and AirPods, orange for timers, blue when sound switches. Low battery is red either way.") {
-                    Picker("Status colors", selection: $statusColors) {
-                        Text("Apple's").tag(true)
-                        Text("White").tag(false)
-                    }
-                    .segmentedStyle()
-                }
-                SettingsToggle("Second activity beside the island", description: "A timer while music plays, or a meeting about to start, gets its own drop.",
-                               isOn: $showCompanion)
-            }
-            SettingsSection("App") {
-                SettingsRow("Open at login", description: loginError) {
-                    Toggle("Open at login", isOn: launchAtLogin).toggleStyle(.switch).labelsHidden()
-                }
-                SettingsToggle("Hide the menu bar icon",
-                               description: hideMenuBarIcon ? "Open Nook again from Finder or Spotlight to get back here." : nil,
-                               isOn: $hideMenuBarIcon)
-            }
-        }
-    }
-
-    private var launchAtLogin: Binding<Bool> {
-        Binding(
-            get: { SMAppService.mainApp.status == .enabled },
-            set: { enabled in
-                do {
-                    if enabled { try SMAppService.mainApp.register() } else { try SMAppService.mainApp.unregister() }
-                    loginError = nil
-                } catch {
-                    loginError = "Couldn't change: \(error.localizedDescription)"
-                }
-            }
-        )
-    }
-}
-
-private struct NowPlayingPane: View {
-    @AppStorage(Prefs.nowPlaying) private var enabled = true
-    @AppStorage(Prefs.peekOnTrackChange) private var peekOnTrackChange = true
-    @AppStorage(Prefs.peekOnHover) private var peekOnHover = true
-    @AppStorage(Prefs.expandOnHover) private var expandOnHover = true
-    @AppStorage(Prefs.showWaveform) private var showWaveform = true
-    @AppStorage(Prefs.tintWaveform) private var tintWaveform = true
-
-    var body: some View {
-        SettingsPage(title: "Now Playing") {
-            SettingsSection {
-                SettingsToggle("Show what's playing", isOn: $enabled)
-            }
-            SettingsSection("Closed island") {
-                SettingsToggle("Waveform", isOn: $showWaveform)
-                SettingsToggle("Color the waveform from the artwork", isOn: $tintWaveform)
-                    .disabled(!showWaveform)
-                SettingsToggle("Show the title when the track changes", isOn: $peekOnTrackChange)
-                SettingsToggle("Show the title on hover",
-                               description: expandOnHover ? "Hovering opens the island instead. Turn off \"Open when the pointer rests on it\" in General to use this." : nil,
-                               isOn: $peekOnHover)
-                    .disabled(expandOnHover)
-            }
-            .disabled(!enabled)
-        }
-    }
-}
-
-private struct HUDPane: View {
-    @AppStorage(Prefs.volumeHUD) private var volumeHUD = false
-    @AppStorage(Prefs.brightnessHUD) private var brightnessHUD = false
-    @AppStorage(Prefs.hudStyle) private var style = HUDStyle.ledge.rawValue
-    @State private var trusted = MediaKeyTap.isTrusted
-    private let poll = Timer.publish(every: 1.5, on: .main, in: .common).autoconnect()
-
-    var body: some View {
-        SettingsPage(title: "Volume & Brightness") {
-            SettingsSection {
-                SettingsToggle("Replace the volume HUD", isOn: $volumeHUD)
-                SettingsToggle("Replace the brightness HUD", description: "Option-Shift with a key moves in quarter steps.", isOn: $brightnessHUD)
-                if (volumeHUD || brightnessHUD) && !trusted {
-                    SettingsRow("Accessibility access",
-                                description: "Nook needs Accessibility access to handle the volume and brightness keys. It only reads those keys.") {
-                        Button("Allow…") { MediaKeyTap.requestTrust() }
-                    }
-                }
-            }
-            SettingsSection("Style") {
-                HUDStylePicker(selection: $style)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 16)
-            }
-        }
-        .onReceive(poll) { _ in trusted = MediaKeyTap.isTrusted }
-    }
-}
-
-private struct BatteryPane: View {
-    @AppStorage(Prefs.battery) private var enabled = true
-    @AppStorage(Prefs.lowBatteryThreshold) private var threshold = 20
-
-    var body: some View {
-        SettingsPage(title: "Battery") {
-            SettingsSection {
-                SettingsToggle("Charging and battery notices", isOn: $enabled)
-                SettingsRow("Warn at") {
-                    Picker("Warn at", selection: $threshold) {
-                        ForEach([10, 15, 20, 25, 30], id: \.self) { Text("\($0)%").tag($0) }
-                    }
-                    .menuStyle()
-                }
-                .disabled(!enabled)
-            }
-        }
-    }
-}
-
-private struct ConnectivityPane: View {
-    @AppStorage(Prefs.connectivity) private var enabled = true
-
-    var body: some View {
-        SettingsPage(title: "Connectivity") {
-            SettingsSection {
-                SettingsToggle("Show when Bluetooth devices connect",
-                               description: "AirPods and other headphones show their battery when macOS reports it, and sound switching to them shows too.",
-                               isOn: $enabled)
-            }
-        }
-    }
-}
-
-private struct CalendarPane: View {
-    @AppStorage(Prefs.calendar) private var enabled = true
-    @AppStorage(Prefs.calendarLeadMinutes) private var lead = 10
-    @State private var status = EKEventStore.authorizationStatus(for: .event)
-    private let poll = Timer.publish(every: 1.5, on: .main, in: .common).autoconnect()
-
-    var body: some View {
-        SettingsPage(title: "Calendar") {
-            SettingsSection {
-                SettingsToggle("Show upcoming events", isOn: $enabled)
-                SettingsRow("Show a meeting in the notch") {
-                    Picker("Show a meeting in the notch", selection: $lead) {
-                        ForEach([5, 10, 15, 30], id: \.self) { Text("\($0) minutes before").tag($0) }
-                    }
-                    .menuStyle()
-                }
-                .disabled(!enabled)
-            }
-            if enabled {
-                SettingsSection("Access") {
-                    SettingsRow("Calendar access", description: status == .fullAccess ? nil : "Nook reads your events to show what's next. Nothing leaves your Mac.") {
-                        switch status {
-                        case .fullAccess:
-                            Text("Allowed").foregroundStyle(.secondary)
-                        case .notDetermined:
-                            Button("Allow…") {
-                                Task { _ = try? await EKEventStore().requestFullAccessToEvents() }
-                            }
-                        default:
-                            Button("Open Privacy Settings…") {
-                                NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Calendars")!)
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        .onReceive(poll) { _ in status = EKEventStore.authorizationStatus(for: .event) }
-    }
-}
-
-private struct ShelfPane: View {
-    @AppStorage(Prefs.shelf) private var enabled = true
-
-    var body: some View {
-        SettingsPage(title: "Shelf") {
-            SettingsSection {
-                SettingsToggle("Open the shelf when a file is dragged to the notch",
-                               description: "Files stay where they are; the shelf keeps a reference. Dropped text, links and images are saved in Application Support/Nook/Shelf until you remove them.",
-                               isOn: $enabled)
-            }
-        }
-    }
-}
-
-private struct LockPane: View {
-    @AppStorage(Prefs.lockActivity) private var enabled = true
-
-    var body: some View {
-        SettingsPage(title: "Lock Screen") {
-            SettingsSection {
-                SettingsToggle("Show lock and unlock", isOn: $enabled)
-            }
-        }
-    }
-}
-
-private struct AboutPane: View {
-    var body: some View {
-        SettingsPage(title: "About") {
-            SettingsSection {
-                SettingsRow("Version", value: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "")
-            }
-            SettingsSection("Acknowledgements") {
-                Text("Now playing uses mediaremote-adapter by Jonas van den Berg, BSD 3-Clause License.")
-                    .foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.vertical, 11)
-            }
-        }
-    }
-}
-
-/// Volume and brightness styles as thumbnails, like macOS's own appearance picker.
-private struct HUDStylePicker: View {
-    @Binding var selection: String
-
-    var body: some View {
-        HStack(spacing: 12) {
-            ForEach(HUDStyle.allCases) { style in
-                let selected = selection == style.rawValue
-                Button { selection = style.rawValue } label: {
-                    VStack(spacing: 6) {
-                        HUDStyleThumbnail(style: style)
-                            .frame(width: 118, height: 46)
-                            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                                    .strokeBorder(selected ? Color.accentColor : Color.primary.opacity(0.12), lineWidth: selected ? 3 : 1)
-                            )
-                        Text(style.title)
-                            .font(.callout)
-                            .foregroundStyle(selected ? .primary : .secondary)
-                    }
-                    .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .accessibilityAddTraits(selected ? .isSelected : [])
-            }
-        }
-    }
-}
-
-/// One style drawn at real size on a sample island, scaled down.
-private struct HUDStyleThumbnail: View {
-    let style: HUDStyle
-
-    var body: some View {
-        let note = NotchNotification.volume(level: 0.62, muted: false, output: nil)
-        let notch = NotchMetrics.simulated.size
-        let side = notch.height + 4 + (style == .slider ? 13 : 8)
-        let size = CGSize(width: notch.width + side * 2, height: notch.height + style.below)
-        let layout = IslandLayout(size: size, topRadius: 6, bottomRadius: Compact.bottomRadius)
-        ZStack(alignment: .top) {
-            LinearGradient(colors: [Color(red: 0.27, green: 0.35, blue: 0.49), Color(red: 0.62, green: 0.69, blue: 0.81)],
-                           startPoint: .topLeading, endPoint: .bottomTrailing)
-            ZStack(alignment: .top) {
-                VStack(spacing: 0) {
-                    HStack(spacing: 0) {
-                        if style.usesSides {
-                            HUDGlyph(note: note)
-                                .frame(width: side, alignment: .leading)
-                                .padding(.leading, Compact.outer)
-                            Spacer(minLength: 0)
-                            HUDValue(note: note, style: style)
-                                .frame(width: side - Compact.outer, alignment: .trailing)
-                                .padding(.trailing, Compact.outer)
-                        }
-                    }
-                    .frame(height: notch.height)
-                    HUDBelow(note: note, style: style, bump: 0, bumpUp: true)
-                        .padding(.horizontal, layout.topRadius + (style == .slider ? 4 : 12))
-                }
-                if style == .outline {
-                    HUDOutline(level: 0.62, muted: false, layout: layout, notchHeight: notch.height)
-                }
-            }
-            .frame(width: size.width, height: size.height, alignment: .top)
-            .background(NotchShape(topRadius: layout.topRadius, bottomRadius: layout.bottomRadius).fill(.black))
-            .scaleEffect(0.42, anchor: .top)
-        }
-        .environment(\.colorScheme, .dark)
-        .accessibilityHidden(true)
-    }
-}
-
-private struct TimerPane: View {
-    @AppStorage(Prefs.timerSound) private var sound = "Glass"
-
-    private static let sounds: [String] = {
-        let files = (try? FileManager.default.contentsOfDirectory(atPath: "/System/Library/Sounds")) ?? []
-        return files.map { ($0 as NSString).deletingPathExtension }.sorted()
-    }()
-
-    var body: some View {
-        SettingsPage(title: "Timer") {
-            SettingsSection {
-                SettingsRow("Sound when it ends",
-                            description: "Start a timer from the island's right-click menu. On the open timer, scroll over the time to add or take off minutes.") {
-                    Picker("Sound when it ends", selection: $sound) {
-                        Text("None").tag("")
-                        Divider()
-                        ForEach(Self.sounds, id: \.self) { Text($0).tag($0) }
-                    }
-                    .menuStyle()
-                    .onChange(of: sound) { _, new in
-                        if !new.isEmpty { NSSound(named: new)?.play() }
-                    }
-                }
-            }
-        }
     }
 }

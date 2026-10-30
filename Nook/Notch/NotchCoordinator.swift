@@ -123,6 +123,7 @@ final class NotchCoordinator {
         fileDrags.start()
         observeShelf()
         observeBatteries()
+        observePreview()
 
         #if DEBUG
         if DebugTour.isRequested { DebugTour.run(self) }
@@ -412,6 +413,26 @@ final class NotchCoordinator {
             Task { @MainActor in
                 self?.refreshCards()
                 self?.observeShelf()
+            }
+        }
+    }
+
+    /// Settings' "Preview on the notch": open the island on its first home page and keep it open
+    /// until the preview ends.
+    private func observePreview() {
+        withObservationTracking {
+            _ = IslandPreview.shared.isOn
+        } onChange: { [weak self] in
+            Task { @MainActor in
+                guard let self else { return }
+                let on = IslandPreview.shared.isOn
+                self.model.isPreviewing = on
+                if on, !self.model.isSuppressed {
+                    self.model.expand(card: self.model.cards.first { !$0.modules.isEmpty })
+                } else if !on, !self.model.isHovering {
+                    self.model.collapse()
+                }
+                self.observePreview()
             }
         }
     }

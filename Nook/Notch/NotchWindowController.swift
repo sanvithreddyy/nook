@@ -173,6 +173,8 @@ final class NotchWindowController {
         }) { monitors.append(localUp) }
         // A click anywhere else closes the expanded island.
         if let outside = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown], handler: { [weak self] _ in
+            // Clicking another app also ends Settings' preview, which would otherwise hold the island open.
+            IslandPreview.shared.isOn = false
             self?.model.collapse()
         }) { monitors.append(outside) }
     }
@@ -222,7 +224,7 @@ final class NotchWindowController {
                     while !Task.isCancelled, let self,
                           (self.dragBeganOnIsland && NSEvent.pressedMouseButtons & 1 != 0)
                             || (self.isFileDragActive() && self.isNearIsland(NSEvent.mouseLocation))
-                            || self.model.holdsOpen {
+                            || self.model.holdsOpen || self.model.isPreviewing {
                         try? await Task.sleep(for: .milliseconds(50))
                     }
                     guard !Task.isCancelled, let self, !self.model.isHovering else { return }
