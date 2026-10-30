@@ -105,8 +105,10 @@ enum HomeMetrics {
     static let below: CGFloat = 10
     static let height: CGFloat = 152
     static let bottom: CGFloat = 18
-    /// One battery ring with its labels.
+    /// One battery ring with its level.
     static let batteryCell: CGFloat = 76
+    /// Rings the Batteries widget always shows, empty ones holding the places, as Apple's does.
+    static let batterySlots = 4
     /// The Batteries widget shows at most this many devices.
     static let maxBatteries = 5
 
@@ -114,7 +116,7 @@ enum HomeMetrics {
         switch module {
         case .music: 300
         case .calendar: 320
-        case .batteries: CGFloat(min(max(batteries, 3), maxBatteries)) * batteryCell
+        case .batteries: CGFloat(min(max(batteries, batterySlots), maxBatteries)) * batteryCell
         }
     }
 
@@ -158,7 +160,8 @@ struct HomePage: View {
             }
         }
         .padding(.top, model.notch.size.height + HomeMetrics.below * k)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        // In the middle when another page sets a wider island.
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .environment(\.homeScale, k)
     }
 }

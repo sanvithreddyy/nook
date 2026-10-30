@@ -56,14 +56,17 @@ final class DeviceBatteries {
     }
 
     #if DEBUG
-    /// A Mac and three accessories, for captures.
+    /// A Mac, charging AirPods and their case, as Apple's own widget shows them; `-preview-batteries-full`
+    /// adds a low mouse for a full row.
     func debugPreview() {
-        mac = DeviceBattery(id: "mac", name: "Mac", symbol: "laptopcomputer", level: 84)
+        mac = DeviceBattery(id: "mac", name: "Mac", symbol: "laptopcomputer", level: 80)
         bluetooth = [
-            DeviceBattery(id: "pods", name: "AirPods Pro", symbol: "airpods.pro", level: 62),
-            DeviceBattery(id: "mouse", name: "Mouse", symbol: "magicmouse", level: 18),
-            DeviceBattery(id: "kbd", name: "Keyboard", symbol: "keyboard", level: 88),
+            DeviceBattery(id: "pods", name: "AirPods Pro", symbol: "airpods.pro", level: 100, isCharging: true),
+            DeviceBattery(id: "case", name: "Case", symbol: "airpods.pro.chargingcase.wireless.fill", level: 51),
         ]
+        if CommandLine.arguments.contains("-preview-batteries-full") {
+            bluetooth.append(DeviceBattery(id: "mouse", name: "Mouse", symbol: "magicmouse.fill", level: 18))
+        }
         lastRead = .distantFuture
         publish()
     }
@@ -117,15 +120,18 @@ final class DeviceBatteries {
                     if let main = level("device_batteryLevelMain") ?? buds.min() {
                         let symbol: String
                         let rank: Int
-                        switch minor {
-                        case "headphones", "headset":
+                        // Connected AirPods can come without a type; their buds' levels give them away.
+                        let isHeadphones = minor == "headphones" || minor == "headset" || !buds.isEmpty
+                            || HeadphoneSymbol.symbol(productID: productID, name: fullName) != nil
+                        switch isHeadphones ? "headphones" : minor {
+                        case "headphones":
                             symbol = HeadphoneSymbol.symbol(productID: productID, name: fullName) ?? "headphones"
                             rank = 0
                         case "keyboard":
-                            symbol = "keyboard"
+                            symbol = "keyboard.fill"
                             rank = 2
                         case "mouse":
-                            symbol = "magicmouse"
+                            symbol = "magicmouse.fill"
                             rank = 3
                         case "trackpad":
                             symbol = "hand.point.up.left"
@@ -137,7 +143,8 @@ final class DeviceBatteries {
                         found.append((rank, DeviceBattery(id: address, name: name, symbol: symbol, level: main)))
                     }
                     if let level = level("device_batteryLevelCase") {
-                        let caseSymbol = name.lowercased().contains("pro") ? "airpods.pro.chargingcase.wireless" : "airpods.chargingcase"
+                        // Filled, as the Batteries widget draws the case.
+                        let caseSymbol = name.lowercased().contains("pro") ? "airpods.pro.chargingcase.wireless.fill" : "airpods.chargingcase.wireless.fill"
                         found.append((1, DeviceBattery(id: address + "-case", name: "Case", symbol: caseSymbol, level: level)))
                     }
                 }

@@ -188,7 +188,10 @@ final class NotchCoordinator {
                     shelf.debugPreview(["project.yml", "scripts/build.sh", "Nook/Info.plist"].map { root.appendingPathComponent($0) })
                 }
                 if args.contains("-expand") {
-                    model.expand(card: args.contains("-shelf") ? .shelf : args.contains("-timer-card") ? .timer : nil)
+                    // -page <n>: the nth page, to capture each page.
+                    let page = args.firstIndex(of: "-page").flatMap { args.indices.contains($0 + 1) ? Int(args[$0 + 1]) : nil }
+                        .flatMap { model.cards.indices.contains($0) ? model.cards[$0] : nil }
+                    model.expand(card: args.contains("-shelf") ? .shelf : args.contains("-timer-card") ? .timer : page)
                 }
                 // -expand-later: open from the closed island after a pause, then close, for recording the motion.
                 if args.contains("-expand-later") {

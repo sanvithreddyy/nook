@@ -34,8 +34,9 @@ struct ShelfPage: View {
                 .padding(.horizontal, (ShelfMetrics.separator - 1) / 2)
             AirDropTarget()
         }
-        .padding(.top, model.notch.size.height + 12)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        // In the middle of the space under the notch when another page sets a taller island.
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .padding(.top, model.notch.size.height)
         .animation(Motion.reshape, value: model.isDraggingFile)
         .onAppear { shelf.refresh() }
         .contextMenu {

@@ -1,67 +1,91 @@
 import SwiftUI
 
-/// Apple's Batteries widget on the notch: a ring per device with its glyph inside, the level and the
-/// name under it. Green as Apple draws it (white when Settings asks for white), yellow in Low Power
-/// Mode, red at 20% and below; a bolt while charging.
+/// Apple's Batteries widget on the notch: a ring per device with its glyph inside and its level under
+/// it, empty rings holding the places of devices that aren't there. Green as Apple draws it (white when
+/// Settings asks for white), yellow in Low Power Mode, red at 20% and below; a bolt set into the top of
+/// the ring while charging.
 struct BatteriesModule: View {
     @Environment(DeviceBatteries.self) private var batteries
     @Environment(\.homeScale) private var k
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            ModuleHeading(text: "Batteries", color: .white.opacity(0.45))
-                .padding(.bottom, 16 * k)
-            HStack(alignment: .top, spacing: 0) {
-                ForEach(batteries.devices) { device in
-                    DeviceRing(device: device)
-                        .frame(width: HomeMetrics.batteryCell * k)
-                        .transition(.opacity.combined(with: .scale(scale: 0.9)))
-                }
+        let devices = batteries.devices
+        HStack(spacing: 0) {
+            ForEach(devices) { device in
+                DeviceRing(device: device)
+                    .frame(width: HomeMetrics.batteryCell * k)
+                    .transition(.opacity.combined(with: .scale(scale: 0.9)))
             }
-            .animation(Motion.content, value: batteries.devices.map(\.id))
+            ForEach(devices.count..<max(devices.count, HomeMetrics.batterySlots), id: \.self) { _ in
+                DeviceRing(device: nil)
+                    .frame(width: HomeMetrics.batteryCell * k)
+            }
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .animation(Motion.content, value: devices.map(\.id))
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
 
+/// One device, or an empty place: the track ring alone.
 private struct DeviceRing: View {
     @Environment(\.homeScale) private var k
-    let device: DeviceBattery
+    let device: DeviceBattery?
 
     var body: some View {
-        let low = device.level <= 20 && !device.isCharging
-        let color: Color = low ? .red : device.isLowPower ? Color.status(.yellow) : Color.status(.green)
-        let fraction = CGFloat(min(max(device.level, 0), 100)) / 100
-        VStack(spacing: 0) {
+        let level = device.map { CGFloat(min(max($0.level, 0), 100)) / 100 } ?? 0
+        let charging = device?.isCharging == true
+        let low = device.map { $0.level <= 20 && !$0.isCharging } ?? false
+        let color: Color = low ? .red : device?.isLowPower == true ? Color.status(.yellow) : Color.status(.green)
+        let diameter = 58 * k
+        let line = 6 * k
+        VStack(spacing: 9 * k) {
             ZStack {
-                Circle().stroke(.white.opacity(0.16), lineWidth: 5 * k)
-                Circle()
-                    .trim(from: 0, to: fraction)
-                    .stroke(color, style: StrokeStyle(lineWidth: 5 * k, lineCap: .round))
-                    .rotationEffect(.degrees(-90))
-                Image(systemName: device.symbol)
-                    .font(.system(size: 18 * k, weight: .medium))
-                    .foregroundStyle(.white)
-            }
-            .frame(width: 49 * k, height: 49 * k)
-            .padding(2.5 * k)
-            HStack(spacing: 2 * k) {
-                if device.isCharging {
-                    Image(systemName: "bolt.fill").font(.system(size: 10 * k, weight: .bold))
+                RingArc(fraction: 1, gap: charging).stroke(.white.opacity(0.16), lineWidth: line)
+                if device != nil {
+                    RingArc(fraction: level, gap: charging)
+                        .stroke(color, style: StrokeStyle(lineWidth: line, lineCap: .round))
                 }
-                Text("\(device.level)%")
+                if charging {
+                    Image(systemName: "bolt.fill")
+                        .font(.system(size: 10 * k, weight: .bold))
+                        .foregroundStyle(color)
+                        .offset(y: -diameter / 2)
+                }
+                if let device {
+                    Image(systemName: device.symbol)
+                        .symbolRenderingMode(.monochrome)
+                        .font(.system(size: 22 * k))
+                        .foregroundStyle(.white)
+                }
             }
-            .font(.system(size: 13 * k, weight: .semibold).monospacedDigit())
-            .foregroundStyle(low ? .red : .white)
-            .padding(.top, 8 * k)
-            Text(device.name)
-                .font(.system(size: 11 * k))
-                .foregroundStyle(.white.opacity(0.6))
-                .lineLimit(1)
-                .truncationMode(.middle)
-                .padding(.horizontal, 2 * k)
+            .frame(width: diameter, height: diameter)
+            Text(device.map { "\($0.level)%" } ?? " ")
+                .font(.system(size: 15 * k).monospacedDigit())
+                .foregroundStyle(low ? .red : .white)
         }
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("\(device.name), \(device.level) percent\(device.isCharging ? ", charging" : "")")
+        .accessibilityLabel(device.map { "\($0.name), \($0.level) percent\($0.isCharging ? ", charging" : "")" } ?? "")
+        .accessibilityHidden(device == nil)
+    }
+}
+
+/// A ring from twelve o'clock clockwise. While charging, a gap at the top holds the bolt.
+nonisolated private struct RingArc: Shape {
+    var fraction: CGFloat
+    let gap: Bool
+
+    var animatableData: CGFloat {
+        get { fraction }
+        set { fraction = newValue }
+    }
+
+    func path(in rect: CGRect) -> Path {
+        let open = gap ? 0.045 : 0
+        let start = open
+        let end = open + (1 - open * 2) * min(max(fraction, 0), 1)
+        return Circle()
+            .trim(from: start, to: end)
+            .rotation(.degrees(-90))
+            .path(in: rect)
     }
 }

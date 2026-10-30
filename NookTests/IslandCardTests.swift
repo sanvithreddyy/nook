@@ -52,8 +52,9 @@ struct HomeConfigTests {
         #expect(abs(large.width - 340 * 1.14) < 0.001)
     }
 
-    @Test func batteriesGrowWithTheirDevicesUpToFive() {
-        #expect(HomeMetrics.width(.batteries, batteries: 1) == CGFloat(3 * 76))
+    /// Four places, as Apple's widget has, empty rings holding the ones not used; a fifth device adds one.
+    @Test func batteriesKeepFourPlacesUpToFive() {
+        #expect(HomeMetrics.width(.batteries, batteries: 1) == CGFloat(4 * 76))
         #expect(HomeMetrics.width(.batteries, batteries: 4) == CGFloat(4 * 76))
         #expect(HomeMetrics.width(.batteries, batteries: 9) == CGFloat(5 * 76))
     }

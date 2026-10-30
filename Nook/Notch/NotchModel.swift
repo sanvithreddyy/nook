@@ -276,7 +276,7 @@ final class NotchModel {
             }
         case .expanded:
             // The ears are outside the card's body.
-            let body = cardSize(card)
+            let body = openBody
             return IslandLayout(size: CGSize(width: body.width + Self.cardEar * 2, height: n.height + body.height),
                                 topRadius: Self.cardEar, bottomRadius: Self.cardRadius)
         }
@@ -289,6 +289,13 @@ final class NotchModel {
     }
 
     /// An open card's body, ears left out: its width, and its height below the notch line.
+    /// While open the island keeps one size, the largest of its pages, so turning a page changes only
+    /// what's inside it. A page with less to show sits in the middle.
+    var openBody: CGSize {
+        let sizes = (cards.contains(card) ? cards : cards + [card]).map(cardSize)
+        return CGSize(width: sizes.map(\.width).max() ?? 0, height: sizes.map(\.height).max() ?? 0)
+    }
+
     func cardSize(_ card: IslandCard) -> CGSize {
         switch card {
         case .home(let modules): HomeMetrics.pageSize(modules, batteries: batteryCount, scale: home.scale)
