@@ -7,7 +7,12 @@ import UniformTypeIdentifiers
 enum AirDrop {
     static var service: NSSharingService? { NSSharingService(named: .sendViaAirDrop) }
 
-    /// The icon macOS shows beside AirDrop in its Share menus.
+    /// Where macOS keeps AirDrop's own glyph, the one Control Center draws: among its private symbols,
+    /// which `Image(_:bundle:)` still reads. Nil if a release moves it.
+    static let glyphBundle = Bundle(path: "/System/Library/CoreServices/CoreGlyphsPrivate.bundle")
+        .flatMap { NSImage(symbolName: "airdrop", bundle: $0, variableValue: 0) != nil ? $0 : nil }
+
+    /// Without the glyph, the icon macOS shows beside AirDrop in its Share menus.
     static let icon: NSImage = service?.image
         ?? NSWorkspace.shared.icon(forFile: "/System/Library/CoreServices/Finder.app/Contents/Applications/AirDrop.app")
 
@@ -84,9 +89,7 @@ private struct AirDropTarget: View {
     var body: some View {
         // A tile like the files beside it, lit the way Finder lights a folder under a drag.
         VStack(spacing: 6) {
-            Image(nsImage: AirDrop.icon)
-                .resizable()
-                .aspectRatio(contentMode: .fit)
+            AirDropIcon()
                 .frame(width: 52, height: 52)
             Text("AirDrop")
                 .font(.system(size: 11.5))
@@ -118,6 +121,24 @@ private struct AirDropTarget: View {
                 AirDrop.send(urls)
             }
             return true
+        }
+    }
+}
+
+/// AirDrop as Control Center shows it while it's on: the glyph in the accent colour on a white circle.
+private struct AirDropIcon: View {
+    var body: some View {
+        if let bundle = AirDrop.glyphBundle {
+            // Half the circle's width, as Control Center sizes it.
+            Image("airdrop", bundle: bundle)
+                .font(.system(size: 23))
+                .foregroundStyle(Color.accentColor)
+                .frame(width: 46, height: 46)
+                .background(Circle().fill(.white))
+        } else {
+            Image(nsImage: AirDrop.icon)
+                .resizable()
+                .aspectRatio(contentMode: .fit)
         }
     }
 }
