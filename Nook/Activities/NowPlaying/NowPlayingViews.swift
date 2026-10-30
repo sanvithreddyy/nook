@@ -148,16 +148,19 @@ struct MusicModule: View {
 struct Scrubber: View {
     @Environment(NowPlayingModel.self) private var nowPlaying
     @Environment(\.homeScale) private var k
+    @Environment(\.displayScale) private var displayScale
     @State private var dragElapsed: Double?
     @State private var hovering = false
-    /// Steps ten times a second while playing, so the time and bar move on.
+    /// Steps while playing, so the time and bar move on.
     @State private var tick = 0
+    @State private var steps = ScrubberSteps()
 
     var body: some View {
         let duration = nowPlaying.duration
         let _ = tick
         let elapsed = dragElapsed ?? nowPlaying.elapsed(at: .now)
         let fraction = duration > 0 ? min(max(elapsed / duration, 0), 1) : 0
+        let _ = steps.drew(steps.step(elapsed: elapsed, duration: duration, scale: displayScale))
         let active = hovering || dragElapsed != nil
         let thickness = (active ? 9 : 6) * k
         HStack(spacing: 10 * k) {
@@ -185,6 +188,7 @@ struct Scrubber: View {
                 )
             }
             .frame(height: 14 * k)
+            .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { steps.bar = $0 }
             .animation(Motion.ease(.spring(duration: 0.25, bounce: 0)), value: active)
             .onHover { hovering = $0 }
             .accessibilityElement()
@@ -196,12 +200,14 @@ struct Scrubber: View {
         .font(.system(size: 12 * k, weight: .medium).monospacedDigit())
         .foregroundStyle(.white.opacity(0.6))
         // A TimelineView this frequent runs SwiftUI's update on every display frame, redrawing the
-        // whole island at 120 Hz; a sleeping task wakes only for the ten steps.
+        // whole island at 120 Hz; a sleeping task wakes only for the ten steps. Most steps would draw
+        // the same frame (the bar's end is rounded to whole pixels), so only those that change it redraw.
         .task(id: nowPlaying.isPlaying && dragElapsed == nil) {
             guard nowPlaying.isPlaying, dragElapsed == nil else { return }
             while !Task.isCancelled {
                 try? await Task.sleep(for: .milliseconds(100))
-                tick &+= 1
+                let step = steps.step(elapsed: nowPlaying.elapsed(at: .now), duration: nowPlaying.duration, scale: displayScale)
+                if step != steps.drawn { tick &+= 1 }
             }
         }
     }
@@ -210,6 +216,23 @@ struct Scrubber: View {
         let total = Int(seconds.rounded(.down))
         let h = total / 3600, m = (total % 3600) / 60, s = total % 60
         return h > 0 ? String(format: "%d:%02d:%02d", h, m, s) : String(format: "%d:%02d", m, s)
+    }
+}
+
+/// What the scrubber drew last and where its bar sits, for the ticking task to compare against.
+/// A reference held in state, so recording them doesn't redraw.
+private final class ScrubberSteps {
+    var bar: CGRect = .zero
+    private(set) var drawn: [Int] = []
+
+    func drew(_ step: [Int]) { drawn = step }
+
+    /// What changes in the drawing as a track plays: both clocks' whole seconds and the device pixel
+    /// the bar ends on. SwiftUI rounds edges to pixels where they fall in the window.
+    func step(elapsed: Double, duration: Double, scale: CGFloat) -> [Int] {
+        let fraction = duration > 0 ? min(max(elapsed / duration, 0), 1) : 0
+        let end = (bar.minX + bar.width * fraction) * scale
+        return [Int(elapsed), Int(max(duration - elapsed, 0)), Int(end.rounded())]
     }
 }
 
