@@ -84,9 +84,15 @@ enum SettingsPane: String, CaseIterable, Identifiable {
     /// A test checks each row label in Settings/Panes is listed here.
     var keywords: [String] {
         switch self {
-        case .general: ["Island", "Show on", "Display", "Open when the pointer rests on it", "Hover", "Swipe gestures",
+        case .general: ["Island", "Show on", "Display", "Screen", "Monitor", "Open when the pointer rests on it", "Hover",
+                        "Opens to", "What's happening", "Last page", "Only when it's the app that's playing", "Full screen",
+                        "Video",
+                        "Rest before it responds", "Hover delay", "Gestures", "Swipe gestures", "Down to open, up to close",
+                        "Sideways to skip tracks or turn pages", "Reverse direction", "Sensitivity", "Trackpad",
                         "Haptic feedback", "Hide when an app is full screen", "Appearance", "Theme", "Dark", "Light",
-                        "Status colors", "Second activity beside the island", "App", "Open at login", "Hide the menu bar icon"]
+                        "Status colors", "Second activity beside the island", "Shadow under the open island", "Shadow",
+                        "Hairline outline", "Outline", "Border", "Hide from screenshots and recordings", "Screen recording",
+                        "Screenshot", "App", "Open at login", "Hide the menu bar icon"]
         case .home: ["Preview on the notch", "Layout", "Side by Side", "One at a Time", "Modules side by side", "Size",
                      "Modules", "Order", "Music", "Favorite button", "Output button", "Calendar", "Week starts on",
                      "Mark days with events", "Weekends in gray", "Batteries", "Include this Mac"]

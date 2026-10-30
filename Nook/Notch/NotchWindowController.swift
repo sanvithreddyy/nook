@@ -244,7 +244,7 @@ final class NotchWindowController {
     private func startDwell() {
         hoverIntentTask?.cancel()
         hoverIntentTask = Task { [weak self] in
-            try? await Task.sleep(for: .milliseconds(180))
+            try? await Task.sleep(for: .seconds(Prefs.double(Prefs.hoverDelay)))
             guard !Task.isCancelled else { return }
             self?.hoverDwelled()
         }
@@ -271,11 +271,12 @@ final class NotchWindowController {
     private func handleScroll(_ event: NSEvent) {
         guard Prefs.bool(Prefs.swipeGestures), let direction = swipe.consume(event) else { return }
         switch direction {
-        case .down where !model.isExpanded:
-            model.expand()
-        case .up where model.isExpanded:
-            model.collapse()
-        default:
+        case .down, .up:
+            guard Prefs.bool(Prefs.swipeOpenClose) else { return }
+            if direction == .down, !model.isExpanded { model.expand() }
+            if direction == .up, model.isExpanded { model.collapse() }
+        case .left, .right:
+            guard Prefs.bool(Prefs.swipeSideways) else { return }
             onSwipe?(direction)
         }
     }

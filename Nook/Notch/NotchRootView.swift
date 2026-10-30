@@ -17,6 +17,8 @@ private struct IslandView: View {
     /// Shared elements (the artwork) move between the closed island and the open card.
     @Namespace private var shared
     @Environment(ShelfModel.self) private var shelf
+    @AppStorage(Prefs.islandShadow) private var shadow = true
+    @AppStorage(Prefs.islandOutline) private var outline = false
 
     var body: some View {
         let layout = model.layout
@@ -56,8 +58,20 @@ private struct IslandView: View {
         .environment(\.islandNamespace, shared)
         .background(shape.fill(LiquidSplit.fill))
         .clipShape(shape)
+        .overlay {
+            if outline {
+                shape.stroke(.white.opacity(0.22), lineWidth: 1)
+                    // Not along the top, which is the screen's own edge.
+                    .mask {
+                        VStack(spacing: 0) {
+                            Color.clear.frame(height: 1)
+                            Rectangle()
+                        }
+                    }
+            }
+        }
         // Only what hangs below the menu bar casts a shadow; compact views sit in it.
-        .background(alignment: .top) { Shadow(shape: shape, visible: model.isExpanded || (closed && model.peek != nil)) }
+        .background(alignment: .top) { Shadow(shape: shape, visible: shadow && (model.isExpanded || (closed && model.peek != nil))) }
         .contentShape(shape)
         .onTapGesture { if !model.isExpanded { model.expand() } }
         // Right-click the closed island too; the open card has its own menu.

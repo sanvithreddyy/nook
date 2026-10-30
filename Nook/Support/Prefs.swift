@@ -116,13 +116,70 @@ enum WeekStart: String, CaseIterable, Identifiable {
     static var current: WeekStart { WeekStart(rawValue: UserDefaults.standard.string(forKey: Prefs.calendarWeekStart) ?? "") ?? .system }
 }
 
-enum DisplayChoice: String, CaseIterable, Identifiable {
-    case builtIn, main
+/// How far two fingers travel before a swipe counts.
+enum SwipeSensitivity: String, CaseIterable, Identifiable {
+    case low, medium, high
     var id: String { rawValue }
+    var title: String { rawValue.capitalized }
+    /// Multiplies the distance a swipe needs.
+    var distance: CGFloat {
+        switch self {
+        case .low: 1.5
+        case .medium: 1
+        case .high: 0.65
+        }
+    }
+    static var current: SwipeSensitivity { SwipeSensitivity(rawValue: Prefs.string(Prefs.swipeSensitivity)) ?? .medium }
+}
+
+/// The page the island opens on when nothing asks for a particular one.
+enum OpenTo: String, CaseIterable, Identifiable {
+    /// The page for what the closed island shows: the music, a meeting, a timer.
+    case whatsHappening
+    case home
+    /// The page that was showing when it last closed.
+    case lastPage
+    var id: String { rawValue }
+    var title: String {
+        switch self {
+        case .whatsHappening: "What's happening"
+        case .home: "Home"
+        case .lastPage: "Last page"
+        }
+    }
+    static var current: OpenTo { OpenTo(rawValue: Prefs.string(Prefs.openTo)) ?? .whatsHappening }
+}
+
+/// The screen the island shows on: the built-in one, the main one, or one by name.
+enum DisplayChoice: Hashable, Identifiable {
+    case builtIn, main
+    /// While it's unplugged the island waits on the built-in display.
+    case named(String)
+
+    init?(rawValue: String) {
+        switch rawValue {
+        case "builtIn": self = .builtIn
+        case "main": self = .main
+        case let raw where raw.hasPrefix("screen:"): self = .named(String(raw.dropFirst(7)))
+        default: return nil
+        }
+    }
+
+    var rawValue: String {
+        switch self {
+        case .builtIn: "builtIn"
+        case .main: "main"
+        case .named(let name): "screen:\(name)"
+        }
+    }
+
+    var id: String { rawValue }
+
     var label: String {
         switch self {
         case .builtIn: "Built-in display"
         case .main: "Main display"
+        case .named(let name): name
         }
     }
 }

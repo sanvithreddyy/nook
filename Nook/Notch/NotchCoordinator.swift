@@ -294,6 +294,9 @@ final class NotchCoordinator {
         }
         let style = HUDStyle.current
         if model.hudStyle != style { model.hudStyle = style }
+        let openTo = OpenTo.current
+        if model.openTo != openTo { model.openTo = openTo }
+        window?.panel.sharingType = Prefs.bool(Prefs.hideFromCapture) ? .none : .readOnly
         var home = HomeConfig.current
         #if DEBUG
         if CommandLine.arguments.contains(where: { $0.hasPrefix("-home-") }) { home = debugHome }
@@ -335,7 +338,12 @@ final class NotchCoordinator {
 
     private func updateFullscreen() {
         guard let screen = window?.screen else { return }
-        let hide = Prefs.bool(Prefs.hideInFullscreen) && FullscreenDetector.isFullscreen(on: screen)
+        var hide = false
+        if Prefs.bool(Prefs.hideInFullscreen), let owner = FullscreenDetector.fullscreenApp(on: screen) {
+            // Only the app that's playing, if asked: a video full screen, not a full-screen editor.
+            hide = !Prefs.bool(Prefs.fullscreenMediaOnly)
+                || (nowPlaying.hasTrack && NSRunningApplication(processIdentifier: owner)?.bundleIdentifier == nowPlaying.bundleIdentifier)
+        }
         guard hide != model.isSuppressed else { return }
         model.isSuppressed = hide
         if hide { model.collapse() }
@@ -581,10 +589,11 @@ enum FullscreenDetector {
     /// A fullscreen space has no menu bar window on that display (unless the pointer reveals it)
     /// and another app's window spans the screen's full width from the top of the usable area.
     /// Both must hold, so an auto-hidden menu bar or a zoomed window alone doesn't hide the island.
-    static func isFullscreen(on screen: NSScreen) -> Bool {
+    /// Returns the full-screen app's process, or nil when the screen isn't full screen.
+    static func fullscreenApp(on screen: NSScreen) -> pid_t? {
         guard let primary = NSScreen.screens.first,
               let windows = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]]
-        else { return false }
+        else { return nil }
         // CoreGraphics window bounds use a top-left origin on the primary display.
         let target = CGRect(x: screen.frame.minX,
                             y: primary.frame.maxY - screen.frame.maxY,
@@ -592,7 +601,7 @@ enum FullscreenDetector {
                             height: screen.frame.height)
         let me = ProcessInfo.processInfo.processIdentifier
         var menuBarVisible = false
-        var coveringWindow = false
+        var covering: pid_t?
         for info in windows {
             guard let boundsDict = info[kCGWindowBounds as String] as? NSDictionary,
                   let bounds = CGRect(dictionaryRepresentation: boundsDict as CFDictionary),
@@ -603,16 +612,16 @@ enum FullscreenDetector {
             if layer == Int(CGWindowLevelForKey(.mainMenuWindow)), owner == "Window Server", abs(bounds.minY - target.minY) < 1 {
                 menuBarVisible = true
             }
-            if layer == 0, (info[kCGWindowOwnerPID as String] as? pid_t) != me,
+            if layer == 0, covering == nil, let owner = info[kCGWindowOwnerPID as String] as? pid_t, owner != me,
                abs(bounds.width - target.width) < 1,
                // A maximized window starts under the menu bar (33 pt on a 14" MBP, notch 32 pt);
                // a fullscreen one starts at or above the notch line.
                bounds.minY - target.minY <= screen.safeAreaInsets.top,
                abs(bounds.maxY - target.maxY) < 1 {
-                coveringWindow = true
+                covering = owner
             }
         }
-        return coveringWindow && !menuBarVisible
+        return menuBarVisible ? nil : covering
     }
 }
 

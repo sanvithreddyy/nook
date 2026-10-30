@@ -211,6 +211,11 @@ final class NotchModel {
     /// Hidden while a fullscreen app owns the notch screen.
     var isSuppressed = false
 
+    /// The page the island opens on when nothing asks for one; from Settings.
+    var openTo: OpenTo = .whatsHappening
+    /// The page showing when the island last closed, for "Last page".
+    @ObservationIgnored private var lastCard: IslandCard?
+
     /// Bumped when an expanded island should re-run its content entrance.
     private(set) var expandToken = 0
     /// The closed band is at the bare notch between one kind of content and the next: the old one has
@@ -431,7 +436,7 @@ final class NotchModel {
 
     /// Opens the island on the most relevant card, or on a given one (a file drag opens the shelf).
     func expand(card target: IslandCard? = nil) {
-        guard let next = target ?? cards.first else { return }
+        guard let next = target ?? openingCard else { return }
         guard !isExpanded else {
             show(next)
             return
@@ -445,6 +450,19 @@ final class NotchModel {
             peek = nil
         }
         Haptics.tap()
+    }
+
+    /// Where the island opens when nothing asks for a page. A page that's gone falls back to the first.
+    private var openingCard: IslandCard? {
+        switch openTo {
+        case .whatsHappening:
+            return cards.first
+        case .home:
+            return cards.first { !$0.modules.isEmpty } ?? cards.first
+        case .lastPage:
+            if let lastCard, cards.contains(lastCard) { return lastCard }
+            return cards.first
+        }
     }
 
     func show(_ target: IslandCard) {
@@ -482,6 +500,7 @@ final class NotchModel {
 
     func collapse() {
         guard isExpanded else { return }
+        lastCard = card
         withAnimation(Motion.collapse) { isExpanded = false }
     }
 

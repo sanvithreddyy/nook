@@ -43,6 +43,20 @@ extension NSScreen {
             screens.first(where: \.isBuiltIn) ?? main
         case .main:
             screens.first ?? main
+        case .named(let name):
+            screens.first { $0.localizedName == name } ?? target(for: .builtIn)
         }
+    }
+}
+
+extension DisplayChoice {
+    /// The fixed choices, every connected screen by name, and the chosen screen even while unplugged.
+    static func choices(keeping chosen: String) -> [DisplayChoice] {
+        var all: [DisplayChoice] = [.builtIn, .main]
+        for name in NSScreen.screens.map(\.localizedName) where !all.contains(.named(name)) {
+            all.append(.named(name))
+        }
+        if let kept = DisplayChoice(rawValue: chosen), !all.contains(kept) { all.append(kept) }
+        return all
     }
 }

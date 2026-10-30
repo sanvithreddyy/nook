@@ -5,12 +5,22 @@ import SwiftUI
 struct GeneralPane: View {
     @AppStorage(Prefs.display) private var display = DisplayChoice.builtIn.rawValue
     @AppStorage(Prefs.hideInFullscreen) private var hideInFullscreen = false
+    @AppStorage(Prefs.fullscreenMediaOnly) private var fullscreenMediaOnly = false
+    @AppStorage(Prefs.openTo) private var openTo = OpenTo.whatsHappening
     @AppStorage(Prefs.expandOnHover) private var expandOnHover = true
+    @AppStorage(Prefs.hoverDelay) private var hoverDelay = 0.18
     @AppStorage(Prefs.swipeGestures) private var swipeGestures = true
+    @AppStorage(Prefs.swipeOpenClose) private var swipeOpenClose = true
+    @AppStorage(Prefs.swipeSideways) private var swipeSideways = true
+    @AppStorage(Prefs.swipeReversed) private var swipeReversed = false
+    @AppStorage(Prefs.swipeSensitivity) private var swipeSensitivity = SwipeSensitivity.medium
     @AppStorage(Prefs.enableHaptics) private var haptics = true
     @AppStorage(Prefs.hideMenuBarIcon) private var hideMenuBarIcon = false
     @AppStorage(Prefs.statusColors) private var statusColors = true
     @AppStorage(Prefs.showCompanion) private var showCompanion = true
+    @AppStorage(Prefs.islandShadow) private var shadow = true
+    @AppStorage(Prefs.islandOutline) private var outline = false
+    @AppStorage(Prefs.hideFromCapture) private var hideFromCapture = false
     @AppStorage(Prefs.settingsAppearance) private var appearance = SettingsAppearance.light
     @State private var loginError: String?
 
@@ -19,15 +29,41 @@ struct GeneralPane: View {
             SettingsSection("Island") {
                 SettingsRow("Show on") {
                     Picker("Show on", selection: $display) {
-                        ForEach(DisplayChoice.allCases) { Text($0.label).tag($0.rawValue) }
+                        ForEach(DisplayChoice.choices(keeping: display)) { Text($0.label).tag($0.rawValue) }
                     }
                     .menuStyle()
                 }
                 SettingsToggle("Open when the pointer rests on it", isOn: $expandOnHover)
-                SettingsToggle("Swipe gestures", description: "Two fingers down opens and up closes. Sideways skips tracks, or turns cards when the island is open.",
-                               isOn: $swipeGestures)
+                SettingsRow("Opens to", description: openTo == .whatsHappening ? "The page for what the closed island shows: the music, a meeting, a timer." : nil) {
+                    Picker("Opens to", selection: $openTo) {
+                        ForEach(OpenTo.allCases) { Text($0.title).tag($0) }
+                    }
+                    .menuStyle()
+                }
+                SettingsRow("Rest before it responds", value: String(format: "%.2f s", hoverDelay), wide: true) {
+                    Slider(value: $hoverDelay, in: 0...0.6, step: 0.05)
+                }
                 SettingsToggle("Haptic feedback", isOn: $haptics)
                 SettingsToggle("Hide when an app is full screen", isOn: $hideInFullscreen)
+                SettingsToggle("Only when it's the app that's playing", description: "A video full screen hides the island; other full-screen apps keep it.",
+                               isOn: $fullscreenMediaOnly)
+                    .disabled(!hideInFullscreen)
+            }
+            SettingsSection("Gestures") {
+                SettingsToggle("Swipe gestures", description: "Two fingers on the trackpad, with the pointer on the island.",
+                               isOn: $swipeGestures)
+                Group {
+                    SettingsToggle("Down to open, up to close", isOn: $swipeOpenClose)
+                    SettingsToggle("Sideways to skip tracks or turn pages", isOn: $swipeSideways)
+                    SettingsToggle("Reverse direction", isOn: $swipeReversed)
+                    SettingsRow("Sensitivity") {
+                        Picker("Sensitivity", selection: $swipeSensitivity) {
+                            ForEach(SwipeSensitivity.allCases) { Text($0.title).tag($0) }
+                        }
+                        .segmentedStyle()
+                    }
+                }
+                .disabled(!swipeGestures)
             }
             SettingsSection("Appearance") {
                 SettingsRow("Theme", description: "For this window. The island is always black.") {
@@ -46,6 +82,10 @@ struct GeneralPane: View {
                 }
                 SettingsToggle("Second activity beside the island", description: "A timer while music plays, or a meeting about to start, gets its own drop.",
                                isOn: $showCompanion)
+                SettingsToggle("Shadow under the open island", isOn: $shadow)
+                SettingsToggle("Hairline outline", description: "So the island shows against a black menu bar or a dark wallpaper.",
+                               isOn: $outline)
+                SettingsToggle("Hide from screenshots and recordings", isOn: $hideFromCapture)
             }
             SettingsSection("App") {
                 SettingsRow("Open at login", description: loginError) {
