@@ -27,7 +27,7 @@ enum AirDrop {
 let shelfDropTypes: [UTType] = [.fileURL, .url, .image, .plainText]
 
 /// The shelf's page, laid out like a Finder window's icons: the files kept here, then AirDrop after
-/// a divider, the row in the middle of the island. While a file is dragged, a slot at the end of the
+/// a divider, always at the right end. While a file is dragged, a slot at the end of the
 /// row shows where it will land and lights up, Finder-style, when the drop is over the island. The row
 /// never scrolls, so a sideways swipe always turns the page: past six places the last becomes a stack
 /// of the rest, which opens them all.
@@ -38,6 +38,7 @@ struct ShelfPage: View {
     var body: some View {
         HStack(alignment: .top, spacing: 0) {
             FilesRow(dragging: model.isDraggingFile)
+                .frame(maxWidth: .infinity, alignment: .leading)
             Rectangle()
                 .fill(.white.opacity(0.16))
                 .frame(width: 1, height: 52)
@@ -164,7 +165,8 @@ private struct FilesRow: View {
                 Text("Drop files here")
                     .font(.system(size: 13, weight: .medium))
                     .foregroundStyle(.white.opacity(0.5))
-                    .frame(width: ShelfMetrics.tile * 2, height: 52)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 52)
             }
             .buttonStyle(.plain)
             .help("Click to choose files")
