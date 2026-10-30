@@ -7,6 +7,10 @@ import UniformTypeIdentifiers
 enum AirDrop {
     static var service: NSSharingService? { NSSharingService(named: .sendViaAirDrop) }
 
+    /// The icon macOS shows beside AirDrop in its Share menus.
+    static let icon: NSImage = service?.image
+        ?? NSWorkspace.shared.icon(forFile: "/System/Library/CoreServices/Finder.app/Contents/Applications/AirDrop.app")
+
     static func send(_ urls: [URL]) {
         guard !urls.isEmpty, let service, service.canPerform(withItems: urls) else { return }
         // The AirDrop sheet is a window of ours; bring Nook forward so it appears on top.
@@ -78,20 +82,23 @@ private struct AirDropTarget: View {
     @State private var hovering = false
 
     var body: some View {
+        // A tile like the files beside it, lit the way Finder lights a folder under a drag.
         VStack(spacing: 6) {
-            AirDropGlyph()
-                .fill(.white)
-                .frame(width: 22, height: 22)
-                .frame(width: 48, height: 48)
-                .background(Circle().fill(.white.opacity(targeted ? 0.3 : (hovering ? 0.2 : 0.14))))
-                .scaleEffect(targeted ? 1.08 : 1)
-                .frame(height: 52)
+            Image(nsImage: AirDrop.icon)
+                .resizable()
+                .aspectRatio(contentMode: .fit)
+                .frame(width: 52, height: 52)
             Text("AirDrop")
                 .font(.system(size: 11.5))
                 .foregroundStyle(.white)
         }
-        .frame(width: ShelfMetrics.tile)
-        .contentShape(Rectangle())
+        .frame(width: ShelfMetrics.tile - 4)
+        .padding(.vertical, 2)
+        .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(.white.opacity(targeted ? 0.1 : hovering ? 0.08 : 0)))
+        .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(Color.accentColor.opacity(targeted ? 0.95 : 0), lineWidth: 2))
+        .contentShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .padding(.horizontal, 2)
+        .scaleEffect(targeted ? 1.03 : 1)
         .animation(Motion.press, value: targeted)
         .animation(.easeOut(duration: 0.15), value: hovering)
         .onHover { hovering = $0 }
@@ -112,32 +119,6 @@ private struct AirDropTarget: View {
             }
             return true
         }
-    }
-}
-
-/// The AirDrop mark as one monochrome shape: a dot inside two rings, cut open by a wedge below.
-/// The system's AirDrop image is a colored app icon and there is no public symbol for it.
-nonisolated private struct AirDropGlyph: Shape {
-    func path(in rect: CGRect) -> Path {
-        let r = min(rect.width, rect.height) / 2
-        let c = CGPoint(x: rect.midX, y: rect.midY)
-        // Angles run clockwise from the right with y pointing down, so 90° is straight down.
-        let gap = 27.0
-        let start = Angle.degrees(90 + gap), sweep = Angle.degrees(360 - gap * 2)
-        func point(_ radius: CGFloat, _ angle: Angle) -> CGPoint {
-            CGPoint(x: c.x + radius * cos(angle.radians), y: c.y + radius * sin(angle.radians))
-        }
-
-        var p = Path()
-        p.addEllipse(in: CGRect(x: c.x - r * 0.2, y: c.y - r * 0.2, width: r * 0.4, height: r * 0.4))
-        for (inner, outer) in [(r * 0.4, r * 0.6), (r * 0.78, r)] {
-            p.move(to: point(outer, start))
-            p.addRelativeArc(center: c, radius: outer, startAngle: start, delta: sweep)
-            p.addLine(to: point(inner, start + sweep))
-            p.addRelativeArc(center: c, radius: inner, startAngle: start + sweep, delta: -sweep)
-            p.closeSubpath()
-        }
-        return p
     }
 }
 
