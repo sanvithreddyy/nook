@@ -1,7 +1,8 @@
 import SwiftUI
 
 /// Apple's Weather widget (medium) on the notch: the place and the temperature now on the left, the
-/// sky and today's high and low on the right, the next six hours along the bottom. The symbols keep
+/// sky and today's high and low on the right, the next six hours along the bottom (from the next
+/// whole hour, as the widget starts). The symbols keep
 /// Apple's own colours, as the widget draws them.
 struct WeatherModule: View {
     @Environment(WeatherModel.self) private var weather
@@ -37,10 +38,9 @@ struct WeatherModule: View {
                 }
                 Spacer(minLength: 0)
                 HStack(spacing: 0) {
-                    ForEach(Array(report.hours.prefix(6).enumerated()), id: \.element.id) { index, hour in
+                    ForEach(report.hours.prefix(6)) { hour in
                         VStack(spacing: 6 * k) {
-                            // "4PM", as the widget writes it.
-                            Text(index == 0 ? "Now" : hour.time.formatted(.dateTime.hour()).replacing(/\s/, with: ""))
+                            Text(hour.time.formatted(.dateTime.hour()))
                                 .font(.system(size: 11 * k, weight: .semibold))
                                 .foregroundStyle(.white.opacity(0.7))
                             SkySymbol(name: hour.symbol, size: 16 * k)

@@ -8,7 +8,7 @@ struct ShortcutsModule: View {
 
     var body: some View {
         let names = Array(shortcuts.names.prefix(4))
-        Grid(horizontalSpacing: 8 * k, verticalSpacing: 8 * k) {
+        Grid(horizontalSpacing: 7 * k, verticalSpacing: 7 * k) {
             ForEach(0..<2, id: \.self) { row in
                 GridRow {
                     ForEach(0..<2, id: \.self) { column in
@@ -24,8 +24,9 @@ struct ShortcutsModule: View {
         }
     }
 
-    /// Apple's Shortcuts colours, in the order new shortcuts tend to get them.
-    static let palette: [Color] = [.orange, .blue, .green, .purple, .pink, .teal, .red, .indigo]
+    /// Apple's Shortcuts tile colours: the first four measured from Apple's own widget, the rest from
+    /// the same palette by eye.
+    static let palette: [Color] = [0xF2D000, 0xFCBC72, 0x00D6E7, 0xF78584, 0x5ACB6E, 0x5E9BF5, 0xA67CEB, 0xF27FBF].map(Color.init(hex:))
 }
 
 private struct ShortcutTile: View {
@@ -45,7 +46,7 @@ private struct ShortcutTile: View {
                         ProgressView().controlSize(.small).tint(.white)
                     } else {
                         Image(systemName: finished ? "checkmark" : "square.2.layers.3d.top.filled")
-                            .font(.system(size: 16 * k, weight: .semibold))
+                            .font(.system(size: 17 * k, weight: .semibold))
                             .contentTransition(.symbolEffect(.replace))
                     }
                 }
@@ -53,18 +54,17 @@ private struct ShortcutTile: View {
                 Spacer(minLength: 0)
                 Text(name)
                     .font(.system(size: 13 * k, weight: .semibold))
-                    .lineLimit(2)
-                    .multilineTextAlignment(.leading)
+                    .lineLimit(1)
             }
             .foregroundStyle(.white)
             .padding(10 * k)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
             .background {
-                RoundedRectangle(cornerRadius: 14 * k, style: .continuous)
+                RoundedRectangle(cornerRadius: 12 * k, style: .continuous)
                     .fill(color.gradient)
                     .brightness(hovering ? 0.06 : 0)
             }
-            .contentShape(RoundedRectangle(cornerRadius: 14 * k, style: .continuous))
+            .contentShape(RoundedRectangle(cornerRadius: 12 * k, style: .continuous))
         }
         .buttonStyle(TileButtonStyle())
         .onHover { inside in withAnimation(.easeOut(duration: 0.15)) { hovering = inside } }
@@ -78,5 +78,12 @@ private struct TileButtonStyle: ButtonStyle {
         configuration.label
             .opacity(configuration.isPressed ? ButtonFeedback.pressed : 1)
             .animation(ButtonFeedback.press, value: configuration.isPressed)
+    }
+}
+
+extension Color {
+    /// 0xRRGGBB.
+    nonisolated init(hex: Int) {
+        self.init(red: Double(hex >> 16 & 0xFF) / 255, green: Double(hex >> 8 & 0xFF) / 255, blue: Double(hex & 0xFF) / 255)
     }
 }

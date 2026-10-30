@@ -26,7 +26,7 @@ final class WeatherModel {
     #if DEBUG
     /// A mild afternoon, for designing and capturing the module.
     func debugPreview() {
-        let hour = Calendar.current.dateInterval(of: .hour, for: .now)?.start ?? .now
+        let hour = (Calendar.current.dateInterval(of: .hour, for: .now)?.start ?? .now).addingTimeInterval(3600)
         let hours = zip([73, 74, 74, 72, 69, 66], ["sun.max.fill", "sun.max.fill", "cloud.sun.fill", "cloud.sun.fill", "cloud.fill", "cloud.moon.fill"])
             .enumerated()
             .map { WeatherReport.Hour(time: hour.addingTimeInterval(Double($0.offset) * 3600), symbol: $0.element.1, temperature: $0.element.0) }

@@ -1,24 +1,32 @@
 import SwiftUI
 
-/// Apple's Reminders widget on the notch: the list's name and how many are left, in the list's colour,
-/// then the first few with their circles. Click a circle to tick it off.
+/// Apple's Reminders widget (medium) on the notch: on the left the list's round icon in its colour,
+/// how many are left and the list's name; on the right the first few with their circles. Click a
+/// circle to tick it off.
 struct RemindersModule: View {
     @Environment(RemindersModel.self) private var reminders
     @Environment(\.homeScale) private var k
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            HStack(alignment: .firstTextBaseline) {
-                Text(reminders.listName)
-                    .font(.system(size: 15 * k, weight: .semibold))
-                    .lineLimit(1)
-                Spacer(minLength: 8 * k)
+        HStack(alignment: .top, spacing: 14 * k) {
+            VStack(alignment: .leading, spacing: 0) {
+                Image(systemName: "list.bullet")
+                    .font(.system(size: 13 * k, weight: .bold))
+                    .foregroundStyle(.white)
+                    .frame(width: 30 * k, height: 30 * k)
+                    .background(Circle().fill(reminders.listColor))
+                Spacer(minLength: 0)
                 Text("\(reminders.items.count)")
-                    .font(.system(size: 26 * k, weight: .semibold, design: .rounded).monospacedDigit())
+                    .font(.system(size: 30 * k, weight: .bold, design: .rounded).monospacedDigit())
+                    .foregroundStyle(.white)
                     .contentTransition(.numericText(value: Double(reminders.items.count)))
+                Text(reminders.listName)
+                    .font(.system(size: 13 * k, weight: .semibold))
+                    .foregroundStyle(reminders.listColor)
+                    .lineLimit(1)
             }
-            .foregroundStyle(reminders.listColor)
-            .frame(height: 30 * k)
+            .frame(width: 80 * k, alignment: .leading)
+            .frame(maxHeight: .infinity, alignment: .leading)
             if reminders.items.isEmpty {
                 Text("No Reminders")
                     .font(.system(size: 13 * k, weight: .medium))
@@ -30,10 +38,11 @@ struct RemindersModule: View {
                         ReminderRow(item: item, separated: index > 0)
                             .transition(.opacity)
                     }
+                    Spacer(minLength: 0)
                 }
-                Spacer(minLength: 0)
             }
         }
+        .padding(.vertical, 4 * k)
     }
 }
 
@@ -63,11 +72,11 @@ private struct ReminderRow: View {
             .buttonStyle(.plain)
             .accessibilityLabel("Complete \(item.title)")
             Text(item.title)
-                .font(.system(size: 13 * k))
+                .font(.system(size: 13 * k, weight: .medium))
                 .foregroundStyle(.white.opacity(done ? 0.5 : 1))
                 .lineLimit(1)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .frame(height: 27 * k)
+                .frame(height: 30 * k)
                 .overlay(alignment: .top) {
                     if separated {
                         Rectangle().fill(.white.opacity(0.12)).frame(height: 1)

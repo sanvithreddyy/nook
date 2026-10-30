@@ -11,13 +11,22 @@ struct ClockCity: Identifiable, Hashable {
             .replacingOccurrences(of: "_", with: " ")
     }
 
-    /// "+5HRS", "−3HRS", "+5:30" from here, or "Today" for here.
+    /// "+16HRS", "−3HRS", "+5:30HRS" from here; "+0HRS" here, as the widget writes it.
     func offset(at date: Date) -> String {
         let seconds = timeZone.secondsFromGMT(for: date) - TimeZone.current.secondsFromGMT(for: date)
-        guard seconds != 0 else { return "Today" }
-        let sign = seconds > 0 ? "+" : "−"
+        let sign = seconds < 0 ? "−" : "+"
         let hours = abs(seconds) / 3600, minutes = abs(seconds) % 3600 / 60
-        return minutes == 0 ? "\(sign)\(hours)HRS" : "\(sign)\(hours):\(String(format: "%02d", minutes))"
+        return minutes == 0 ? "\(sign)\(hours)HRS" : "\(sign)\(hours):\(String(format: "%02d", minutes))HRS"
+    }
+
+    /// "Today", "Tomorrow" or "Yesterday" there, against here.
+    func day(at date: Date) -> String {
+        var there = Calendar(identifier: .gregorian)
+        there.timeZone = timeZone
+        let a = there.dateComponents([.year, .month, .day], from: date)
+        let b = Calendar.current.dateComponents([.year, .month, .day], from: date)
+        let difference = Calendar(identifier: .gregorian).dateComponents([.day], from: b, to: a).day ?? 0
+        return difference > 0 ? "Tomorrow" : difference < 0 ? "Yesterday" : "Today"
     }
 
     /// Here, then three of Apple's usual cities that aren't here.
@@ -31,8 +40,8 @@ struct ClockCity: Identifiable, Hashable {
     }
 }
 
-/// Apple's World Clock widget on the notch: four clocks, each with its city and how far it is from
-/// here. A face is white in its daytime and dark at night, as Apple draws them; the second hand ticks.
+/// Apple's World Clock widget on the notch: four clocks, each with its city, its day and how far it is
+/// from here. A face is white in its daytime and dark at night, as Apple draws them; the second hand ticks.
 struct ClockModule: View {
     @Environment(\.homeScale) private var k
     let cities = ClockCity.defaults
@@ -49,10 +58,12 @@ struct ClockModule: View {
                             .foregroundStyle(.white)
                             .lineLimit(1)
                             .padding(.top, 9 * k)
-                        Text(city.offset(at: context.date))
-                            .font(.system(size: 11 * k, weight: .medium))
-                            .foregroundStyle(.white.opacity(0.5))
-                            .padding(.top, 1 * k)
+                        Group {
+                            Text(city.day(at: context.date))
+                            Text(city.offset(at: context.date))
+                        }
+                        .font(.system(size: 11 * k, weight: .semibold))
+                        .foregroundStyle(.white.opacity(0.5))
                     }
                     .frame(maxWidth: .infinity)
                     .accessibilityElement(children: .ignore)
@@ -79,14 +90,14 @@ private struct ClockFace: View {
             let now = calendar.dateComponents([.hour, .minute, .second], from: date)
             let hour = Double(now.hour ?? 0), minute = Double(now.minute ?? 0), second = Double(now.second ?? 0)
             let day = (6..<18).contains(now.hour ?? 0)
-            let face = day ? Color.white : Color(white: 0.17)
+            let face = day ? Color.white : Color(white: 0.24)
             let ink = day ? Color.black : Color.white
 
             context.fill(Path(ellipseIn: CGRect(x: c.x - r, y: c.y - r, width: r * 2, height: r * 2)), with: .color(face))
             for n in 1...12 {
                 let angle = Double(n) / 12 * 2 * .pi
-                let at = CGPoint(x: c.x + sin(angle) * r * 0.75, y: c.y - cos(angle) * r * 0.75)
-                context.draw(Text("\(n)").font(.system(size: r * 0.25, weight: .medium)).foregroundStyle(ink), at: at)
+                let at = CGPoint(x: c.x + sin(angle) * r * 0.76, y: c.y - cos(angle) * r * 0.76)
+                context.draw(Text("\(n)").font(.system(size: r * 0.235, weight: .semibold)).foregroundStyle(ink), at: at)
             }
 
             func point(_ fraction: Double, _ length: CGFloat) -> CGPoint {

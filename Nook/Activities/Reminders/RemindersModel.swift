@@ -11,7 +11,7 @@ struct ReminderItem: Identifiable, Equatable {
 @Observable
 final class RemindersModel {
     private(set) var listName = "Reminders"
-    private(set) var listColor: Color = .orange
+    private(set) var listColor: Color = .blue
     private(set) var items: [ReminderItem] = []
     /// Ticked a moment ago: drawn done until it leaves the list.
     private(set) var completing: Set<String> = []

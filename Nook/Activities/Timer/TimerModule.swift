@@ -1,146 +1,108 @@
 import SwiftUI
 
-/// The Clock app's Timer on the notch. Idle, it lists lengths to start with a green play button, as
-/// Timer's Recents do; running, the time left sits in an orange ring that drains, with the end time
-/// under it and Cancel and Pause as round buttons beside it.
+/// The Mac's Clock app Timer on the notch: the time in large thin digits under small min and sec
+/// labels (hr too past an hour), and Cancel beside Start, Pause or Resume as capsules under it, as in
+/// Clock's Timers. Scroll over the digits to set the minutes, or to add or take off minutes while it runs.
 struct TimerModule: View {
     @Environment(TimerModel.self) private var timer
-
-    var body: some View {
-        if timer.isActive {
-            TimerRunning()
-                .transition(.opacity)
-        } else {
-            TimerRecents()
-                .transition(.opacity)
-        }
-    }
-}
-
-/// Lengths to start, as Timer's Recents list them: three down a narrow module, six in two rows of
-/// three when the module has the page to itself.
-private struct TimerRecents: View {
     @Environment(\.homeScale) private var k
+    /// The length Start begins, before a timer runs.
+    @State private var minutes = 5
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            ModuleHeading(text: "Timer", color: .orange)
-                .padding(.bottom, 4 * k)
-            ViewThatFits(in: .horizontal) {
-                Grid(horizontalSpacing: 24 * k, verticalSpacing: 0) {
-                    ForEach([[1, 3, 5], [10, 15, 25]], id: \.self) { row in
-                        GridRow {
-                            ForEach(row, id: \.self) { minutes in
-                                RecentRow(minutes: minutes, separated: row.first != 1)
-                            }
-                        }
-                    }
-                }
-                .frame(minWidth: 480 * k)
-                VStack(spacing: 0) {
-                    ForEach([5, 10, 25], id: \.self) { minutes in
-                        RecentRow(minutes: minutes, separated: minutes != 5)
-                    }
-                }
-            }
-            Spacer(minLength: 0)
-        }
-    }
-}
-
-/// A length with its green start button, under a hairline when it isn't the first.
-private struct RecentRow: View {
-    @Environment(TimerModel.self) private var timer
-    @Environment(\.homeScale) private var k
-    let minutes: Int
-    let separated: Bool
-
-    var body: some View {
-        HStack(spacing: 0) {
-            VStack(alignment: .leading, spacing: 0) {
-                Text("\(minutes):00")
-                    .font(.system(size: 24 * k, weight: .light).monospacedDigit())
-                    .foregroundStyle(.white)
-                Text("\(minutes) min")
-                    .font(.system(size: 11 * k))
-                    .foregroundStyle(.white.opacity(0.5))
-            }
-            Spacer(minLength: 8 * k)
-            Button { withAnimation(Motion.content) { timer.start(minutes: minutes) } } label: {
-                Image(systemName: "play.fill")
-                    .font(.system(size: 12 * k, weight: .bold))
-                    .foregroundStyle(.green)
-                    .frame(width: 30 * k, height: 30 * k)
-                    .background(Circle().fill(.green.opacity(0.22)))
-            }
-            .buttonStyle(IslandButtonStyle())
-            .accessibilityLabel("Start a \(minutes) minute timer")
-        }
-        .frame(height: 42 * k)
-        .overlay(alignment: .top) {
-            if separated {
-                Rectangle().fill(.white.opacity(0.12)).frame(height: 1)
-            }
-        }
-    }
-}
-
-private struct TimerRunning: View {
-    @Environment(TimerModel.self) private var timer
-    @Environment(\.homeScale) private var k
-
-    var body: some View {
-        // Ring and buttons stay together in the middle, however wide the module is.
-        HStack(spacing: 28 * k) {
+        VStack(spacing: 14 * k) {
             // Once a second, reading the clock itself, as the timer's drop does.
             TimelineView(.periodic(from: .now, by: 1)) { _ in
-                let now = Date.now
-                ZStack {
-                    Circle().stroke(Color.orange.opacity(0.25), lineWidth: 5 * k)
-                    Circle()
-                        .trim(from: 0, to: timer.state == .done ? 1 : timer.fraction(at: now))
-                        .stroke(Color.orange, style: StrokeStyle(lineWidth: 5 * k, lineCap: .round))
-                        .rotationEffect(.degrees(-90))
-                    VStack(spacing: 2 * k) {
-                        TimerText(size: 26 * k, weight: .light, color: .white)
-                        if case .running(let end) = timer.state {
-                            Label(end.formatted(date: .omitted, time: .shortened), systemImage: "bell.fill")
-                                .font(.system(size: 11 * k, weight: .medium))
-                                .foregroundStyle(.white.opacity(0.5))
-                        }
-                    }
-                }
-                .frame(width: 126 * k, height: 126 * k)
+                TimerDigits(seconds: timer.isActive ? timer.remaining(at: .now).rounded(.up) : TimeInterval(minutes * 60))
+                    .opacity(isPaused ? 0.55 : 1)
             }
+            .overlay {
+                ScrollDial { step in
+                    guard !timer.isActive else { return timer.adjust(minutes: step) }
+                    let next = min(max(minutes + step, 1), 23 * 60 + 59)
+                    defer { minutes = next }
+                    return next != minutes
+                }
+            }
+            .help(timer.isActive ? "Scroll to add or take off minutes" : "Scroll to set the minutes")
             HStack(spacing: 12 * k) {
-                if timer.state == .done {
-                    WordButton(title: "Repeat", tint: .white) { timer.repeatLast() }
-                    WordButton(title: "Stop", tint: .orange) { withAnimation(Motion.content) { timer.cancel() } }
-                } else {
-                    WordButton(title: "Cancel", tint: .white) { withAnimation(Motion.content) { timer.cancel() } }
-                    WordButton(title: timer.isRunning ? "Pause" : "Resume", tint: timer.isRunning ? .orange : .green) { timer.toggle() }
+                switch timer.state {
+                case .idle:
+                    CapsuleButton(title: "Cancel", fill: .white.opacity(0.14)) {}
+                        .disabled(true)
+                    CapsuleButton(title: "Start", fill: .green) { timer.start(minutes: minutes) }
+                case .done:
+                    CapsuleButton(title: "Repeat", fill: .white.opacity(0.14)) { timer.repeatLast() }
+                    CapsuleButton(title: "Stop", fill: .orange) { timer.cancel() }
+                case .running, .paused:
+                    CapsuleButton(title: "Cancel", fill: .white.opacity(0.14)) { timer.cancel() }
+                    CapsuleButton(title: isPaused ? "Resume" : "Pause", fill: isPaused ? .green : .orange) { timer.toggle() }
                 }
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .animation(Motion.content, value: timer.state)
+    }
+
+    private var isPaused: Bool { if case .paused = timer.state { true } else { false } }
+}
+
+/// "05:00" as the Clock app sets it: two-digit groups in thin digits, each under its unit.
+private struct TimerDigits: View {
+    @Environment(\.homeScale) private var k
+    let seconds: TimeInterval
+
+    var body: some View {
+        let total = max(Int(seconds), 0)
+        let groups: [(unit: String, value: Int)] = total >= 3600
+            ? [("hr", total / 3600), ("min", total % 3600 / 60), ("sec", total % 60)]
+            : [("min", total / 60), ("sec", total % 60)]
+        HStack(alignment: .lastTextBaseline, spacing: 0) {
+            ForEach(Array(groups.enumerated()), id: \.offset) { index, group in
+                if index > 0 {
+                    Text(":").font(.system(size: 50 * k, weight: .thin))
+                }
+                VStack(spacing: 2 * k) {
+                    Text(group.unit)
+                        .font(.system(size: 11 * k, weight: .medium))
+                        .foregroundStyle(.white.opacity(0.5))
+                    Text(String(format: "%02d", group.value))
+                        .font(.system(size: 50 * k, weight: .thin).monospacedDigit())
+                        .contentTransition(.numericText(countsDown: true))
+                }
+            }
+        }
+        .foregroundStyle(.white)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(Duration.seconds(total).formatted(.units(allowed: [.hours, .minutes, .seconds], width: .wide)))
     }
 }
 
-/// The Clock app's round timer buttons: the word in the tint on a dim disc of it.
-private struct WordButton: View {
+/// The Clock app's capsule buttons: white words on a filled capsule.
+private struct CapsuleButton: View {
     @Environment(\.homeScale) private var k
+    @Environment(\.isEnabled) private var isEnabled
     let title: String
-    let tint: Color
+    let fill: Color
     let action: () -> Void
 
     var body: some View {
         Button(action: action) {
             Text(title)
                 .font(.system(size: 13 * k, weight: .medium))
-                .foregroundStyle(tint)
-                .frame(width: 58 * k, height: 58 * k)
-                .background(Circle().fill(tint.opacity(tint == .white ? 0.16 : 0.22)))
+                .foregroundStyle(.white.opacity(isEnabled ? 1 : 0.35))
+                .frame(width: 92 * k, height: 28 * k)
+                .background(Capsule().fill(fill.opacity(isEnabled ? 1 : 0.6)))
+                .contentShape(Capsule())
         }
-        .buttonStyle(IslandButtonStyle())
+        .buttonStyle(CapsulePress())
+    }
+}
+
+private struct CapsulePress: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .opacity(configuration.isPressed ? ButtonFeedback.pressed : 1)
+            .animation(ButtonFeedback.press, value: configuration.isPressed)
     }
 }
