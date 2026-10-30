@@ -1,0 +1,82 @@
+import SwiftUI
+
+/// Apple's Shortcuts widget on the notch: four tiles, each in its colour with the shortcut's glyph at
+/// the top and its name at the bottom. Click one to run it; it shows that it's running, then a tick.
+struct ShortcutsModule: View {
+    @Environment(ShortcutsModel.self) private var shortcuts
+    @Environment(\.homeScale) private var k
+
+    var body: some View {
+        let names = Array(shortcuts.names.prefix(4))
+        Grid(horizontalSpacing: 8 * k, verticalSpacing: 8 * k) {
+            ForEach(0..<2, id: \.self) { row in
+                GridRow {
+                    ForEach(0..<2, id: \.self) { column in
+                        let index = row * 2 + column
+                        if index < names.count {
+                            ShortcutTile(name: names[index], color: Self.palette[index % Self.palette.count])
+                        } else {
+                            Color.clear
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /// Apple's Shortcuts colours, in the order new shortcuts tend to get them.
+    static let palette: [Color] = [.orange, .blue, .green, .purple, .pink, .teal, .red, .indigo]
+}
+
+private struct ShortcutTile: View {
+    @Environment(ShortcutsModel.self) private var shortcuts
+    @Environment(\.homeScale) private var k
+    let name: String
+    let color: Color
+    @State private var hovering = false
+
+    var body: some View {
+        let running = shortcuts.running.contains(name)
+        let finished = shortcuts.finished.contains(name)
+        Button { shortcuts.run(name) } label: {
+            VStack(alignment: .leading, spacing: 0) {
+                Group {
+                    if running {
+                        ProgressView().controlSize(.small).tint(.white)
+                    } else {
+                        Image(systemName: finished ? "checkmark" : "square.2.layers.3d.top.filled")
+                            .font(.system(size: 16 * k, weight: .semibold))
+                            .contentTransition(.symbolEffect(.replace))
+                    }
+                }
+                .frame(height: 18 * k)
+                Spacer(minLength: 0)
+                Text(name)
+                    .font(.system(size: 13 * k, weight: .semibold))
+                    .lineLimit(2)
+                    .multilineTextAlignment(.leading)
+            }
+            .foregroundStyle(.white)
+            .padding(10 * k)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+            .background {
+                RoundedRectangle(cornerRadius: 14 * k, style: .continuous)
+                    .fill(color.gradient)
+                    .brightness(hovering ? 0.06 : 0)
+            }
+            .contentShape(RoundedRectangle(cornerRadius: 14 * k, style: .continuous))
+        }
+        .buttonStyle(TileButtonStyle())
+        .onHover { inside in withAnimation(.easeOut(duration: 0.15)) { hovering = inside } }
+        .accessibilityLabel("Run \(name)")
+    }
+}
+
+/// Dims while pressed, like the island's other buttons, without their round hover.
+private struct TileButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .opacity(configuration.isPressed ? ButtonFeedback.pressed : 1)
+            .animation(ButtonFeedback.press, value: configuration.isPressed)
+    }
+}

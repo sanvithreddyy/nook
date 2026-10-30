@@ -78,6 +78,9 @@ enum SnapshotRenderer {
                 .environment(c.shelf)
                 .environment(c.timer)
                 .environment(c.batteries)
+                .environment(c.weather)
+                .environment(c.reminders)
+                .environment(c.shortcuts)
                 .environment(c.outputs)
         }
         .frame(width: size.width, height: size.height)

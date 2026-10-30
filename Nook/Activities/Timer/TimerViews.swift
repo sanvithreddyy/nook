@@ -27,6 +27,7 @@ struct TimerText: View {
     @Environment(TimerModel.self) private var timer
     let size: CGFloat
     var weight: Font.Weight = .semibold
+    var color: Color = .orange
 
     var body: some View {
         Group {
@@ -42,7 +43,7 @@ struct TimerText: View {
             }
         }
         .font(.system(size: size, weight: weight).monospacedDigit())
-        .foregroundStyle(.orange)
+        .foregroundStyle(color)
         .lineLimit(1)
         .fixedSize()
     }

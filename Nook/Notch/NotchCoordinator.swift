@@ -9,6 +9,9 @@ final class NotchCoordinator {
     let calendar = CalendarModel()
     let shelf = ShelfModel()
     let batteries = DeviceBatteries()
+    let weather = WeatherModel()
+    let reminders = RemindersModel()
+    let shortcuts = ShortcutsModel()
     let outputs = AudioOutputs()
     #if DEBUG
     /// Preview timers live in their own store, so a test timer never shows up in the real app.
@@ -123,8 +126,9 @@ final class NotchCoordinator {
         fileDrags.onActiveChange = { [weak self] active in self?.model.setDraggingFile(active) }
         fileDrags.start()
         observeShelf()
-        observeBatteries()
+        observeModuleData()
         observePreview()
+        shortcuts.refresh()
 
         #if DEBUG
         if DebugTour.isRequested { DebugTour.run(self) }
@@ -138,6 +142,12 @@ final class NotchCoordinator {
                 let startsIn = args.firstIndex(of: "-preview-meeting-in").flatMap { args.indices.contains($0 + 1) ? Double(args[$0 + 1]) : nil }
                 if args.contains("-preview-calendar") { calendar.debugPreview(meetingSoon: args.contains("-preview-meeting"), startsIn: startsIn) }
                 if args.contains("-preview-batteries") { batteries.debugPreview() }
+                // -preview-modules: sample weather, reminders and shortcuts, for designing those modules.
+                if args.contains("-preview-modules") {
+                    weather.debugPreview()
+                    reminders.debugPreview()
+                    shortcuts.debugPreview()
+                }
                 // -home-one, -home-three, -home-small, -home-large: a home layout for this run only.
                 if args.contains("-home-one") { debugHome.layout = .oneAtATime }
                 if args.contains("-home-three") { debugHome.columns = 3 }
@@ -240,6 +250,9 @@ final class NotchCoordinator {
                 .environment(shelf)
                 .environment(timer)
                 .environment(batteries)
+                .environment(weather)
+                .environment(reminders)
+                .environment(shortcuts)
                 .environment(outputs)
         }
         fileDrags.isInsideNotch = { [weak window] point in window?.catchesDrag(at: point) ?? false }
@@ -502,6 +515,9 @@ final class NotchCoordinator {
             case .music: Prefs.bool(Prefs.nowPlaying) && nowPlaying.hasTrack
             case .calendar: Prefs.bool(Prefs.calendar)
             case .batteries: devices > 0
+            case .weather: weather.report != nil
+            case .shortcuts: !shortcuts.names.isEmpty
+            case .reminders, .clock, .timer: true
             }
         }
         model.setCards(IslandCard.available(live: live ?? liveActivities(), modules: modules,
@@ -591,13 +607,17 @@ final class NotchCoordinator {
         }
     }
 
-    private func observeBatteries() {
+    /// Modules with nothing to show stay off the home: devices with a battery, a weather report,
+    /// shortcuts to run.
+    private func observeModuleData() {
         withObservationTracking {
             _ = batteries.devices.count
+            _ = weather.report == nil
+            _ = shortcuts.names.isEmpty
         } onChange: { [weak self] in
             Task { @MainActor in
                 self?.refreshCards()
-                self?.observeBatteries()
+                self?.observeModuleData()
             }
         }
     }

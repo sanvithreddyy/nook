@@ -1,9 +1,9 @@
 import SwiftUI
 
-/// What the open island's home is made of: each drawn the way Apple already draws it
-/// (the Music card, the Calendar widget, the Batteries widget).
+/// What the open island's home is made of: each drawn the way Apple already draws it (the Music card,
+/// and the Calendar, Batteries, Weather, Reminders, World Clock, Shortcuts and Timer widgets).
 enum HomeModule: String, CaseIterable, Identifiable, Hashable {
-    case music, calendar, batteries
+    case music, calendar, batteries, weather, reminders, clock, shortcuts, timer
 
     var id: String { rawValue }
 
@@ -12,8 +12,17 @@ enum HomeModule: String, CaseIterable, Identifiable, Hashable {
         case .music: "Music"
         case .calendar: "Calendar"
         case .batteries: "Batteries"
+        case .weather: "Weather"
+        case .reminders: "Reminders"
+        case .clock: "World Clock"
+        case .shortcuts: "Shortcuts"
+        case .timer: "Timer"
         }
     }
+
+    /// Whether it can take more than its own width when its page is narrower than the island; the
+    /// Music card keeps its shape.
+    var stretches: Bool { self != .music }
 }
 
 /// Side by side: several modules open together in one wide island. One at a time: a narrow island
@@ -114,8 +123,8 @@ enum HomeMetrics {
 
     static func width(_ module: HomeModule, batteries: Int) -> CGFloat {
         switch module {
-        case .music: 300
-        case .calendar: 320
+        case .music, .reminders, .shortcuts, .timer: 300
+        case .calendar, .weather, .clock: 320
         case .batteries: CGFloat(min(max(batteries, batterySlots), maxBatteries)) * batteryCell
         }
     }
@@ -146,17 +155,23 @@ struct HomePage: View {
 
     var body: some View {
         let k = model.home.scale
-        // On a page narrower than the island, Batteries takes the rest of the width rather than
-        // leaving it empty either side.
+        // On a page narrower than the island, the modules that can stretch share the rest of the
+        // width rather than leaving it empty either side.
         let spare = max(model.openBody.width - HomeMetrics.pageSize(modules, batteries: model.batteryCount, scale: k).width, 0)
+        let extra = spare / CGFloat(max(modules.filter(\.stretches).count, 1))
         HStack(alignment: .top, spacing: HomeMetrics.gap * k) {
             ForEach(modules) { module in
-                let width = HomeMetrics.width(module, batteries: model.batteryCount) * k + (module == .batteries ? spare : 0)
+                let width = HomeMetrics.width(module, batteries: model.batteryCount) * k + (module.stretches ? extra : 0)
                 Group {
                     switch module {
                     case .music: MusicModule()
                     case .calendar: CalendarModule()
                     case .batteries: BatteriesModule(width: width)
+                    case .weather: WeatherModule()
+                    case .reminders: RemindersModule()
+                    case .clock: ClockModule()
+                    case .shortcuts: ShortcutsModule()
+                    case .timer: TimerModule()
                     }
                 }
                 .frame(width: width, height: HomeMetrics.height * k, alignment: .topLeading)
