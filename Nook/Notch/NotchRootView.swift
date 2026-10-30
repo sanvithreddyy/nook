@@ -17,29 +17,29 @@ private struct IslandView: View {
     /// Shared elements (the artwork) move between the closed island and the open card.
     @Namespace private var shared
     @Environment(ShelfModel.self) private var shelf
-    @AppStorage(Prefs.peekOnHover) private var peekOnHover = true
-    @AppStorage(Prefs.expandOnHover) private var expandOnHover = true
 
     var body: some View {
         let layout = model.layout
         let shape = NotchShape(topRadius: layout.topRadius, bottomRadius: layout.bottomRadius)
+        // Between two kinds of closed content the band shows nothing while it rests at the notch.
+        let closed = !model.isExpanded && !model.isHandingOff
 
         ZStack(alignment: .top) {
             VStack(spacing: 0) {
                 TopRow(layout: layout, notch: model.notch.size, activity: model.liveActivity,
-                       notification: model.notification, isExpanded: model.isExpanded)
-                if let peek = model.peek, !model.isExpanded {
+                       notification: model.notification, isHidden: !closed)
+                if let peek = model.peek, closed {
                     PeekRow(peek: peek)
                         .transition(.islandBody)
                 }
-                if !model.isExpanded, let note = model.notification, note.isHUD {
+                if closed, let note = model.notification, note.isHUD {
                     HUDBelow(note: note, style: model.hudStyle, bump: model.hudBump, bumpUp: model.hudBumpUp)
                         .padding(.horizontal, layout.topRadius + (model.hudStyle == .slider ? 4 : 12))
                         .transition(.islandBody)
                 }
             }
             // Outline: the island's own edge fills with the level.
-            if !model.isExpanded, model.hudStyle == .outline, let level = model.notification?.hudLevel {
+            if closed, model.hudStyle == .outline, let level = model.notification?.hudLevel {
                 HUDOutline(level: level.value, muted: level.muted, layout: layout, notchHeight: model.notch.size.height)
                     .frame(width: layout.size.width, height: layout.size.height)
                     .transition(.opacity)
@@ -57,7 +57,7 @@ private struct IslandView: View {
         .background(shape.fill(LiquidSplit.fill))
         .clipShape(shape)
         // Only what hangs below the menu bar casts a shadow; compact views sit in it.
-        .background(alignment: .top) { Shadow(shape: shape, visible: model.isExpanded || model.peek != nil) }
+        .background(alignment: .top) { Shadow(shape: shape, visible: model.isExpanded || (closed && model.peek != nil)) }
         .contentShape(shape)
         .onTapGesture { if !model.isExpanded { model.expand() } }
         // Right-click the closed island too; the open card has its own menu.
@@ -75,7 +75,6 @@ private struct IslandView: View {
             model.expand(card: .shelf)
             return true
         }
-        .simultaneousGesture(pressGesture)
         // After the island's own gestures, so a click on the drop opens it, not the island. Placed by
         // layout (a spacer the island's width) rather than an offset: the liquid split transition wraps
         // the drop, and its liquid has to share the drop's frame.
@@ -88,8 +87,6 @@ private struct IslandView: View {
                 }
             }
         }
-        // Scaled with the drop beside it, so a hover grow doesn't close the gap between them.
-        .scaleEffect(scale, anchor: .top)
         // One side can hold more than the other; the notch stays covered either way.
         .offset(x: layout.shift)
     }
@@ -98,21 +95,6 @@ private struct IslandView: View {
         Binding(get: { shelf.isTargeted }, set: { shelf.isTargeted = $0 })
     }
 
-    private var scale: CGFloat {
-        guard !model.isExpanded else { return 1 }
-        var scale: CGFloat = 1
-        // A hover that is about to open the island or the track peek grows into it instead of bumping first.
-        let hoverOpens = expandOnHover || (peekOnHover && model.liveActivity == .nowPlaying && model.notification == nil)
-        if model.isHovering, model.peek == nil, !hoverOpens { scale *= 1.03 }
-        if model.isPressed { scale *= 0.96 }
-        return scale
-    }
-
-    private var pressGesture: some Gesture {
-        DragGesture(minimumDistance: 0)
-            .onChanged { _ in if !model.isExpanded { model.setPressed(true) } }
-            .onEnded { _ in model.setPressed(false) }
-    }
 }
 
 /// Soft shadow under an open island so it lifts off bright wallpapers.
@@ -138,7 +120,8 @@ private struct TopRow: View {
     let notch: CGSize
     let activity: LiveActivity?
     let notification: NotchNotification?
-    let isExpanded: Bool
+    /// The open card owns the strip, or the band is handing over between two kinds of content.
+    let isHidden: Bool
 
     var body: some View {
         let half = max(0, (layout.size.width - notch.width) / 2)
@@ -155,7 +138,7 @@ private struct TopRow: View {
     // The open card owns the strip beside the notch, so nothing shows here while it's open;
     // a notification that arrives meanwhile shows if it's still current when the card closes.
     @ViewBuilder private func content(_ edge: HorizontalEdge) -> some View {
-        if isExpanded {
+        if isHidden {
             EmptyView()
         } else if let notification {
             NotificationSide(note: notification, edge: edge)

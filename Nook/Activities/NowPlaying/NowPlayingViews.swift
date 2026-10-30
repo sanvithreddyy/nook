@@ -313,28 +313,36 @@ struct PlatterButtonStyle: ButtonStyle {
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .background(RoundedRectangle(cornerRadius: 9 * k, style: .continuous).fill(.white.opacity(configuration.isPressed ? 0.18 : (hovering ? 0.12 : 0))))
-            .scaleEffect(configuration.isPressed ? 0.92 : 1)
-            .animation(Motion.press, value: configuration.isPressed)
-            .animation(.easeOut(duration: 0.15), value: hovering)
+            .opacity(configuration.isPressed ? ButtonFeedback.pressed : 1)
+            .animation(ButtonFeedback.press, value: configuration.isPressed)
+            .background(RoundedRectangle(cornerRadius: 9 * k, style: .continuous).fill(.white.opacity(hovering ? 0.12 : 0)))
+            .animation(ButtonFeedback.hover(hovering), value: hovering)
             .onHover { hovering = $0 }
             .contentShape(Rectangle())
     }
 }
 
-/// Press shrinks with a spring; hover shows a faint round backing.
+/// Hover shows a faint round backing; a press dims the glyph.
 struct IslandButtonStyle: ButtonStyle {
     @State private var hovering = false
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
+            .opacity(configuration.isPressed ? ButtonFeedback.pressed : 1)
+            .animation(ButtonFeedback.press, value: configuration.isPressed)
             .background(Circle().fill(.white.opacity(hovering ? 0.08 : 0)))
-            .scaleEffect(configuration.isPressed ? 0.9 : 1)
-            .animation(Motion.press, value: configuration.isPressed)
-            .animation(.easeOut(duration: 0.15), value: hovering)
+            .animation(ButtonFeedback.hover(hovering), value: hovering)
             .onHover { hovering = $0 }
             .contentShape(Rectangle())
     }
+}
+
+/// Buttons in the island don't move under the pointer: the backing appears at once and fades over
+/// a tenth of a second, and a press dims the glyph rather than shrinking it.
+enum ButtonFeedback {
+    static let pressed = 0.4
+    static var press: Animation? { Motion.ease(.easeOut(duration: 0.08)) }
+    static func hover(_ on: Bool) -> Animation? { Motion.ease(.easeOut(duration: on ? 0.03 : 0.1)) }
 }
 
 // MARK: Shared

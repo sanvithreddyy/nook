@@ -219,7 +219,6 @@ final class NotchWindowController {
             collapseTask?.cancel()
             startDwell()
         } else {
-            model.setPressed(false)
             // Whatever opened the track peek, leaving the island closes it.
             if model.peek == .track { model.hidePeek() }
             if model.isExpanded {

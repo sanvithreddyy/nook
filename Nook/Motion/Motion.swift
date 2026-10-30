@@ -1,25 +1,29 @@
 import AppKit
 import SwiftUI
 
-/// Every spring the island uses (mass 1, stiffness / damping). Exits are damped like their
-/// entrances, so a shrinking island never dips
-/// past its size, and feedback (press, hover) answers within about a quarter of a second.
+/// Every spring the island uses (mass 1, stiffness / damping), fitted to frame-by-frame measurements
+/// of a well-made notch island. Only opening overshoots. The closed band never passes its size: it
+/// grows slowly and shrinks fast, and one kind of content hands over to another at the bare notch.
 enum Motion {
-    static var hoverIn: Animation? { spring(440, 31) }
-    static var hoverOut: Animation? { spring(440, 31) }
-    static var press: Animation? { spring(630, 43) }
-    static var activityIn: Animation? { spring(150, 20) }
-    static var activityOut: Animation? { spring(150, 20) }
-    static var notificationIn: Animation? { spring(150, 20) }
-    static var notificationOut: Animation? { spring(150, 20) }
-    static var peekIn: Animation? { spring(250, 25) }
-    static var peekOut: Animation? { spring(250, 25) }
-    static var expand: Animation? { spring(250, 24) }
-    static var collapse: Animation? { spring(250, 28) }
-    /// Content settling inside a shape that's already springing: quick, with no overshoot of its own.
-    static var content: Animation? { spring(385, 39) }
+    /// Opening: response 0.445 s at 0.6 damping, about 9 % past the open size before it settles.
+    static var expand: Animation? { spring(199, 17) }
+    /// Closing: critically damped, so it never dips below the closed size.
+    static var collapse: Animation? { spring(266, 34) }
+    /// The open island changing shape: another page, the shelf making room for a drop.
+    static var reshape: Animation? { spring(250, 24) }
+    /// The closed band growing into new content (response 0.62 s) and shrinking away from it (0.38 s).
+    static var grow: Animation? { spring(103, 20) }
+    static var shrink: Animation? { spring(273, 33) }
+    /// How long the band rests at the notch between two kinds of content before it grows again.
+    static let handOff: Duration = .milliseconds(270)
+    static var peekIn: Animation? { spring(439, 36) }
+    static var peekOut: Animation? { spring(816, 57) }
+    /// Content sharpening into the open island: quicker than the shape, done before its overshoot.
+    static var content: Animation? { spring(987, 63) }
     /// HUD level changes while a HUD is already showing.
     static var level: Animation? { spring(400, 34) }
+    /// Drop targets lighting up under a drag.
+    static var press: Animation? { spring(630, 43) }
 
     static let unlockHold: Duration = .milliseconds(475)
 
@@ -68,25 +72,26 @@ struct IslandContentModifier: ViewModifier {
 }
 
 extension AnyTransition {
-    /// Side slots of a live activity grow out of the notch edge. The old content leaves quickly and the
-    /// new one arrives just after, so the two never crowd the same slot.
+    /// Content beside the notch blurs in while the band grows and blurs out fast as it shrinks, so old
+    /// and new never share a slot.
     static func islandSide(_ edge: HorizontalEdge) -> AnyTransition {
         let anchor: UnitPoint = edge == .leading ? .trailing : .leading
         return .asymmetric(
-            insertion: .modifier(active: IslandContentModifier.hidden(blur: 8, scaleX: 0.2, scaleY: 0.6, anchor: anchor), identity: IslandContentModifier.shown(anchor: anchor))
-                .animation(Motion.content?.delay(0.05)),
-            removal: .modifier(active: IslandContentModifier.hidden(blur: 8, scaleX: 0.25, scaleY: 0.6, anchor: anchor), identity: IslandContentModifier.shown(anchor: anchor))
-                .animation(Motion.ease(.easeOut(duration: 0.12)))
+            insertion: .modifier(active: IslandContentModifier.hidden(blur: 6, scaleX: 0.9, scaleY: 0.9, anchor: anchor), identity: IslandContentModifier.shown(anchor: anchor))
+                .animation(Motion.ease(.easeOut(duration: 0.2))?.delay(0.12)),
+            removal: .modifier(active: IslandContentModifier.hidden(blur: 6, scaleX: 0.9, scaleY: 0.9, anchor: anchor), identity: IslandContentModifier.shown(anchor: anchor))
+                .animation(Motion.ease(.easeOut(duration: 0.08)))
         )
     }
 
-    /// Larger content (quick peek, expanded view) sharpens into place from just under the notch.
+    /// Larger content (quick peek, expanded view) sharpens into place from just under the notch while
+    /// the shape is still opening, and is gone within a few frames when it closes.
     static var islandBody: AnyTransition {
         .asymmetric(
-            insertion: .modifier(active: IslandContentModifier.hidden(blur: 10, scaleX: 0.75, scaleY: 0.9, anchor: .top), identity: IslandContentModifier.shown(anchor: .top))
-                .animation(Motion.content?.delay(0.05)),
-            removal: .modifier(active: IslandContentModifier.hidden(blur: 10, scaleX: 0.75, scaleY: 0.9, anchor: .top), identity: IslandContentModifier.shown(anchor: .top))
-                .animation(Motion.ease(.easeOut(duration: 0.16)))
+            insertion: .modifier(active: IslandContentModifier.hidden(blur: 6, scaleX: 0.88, scaleY: 0.88, anchor: .top), identity: IslandContentModifier.shown(anchor: .top))
+                .animation(Motion.content?.delay(0.06)),
+            removal: .modifier(active: IslandContentModifier.hidden(blur: 6, scaleX: 0.88, scaleY: 0.88, anchor: .top), identity: IslandContentModifier.shown(anchor: .top))
+                .animation(Motion.ease(.easeOut(duration: 0.06)))
         )
     }
 

@@ -36,7 +36,7 @@ struct ShelfPage: View {
         }
         .padding(.top, model.notch.size.height + 12)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-        .animation(Motion.expand, value: model.isDraggingFile)
+        .animation(Motion.reshape, value: model.isDraggingFile)
         .contextMenu {
             Button("Add Files…") { shelf.chooseFiles() }
             if !shelf.isEmpty {

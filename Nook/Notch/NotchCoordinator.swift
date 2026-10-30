@@ -299,7 +299,7 @@ final class NotchCoordinator {
         if CommandLine.arguments.contains(where: { $0.hasPrefix("-home-") }) { home = debugHome }
         #endif
         if model.home != home {
-            withAnimation(model.isExpanded ? Motion.expand : nil) { model.home = home }
+            withAnimation(model.isExpanded ? Motion.reshape : nil) { model.home = home }
         }
         batteries.publish()
         watchPermissions()
@@ -376,7 +376,7 @@ final class NotchCoordinator {
             activity = live.first
         }
         let hours = timer.remaining() >= 3600
-        if model.timerShowsHours != hours { withAnimation(Motion.activityIn) { model.timerShowsHours = hours } }
+        if model.timerShowsHours != hours { withAnimation(Motion.grow) { model.timerShowsHours = hours } }
         model.setLiveActivity(activity)
         // The next thing going on gets its own drop beside the island.
         model.setCompanion(activity == live.first && Prefs.bool(Prefs.showCompanion) ? live.dropFirst().first : nil)
@@ -390,7 +390,7 @@ final class NotchCoordinator {
         let items = shelf.items.count
         let devices = batteries.devices.count
         if model.shelfItems != items || model.batteryCount != devices {
-            withAnimation(model.isExpanded ? Motion.expand : nil) {
+            withAnimation(model.isExpanded ? Motion.reshape : nil) {
                 model.shelfItems = items
                 model.batteryCount = devices
             }

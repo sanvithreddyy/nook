@@ -140,9 +140,8 @@ struct CardButtonStyle: ButtonStyle {
             .foregroundStyle(style == .primary ? .black : .white)
             .background(Capsule().fill(fill(pressed: configuration.isPressed)))
             .contentShape(Capsule())
-            .scaleEffect(configuration.isPressed ? 0.97 : 1)
-            .animation(Motion.press, value: configuration.isPressed)
-            .animation(.easeOut(duration: 0.15), value: hovering)
+            .animation(ButtonFeedback.press, value: configuration.isPressed)
+            .animation(ButtonFeedback.hover(hovering), value: hovering)
             .onHover { hovering = $0 }
     }
 

@@ -186,7 +186,6 @@ final class NotchModel {
     let pageDirection = PageDirection()
 
     var isHovering = false
-    var isPressed = false
     /// A menu from the open island (the output picker) is showing, so the island stays open under it.
     var holdsOpen = false
     /// Settings is previewing the home on the notch, so the island stays open while the pointer is away.
@@ -214,12 +213,17 @@ final class NotchModel {
 
     /// Bumped when an expanded island should re-run its content entrance.
     private(set) var expandToken = 0
+    /// The closed band is at the bare notch between one kind of content and the next: the old one has
+    /// gone and the new one grows in once the band has shrunk. What it will show is already set.
+    private(set) var isHandingOff = false
 
     @ObservationIgnored private var notificationTask: Task<Void, Never>?
     @ObservationIgnored private var peekTask: Task<Void, Never>?
+    @ObservationIgnored private var handOffTask: Task<Void, Never>?
 
     var presentation: Presentation {
         if isExpanded { return .expanded }
+        if isHandingOff { return .idle }
         if let notification { return .notification(notification) }
         if let peek { return .peek(peek, liveActivity) }
         if let liveActivity { return .activity(liveActivity) }
@@ -307,13 +311,51 @@ final class NotchModel {
 
     func setLiveActivity(_ activity: LiveActivity?) {
         guard activity != liveActivity else { return }
-        let animation = activity == nil ? Motion.activityOut : Motion.activityIn
-        withAnimation(animation) { liveActivity = activity }
+        changeBand(to: notification.map { "n-\($0.kind)" } ?? activity.map { "a-\($0.identity)" }) { liveActivity = activity }
     }
 
     func setCompanion(_ activity: LiveActivity?) {
         guard activity != companion else { return }
-        withAnimation(activity == nil ? Motion.activityOut : Motion.activityIn) { companion = activity }
+        withAnimation(activity == nil ? Motion.shrink : Motion.grow) { companion = activity }
+    }
+
+    /// What the closed band shows, by kind: content of the same kind updates in place.
+    private var bandKind: String? {
+        if let notification { return "n-\(notification.kind)" }
+        return liveActivity.map { "a-\($0.identity)" }
+    }
+
+    /// Changes what the closed band shows. From or to the bare notch it's one grow or shrink. From one
+    /// kind of content to another the band shrinks to the notch, rests, then grows into the new one,
+    /// so two kinds never cross-fade in one slot. Returns whether it hands over that way.
+    @discardableResult
+    private func changeBand(to next: String?, _ change: () -> Void) -> Bool {
+        let current = bandKind
+        // Already at the notch: the grow that's waiting picks up the new content.
+        if isHandingOff {
+            change()
+            return true
+        }
+        guard !isExpanded, let current, let next, current != next, !Motion.isDisabled, !Motion.reduceMotion else {
+            withAnimation(next == nil ? Motion.shrink : Motion.grow) { change() }
+            return false
+        }
+        withAnimation(Motion.shrink) {
+            change()
+            isHandingOff = true
+        }
+        handOffTask = Task { [weak self] in
+            try? await Task.sleep(for: Motion.handOff)
+            guard !Task.isCancelled, let self else { return }
+            withAnimation(Motion.grow) { self.isHandingOff = false }
+        }
+        return true
+    }
+
+    /// Opening the island ends a hand-over: it closes onto whatever the band shows by then.
+    private func endHandOff() {
+        handOffTask?.cancel()
+        isHandingOff = false
     }
 
     /// The drop shows only beside the closed island's own activity, never under a notification,
@@ -336,11 +378,16 @@ final class NotchModel {
 
     /// Notifications also show while expanded, in the strip beside the notch.
     func post(_ note: NotchNotification, for duration: Duration = .seconds(2.2)) {
-        let sameKind = notification?.kind == note.kind
-        withAnimation(sameKind ? Motion.level : Motion.notificationIn) { notification = note }
+        var shown = duration
+        if notification?.kind == note.kind {
+            withAnimation(Motion.level) { notification = note }
+        } else if changeBand(to: "n-\(note.kind)", { notification = note }) {
+            // It shows once the band has handed over, for as long as asked.
+            shown += Motion.handOff
+        }
         notificationTask?.cancel()
         notificationTask = Task { [weak self] in
-            try? await Task.sleep(for: duration)
+            try? await Task.sleep(for: shown)
             guard !Task.isCancelled else { return }
             self?.dismissNotification()
         }
@@ -355,7 +402,7 @@ final class NotchModel {
     func dismissNotification() {
         notificationTask?.cancel()
         guard notification != nil else { return }
-        withAnimation(Motion.notificationOut) { notification = nil }
+        changeBand(to: liveActivity.map { "a-\($0.identity)" }) { notification = nil }
     }
 
     // MARK: Quick peek
@@ -392,6 +439,7 @@ final class NotchModel {
         peekTask?.cancel()
         expandToken &+= 1
         withAnimation(Motion.expand) {
+            endHandOff()
             card = next
             isExpanded = true
             peek = nil
@@ -406,7 +454,7 @@ final class NotchModel {
         } else {
             pageDirection.forward = true
         }
-        withAnimation(Motion.expand) { card = target }
+        withAnimation(Motion.reshape) { card = target }
     }
 
     /// A sideways swipe or a page dot: the next or previous card, stopping at either end.
@@ -418,13 +466,13 @@ final class NotchModel {
 
     func setDraggingFile(_ dragging: Bool) {
         guard dragging != isDraggingFile else { return }
-        withAnimation(isExpanded ? Motion.expand : nil) { isDraggingFile = dragging }
+        withAnimation(isExpanded ? Motion.reshape : nil) { isDraggingFile = dragging }
     }
 
     /// Keeps an open island on a card that still exists: a track ending moves it to the next one.
     func setCards(_ available: [IslandCard]) {
         guard available != cards else { return }
-        withAnimation(isExpanded ? Motion.expand : nil) {
+        withAnimation(isExpanded ? Motion.reshape : nil) {
             cards = available
             guard isExpanded, !available.contains(card) else { return }
             pageDirection.forward = true
@@ -441,11 +489,6 @@ final class NotchModel {
 
     func setHovering(_ hovering: Bool) {
         guard hovering != isHovering else { return }
-        withAnimation(hovering ? Motion.hoverIn : Motion.hoverOut) { isHovering = hovering }
-    }
-
-    func setPressed(_ pressed: Bool) {
-        guard pressed != isPressed else { return }
-        withAnimation(Motion.press) { isPressed = pressed }
+        isHovering = hovering
     }
 }
