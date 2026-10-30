@@ -29,7 +29,7 @@ struct NowPlayingPane: View {
                     .menuStyle()
                 }
                 .disabled(!enabled)
-                SettingsToggle("Hide while the player is in front", description: "Music leaves the island while you're in the app that's playing.",
+                SettingsToggle("Hide while the player is in front", description: "The closed island leaves the music out while you're in the app that's playing. The open island still shows the player.",
                                isOn: $hideWhenPlayerFront)
                     .disabled(!enabled)
             }
@@ -40,6 +40,7 @@ struct NowPlayingPane: View {
                 SettingsToggle("Show the title when the track changes", isOn: $peekOnTrackChange)
                 SettingsRow("Show it for", value: String(format: "%.0f s", peekDuration), wide: true) {
                     Slider(value: $peekDuration, in: 1...6, step: 1)
+                        .accessibilityLabel("Show the title for")
                 }
                 .disabled(!peekOnTrackChange)
                 SettingsToggle("Show the title on hover",

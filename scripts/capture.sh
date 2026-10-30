@@ -7,7 +7,7 @@ source scripts/lib/one-at-a-time.sh
 nook_lock
 out=$1; shift
 app=build/Build/Products/Debug/Nook.app/Contents/MacOS/Nook
-restore() { kill $pid 2>/dev/null; nook_unlock; }
+restore() { [[ -n ${pid:-} ]] && kill $pid 2>/dev/null; nook_unlock; }
 trap restore EXIT
 nook_show
 $app "$@" >/dev/null 2>&1 &

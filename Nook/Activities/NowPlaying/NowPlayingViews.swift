@@ -73,7 +73,8 @@ struct TrackPeek: View {
 
 /// Apple's music card on the notch: the artwork with the title and artist beside
 /// it at one size, the waveform at the end of that line, a thick scrubber with both times, then the
-/// favourite star, the transport and the output. Shuffle and repeat are in the right-click menu.
+/// transport between the two side buttons Settings picks (the favourite star and the output to begin
+/// with). Shuffle and repeat are also in the right-click menu.
 struct MusicModule: View {
     @Environment(NowPlayingModel.self) private var nowPlaying
     @Environment(\.homeScale) private var k
@@ -210,6 +211,8 @@ struct Scrubber: View {
                 .frame(minWidth: 36 * k, alignment: .trailing)
                 .contentShape(Rectangle())
                 .onTapGesture { showsTotal.toggle() }
+                .accessibilityAddTraits(.isButton)
+                .accessibilityHint(showsTotal ? "Shows the time left" : "Shows the length")
         }
         .font(.system(size: 12 * k, weight: .medium).monospacedDigit())
         .foregroundStyle(.white.opacity(0.6))
@@ -294,7 +297,7 @@ private struct SideButton: View {
             SideGlyph(symbol: "shuffle", lit: nowPlaying.isShuffled, label: "Shuffle") { nowPlaying.toggleShuffle() }
         case .repeatMode:
             SideGlyph(symbol: nowPlaying.repeatMode == 2 ? "repeat.1" : "repeat", lit: nowPlaying.repeatMode != 1,
-                      label: "Repeat") { nowPlaying.cycleRepeat() }
+                      label: "Repeat", value: ["Off", "One", "All"][max(min(nowPlaying.repeatMode, 3), 1) - 1]) { nowPlaying.cycleRepeat() }
         case .back15:
             SideGlyph(symbol: "gobackward.15", label: "Back 15 seconds") { nowPlaying.skip(by: -15) }
         case .forward15:
@@ -310,6 +313,8 @@ private struct SideGlyph: View {
     let symbol: String
     var lit: Bool?
     let label: String
+    /// What VoiceOver reads for its state, when "On" or "Off" doesn't say enough.
+    var value: String?
     let action: () -> Void
 
     var body: some View {
@@ -322,7 +327,7 @@ private struct SideGlyph: View {
         }
         .buttonStyle(PlatterButtonStyle())
         .accessibilityLabel(label)
-        .accessibilityValue(lit.map { $0 ? "On" : "Off" } ?? "")
+        .accessibilityValue(value ?? lit.map { $0 ? "On" : "Off" } ?? "")
     }
 }
 

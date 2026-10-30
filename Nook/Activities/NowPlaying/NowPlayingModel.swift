@@ -14,6 +14,7 @@ final class NowPlayingModel {
             guard bundleIdentifier != oldValue else { return }
             appIcon = Self.icon(for: bundleIdentifier)
             if let bundleIdentifier { MediaSources.remember(bundleIdentifier) }
+            onSourceChange?()
         }
     }
     /// Apps Settings leaves out; what they play counts as nothing playing. Set by the coordinator.
@@ -40,6 +41,8 @@ final class NowPlayingModel {
 
     @ObservationIgnored var onTrackChange: (() -> Void)?
     @ObservationIgnored var onPlaybackChange: (() -> Void)?
+    /// The app that's playing changed, which can come a moment after its track.
+    @ObservationIgnored var onSourceChange: (() -> Void)?
     @ObservationIgnored private let client = MediaRemoteClient()
     @ObservationIgnored private var state: [String: NowPlayingUpdate.Value] = [:]
     @ObservationIgnored private var artworkGeneration = 0

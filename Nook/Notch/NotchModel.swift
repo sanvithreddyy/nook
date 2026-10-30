@@ -504,9 +504,10 @@ final class NotchModel {
         }
     }
 
-    func collapse() {
+    /// `remembering`: off for Settings' preview, so "Last page" is what you left open, not what it showed.
+    func collapse(remembering: Bool = true) {
         guard isExpanded else { return }
-        lastCard = card
+        if remembering { lastCard = card }
         withAnimation(Motion.collapse) { isExpanded = false }
     }
 

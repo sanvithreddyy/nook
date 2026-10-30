@@ -38,6 +38,11 @@ final class NotchCoordinator {
     func start() {
         nowPlaying.onTrackChange = { [weak self] in self?.trackChanged() }
         nowPlaying.onPlaybackChange = { [weak self] in self?.playbackChanged() }
+        // The playing app can arrive after its track; what the island shows and hides depends on it.
+        nowPlaying.onSourceChange = { [weak self] in
+            self?.refreshActivity()
+            self?.updateFullscreen()
+        }
         nowPlaying.start()
 
         lock.onChange = { [weak self] in self?.refreshActivity() }
@@ -369,9 +374,10 @@ final class NotchCoordinator {
         guard let screen = window?.screen else { return }
         var hide = false
         if Prefs.bool(Prefs.hideInFullscreen), let owner = FullscreenDetector.fullscreenApp(on: screen) {
-            // Only the app that's playing, if asked: a video full screen, not a full-screen editor.
+            // Only the app that's playing, if asked: a video full screen, not a full-screen editor. An app
+            // left out of the island under Apps still counts: its video is still what's playing.
             hide = !Prefs.bool(Prefs.fullscreenMediaOnly)
-                || (nowPlaying.hasTrack && NSRunningApplication(processIdentifier: owner)?.bundleIdentifier == nowPlaying.bundleIdentifier)
+                || (!nowPlaying.title.isEmpty && NSRunningApplication(processIdentifier: owner)?.bundleIdentifier == nowPlaying.bundleIdentifier)
         }
         guard hide != model.isSuppressed else { return }
         model.isSuppressed = hide
@@ -533,41 +539,52 @@ final class NotchCoordinator {
     }
 
     /// A notice the preview put up, taken down when the preview moves on.
-    private var previewNotice = false
+    /// The notice the preview put up, taken down when the preview moves on unless a real one replaced it.
+    private var previewNotice: NotchNotification?
+    /// The preview was showing something last time, so turning it off has something to undo.
+    private var previewShowing = false
 
     /// Shows what the settings page is about: an open page for the island's own content, a closed
-    /// notice for volume, battery and connections.
+    /// notice for volume, battery and connections. Pages without a preview switch show nothing.
     private func showPreview() {
         let preview = IslandPreview.shared
-        model.isPreviewing = preview.isOn
-        if previewNotice {
-            previewNotice = false
-            model.dismissNotification()
+        let active = preview.isOn && preview.pane.hasPreview && !model.isSuppressed
+        if let note = previewNotice {
+            previewNotice = nil
+            if model.notification == note { model.dismissNotification() }
         }
-        guard preview.isOn, !model.isSuppressed else {
-            if !model.isHovering { model.collapse() }
+        // Holds the island open only while it previews a page; a notice or a closed island lets go.
+        model.isPreviewing = false
+        guard active else {
+            if previewShowing, !model.isHovering { model.collapse(remembering: false) }
+            previewShowing = false
             return
         }
+        previewShowing = true
         let cards = model.cards
         func page(with module: HomeModule) -> IslandCard? { cards.first { $0.modules.contains(module) } }
+        func open(_ card: IslandCard?) {
+            guard let card else {
+                model.collapse(remembering: false)
+                return
+            }
+            model.isPreviewing = true
+            model.expand(card: card)
+        }
         func notice(_ note: NotchNotification) {
-            model.collapse()
+            model.collapse(remembering: false)
             model.post(note, for: .seconds(3600))
-            previewNotice = true
+            previewNotice = note
         }
         switch preview.pane {
         case .nowPlaying:
-            if let music = page(with: .music) { model.expand(card: music) } else { model.collapse() }
+            open(page(with: .music))
         case .calendar:
-            if let calendar = page(with: .calendar) ?? cards.first(where: { $0.settingsPane == .calendar }) {
-                model.expand(card: calendar)
-            } else {
-                model.collapse()
-            }
+            open(page(with: .calendar) ?? cards.first(where: { $0.settingsPane == .calendar }))
         case .timer:
-            if cards.contains(.timer) { model.expand(card: .timer) } else { model.collapse() }
+            open(cards.contains(.timer) ? .timer : nil)
         case .shelf:
-            if cards.contains(.shelf) { model.expand(card: .shelf) } else { model.collapse() }
+            open(cards.contains(.shelf) ? .shelf : nil)
         case .huds:
             notice(.volume(level: volume.volume, muted: volume.isMuted, output: volume.headphones))
         case .battery:
@@ -577,7 +594,7 @@ final class NotchCoordinator {
         case .connectivity:
             notice(.device(name: "AirPods Pro", symbol: "airpods.pro", battery: 80))
         default:
-            model.expand(card: cards.first { !$0.modules.isEmpty })
+            open(cards.first { !$0.modules.isEmpty })
         }
     }
 
@@ -600,6 +617,8 @@ final class NotchCoordinator {
 
     private func playbackChanged() {
         pauseGraceTask?.cancel()
+        // A video starting or stopping in a full-screen app changes whether "only the app that's playing" hides.
+        updateFullscreen()
         if nowPlaying.isPlaying {
             nowPlayingVisible = true
             refreshActivity()

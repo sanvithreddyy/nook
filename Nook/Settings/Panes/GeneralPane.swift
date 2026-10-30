@@ -41,7 +41,9 @@ struct GeneralPane: View {
                     .menuStyle()
                 }
                 SettingsRow("Rest before it responds", value: String(format: "%.2f s", hoverDelay), wide: true) {
-                    Slider(value: $hoverDelay, in: 0...0.6, step: 0.05)
+                    // Not quite zero: a pointer sweeping across the menu bar would open the island on the way past.
+                    Slider(value: $hoverDelay, in: 0.05...0.6, step: 0.05)
+                        .accessibilityLabel("Rest before it responds")
                 }
                 SettingsToggle("Haptic feedback", isOn: $haptics)
                 SettingsToggle("Hide when an app is full screen", isOn: $hideInFullscreen)
@@ -53,7 +55,7 @@ struct GeneralPane: View {
                 SettingsToggle("Swipe gestures", description: "Two fingers on the trackpad, with the pointer on the island.",
                                isOn: $swipeGestures)
                 Group {
-                    SettingsToggle("Down to open, up to close", isOn: $swipeOpenClose)
+                    SettingsToggle(swipeReversed ? "Up to open, down to close" : "Down to open, up to close", isOn: $swipeOpenClose)
                     SettingsToggle("Sideways to skip tracks or turn pages", isOn: $swipeSideways)
                     SettingsToggle("Reverse direction", isOn: $swipeReversed)
                     SettingsRow("Sensitivity") {

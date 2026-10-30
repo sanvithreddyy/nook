@@ -34,8 +34,8 @@ struct ExpandedView: View {
             Divider()
             if !card.modules.isEmpty {
                 Button("Edit Home…") {
-                    IslandPreview.shared.isOn = true
                     SettingsWindowController.shared.show(pane: .home)
+                    IslandPreview.shared.isOn = true
                 }
             }
             SettingsMenuItem(pane: card.settingsPane)

@@ -6,7 +6,11 @@ final class SettingsWindowController {
     private var window: NSWindow?
 
     func show(activate: Bool = true, pane: SettingsPane? = nil) {
-        if let pane { SettingsNavigation.shared.pane = pane }
+        if let pane {
+            SettingsNavigation.shared.pane = pane
+            // Straight away, so a preview turned on with it shows this page, not the last one.
+            IslandPreview.shared.pane = pane
+        }
         if window == nil {
             let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 820, height: 600),
                                   styleMask: [.titled, .closable, .miniaturizable, .fullSizeContentView],
@@ -21,7 +25,15 @@ final class SettingsWindowController {
             window.setContentSize(NSSize(width: 820, height: 600))
             window.center()
             // The preview holds the island open only while Settings is there to change it.
-            NotificationCenter.default.addObserver(forName: NSWindow.willCloseNotification, object: window, queue: .main) { _ in
+            // The preview holds the island only while Settings is there to change it: closed, minimized,
+            // or Nook sent to the background (Command-Tab, hidden), it ends.
+            let center = NotificationCenter.default
+            for name in [NSWindow.willCloseNotification, NSWindow.willMiniaturizeNotification] {
+                center.addObserver(forName: name, object: window, queue: .main) { _ in
+                    MainActor.assumeIsolated { IslandPreview.shared.isOn = false }
+                }
+            }
+            center.addObserver(forName: NSApplication.didResignActiveNotification, object: nil, queue: .main) { _ in
                 MainActor.assumeIsolated { IslandPreview.shared.isOn = false }
             }
             self.window = window
@@ -89,6 +101,16 @@ final class SettingsWindowController {
     #endif
 }
 
+extension SettingsPane {
+    /// Pages with part of the island to show on the notch while they're open.
+    var hasPreview: Bool {
+        switch self {
+        case .home, .nowPlaying, .calendar, .timer, .shelf, .huds, .battery, .connectivity: true
+        case .general, .lock, .shortcuts, .advanced, .about: false
+        }
+    }
+}
+
 enum SettingsPane: String, CaseIterable, Identifiable {
     case general, home, nowPlaying, calendar, timer, shelf, huds, battery, connectivity, lock, shortcuts, advanced, about
     var id: String { rawValue }
@@ -119,6 +141,7 @@ enum SettingsPane: String, CaseIterable, Identifiable {
                         "Opens to", "What's happening", "Last page", "Only when it's the app that's playing", "Full screen",
                         "Video",
                         "Rest before it responds", "Hover delay", "Gestures", "Swipe gestures", "Down to open, up to close",
+                        "Up to open, down to close",
                         "Sideways to skip tracks or turn pages", "Reverse direction", "Sensitivity", "Trackpad",
                         "Haptic feedback", "Hide when an app is full screen", "Appearance", "Theme", "Dark", "Light",
                         "Status colors", "Second activity beside the island", "Shadow under the open island", "Shadow",
@@ -128,23 +151,23 @@ enum SettingsPane: String, CaseIterable, Identifiable {
                      "Modules", "Order", "Music", "Left button", "Right button", "Favorite", "Output", "Shuffle", "Repeat",
                      "Back 15 seconds", "Forward 15 seconds", "Time after the bar", "Time left", "Length", "Remaining", "Calendar", "Week starts on",
                      "Mark days with events", "Weekends in gray", "Batteries", "Include this Mac"]
-        case .nowPlaying: ["Show what's playing", "Closed island", "Waveform", "Color the waveform from the artwork",
+        case .nowPlaying: ["Preview on the notch", "Show what's playing", "Closed island", "Waveform", "Color the waveform from the artwork",
                            "Show the title when the track changes", "Show the title on hover", "Artwork", "Keep a paused player",
                            "Paused", "Hide while the player is in front", "Show it for", "Peek", "Apps", "Sources", "Browser",
                            "Flip the artwork when the track changes", "Album art", "Music", "Media"]
-        case .calendar: ["Show upcoming events", "Show a meeting in the notch", "Access", "Calendar access", "Events",
+        case .calendar: ["Preview on the notch", "Show upcoming events", "Show a meeting in the notch", "Access", "Calendar access", "Events",
                          "Once it starts", "Leave the notch", "Stay until it ends", "When an event starts",
                          "Show its title under the island", "Sound", "Chime", "Hide all-day events", "All-day",
                          "Calendars", "Calendar colors"]
-        case .timer: ["Sound when it ends", "Alarm"]
-        case .shelf: ["Open the shelf when a file is dragged to the notch", "Files", "Drop", "AirDrop", "Catch area",
+        case .timer: ["Preview on the notch", "Sound when it ends", "Alarm"]
+        case .shelf: ["Preview on the notch", "Open the shelf when a file is dragged to the notch", "Files", "Drop", "AirDrop", "Catch area",
                       "Tight", "Wide", "Remove files that are gone", "Share"]
-        case .huds: ["Replace the volume HUD", "Replace the brightness HUD", "Accessibility access", "Style",
+        case .huds: ["Preview on the notch", "Replace the volume HUD", "Replace the brightness HUD", "Accessibility access", "Style",
                      "Ledge", "Slider", "Steps", "Outline", "Show the level as a number", "Percentage", "Stays for",
                      "Duration"]
-        case .battery: ["Charging and battery notices", "Warn at", "Low battery", "Plugging in shows for",
+        case .battery: ["Preview on the notch", "Charging and battery notices", "Warn at", "Low battery", "Plugging in shows for",
                         "Low Power Mode on and off", "Warn when the battery runs low", "Sound"]
-        case .connectivity: ["Show when Bluetooth devices connect", "AirPods", "Headphones", "Stays for"]
+        case .connectivity: ["Preview on the notch", "Show when Bluetooth devices connect", "AirPods", "Headphones", "Stays for"]
         case .lock: ["Show lock and unlock"]
         case .shortcuts: ["Shortcut", "Keyboard", "Hotkey", "Record Shortcut"] + ShortcutAction.allCases.map(\.title)
         case .advanced: ["Export Settings", "Import Settings", "Reset All Settings", "Backup"]
