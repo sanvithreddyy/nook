@@ -6,6 +6,8 @@ struct HUDPane: View {
     @AppStorage(Prefs.volumeHUD) private var volumeHUD = false
     @AppStorage(Prefs.brightnessHUD) private var brightnessHUD = false
     @AppStorage(Prefs.hudStyle) private var style = HUDStyle.ledge.rawValue
+    @AppStorage(Prefs.hudDuration) private var duration = 1.6
+    @AppStorage(Prefs.hudShowsNumber) private var showsNumber = true
     @State private var trusted = MediaKeyTap.isTrusted
     private let poll = Timer.publish(every: 1.5, on: .main, in: .common).autoconnect()
 
@@ -25,7 +27,12 @@ struct HUDPane: View {
                 HUDStylePicker(selection: $style)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 16)
+                SettingsToggle("Show the level as a number", isOn: $showsNumber)
+                SettingsRow("Stays for", value: String(format: "%.1f s", duration), wide: true) {
+                    Slider(value: $duration, in: 1...3, step: 0.2)
+                }
             }
+            .disabled(!volumeHUD && !brightnessHUD)
         }
         .onReceive(poll) { _ in trusted = MediaKeyTap.isTrusted }
     }

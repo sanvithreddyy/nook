@@ -138,9 +138,11 @@ enum SettingsPane: String, CaseIterable, Identifiable {
         case .timer: ["Sound when it ends", "Alarm"]
         case .shelf: ["Open the shelf when a file is dragged to the notch", "Files", "Drop", "AirDrop"]
         case .huds: ["Replace the volume HUD", "Replace the brightness HUD", "Accessibility access", "Style",
-                     "Ledge", "Slider", "Steps", "Outline"]
-        case .battery: ["Charging and battery notices", "Warn at", "Low battery"]
-        case .connectivity: ["Show when Bluetooth devices connect", "AirPods", "Headphones"]
+                     "Ledge", "Slider", "Steps", "Outline", "Show the level as a number", "Percentage", "Stays for",
+                     "Duration"]
+        case .battery: ["Charging and battery notices", "Warn at", "Low battery", "Plugging in shows for",
+                        "Low Power Mode on and off", "Warn when the battery runs low", "Sound"]
+        case .connectivity: ["Show when Bluetooth devices connect", "AirPods", "Headphones", "Stays for"]
         case .lock: ["Show lock and unlock"]
         case .advanced: ["Export Settings", "Import Settings", "Reset All Settings", "Backup"]
         case .about: ["Version", "Acknowledgements"]

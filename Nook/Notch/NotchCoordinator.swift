@@ -53,18 +53,19 @@ final class NotchCoordinator {
         battery.onReadingChange = { [weak self] reading, lowPower in self?.batteries.updateMac(reading, lowPower: lowPower) }
         battery.onPowerSourceChange = { [weak self] reading in
             guard Prefs.bool(Prefs.battery) else { return }
-            self?.model.post(reading.onAC ? .charging(level: reading.level) : .onBattery(level: reading.level), for: .seconds(2.6))
+            self?.model.post(reading.onAC ? .charging(level: reading.level) : .onBattery(level: reading.level),
+                             for: .seconds(Prefs.double(Prefs.batteryNoticeDuration)))
         }
         battery.onLowBattery = { [weak self] reading in
-            guard let self, Prefs.bool(Prefs.battery) else { return }
+            guard let self, Prefs.bool(Prefs.battery), Prefs.bool(Prefs.lowBatteryWarning) else { return }
             if self.model.isSuppressed {
                 self.pendingLowBattery = reading.level
             } else {
-                self.model.post(.lowBattery(level: reading.level), for: .seconds(4))
+                self.warnLowBattery(reading.level)
             }
         }
         battery.onLowPowerModeChange = { [weak self] on in
-            guard Prefs.bool(Prefs.battery) else { return }
+            guard Prefs.bool(Prefs.battery), Prefs.bool(Prefs.lowPowerNotice) else { return }
             self?.model.post(.lowPowerMode(on: on), for: .seconds(2.2))
         }
         battery.start()
@@ -84,7 +85,8 @@ final class NotchCoordinator {
             guard let self, Prefs.bool(Prefs.connectivity),
                   case .device(let name, _, _) = self.model.notification, name == device.name
             else { return }
-            self.model.post(.device(name: device.name, symbol: device.symbol, battery: level), for: .seconds(2.5))
+            self.model.post(.device(name: device.name, symbol: device.symbol, battery: level),
+                            for: .seconds(Prefs.double(Prefs.deviceNoticeDuration)))
         }
         if Prefs.bool(Prefs.connectivity) { bluetooth.start() }
         batteries.refresh(force: true)
@@ -369,9 +371,15 @@ final class NotchCoordinator {
             pendingLowBattery = nil
             // Skip it if the Mac was plugged in while the island was hidden.
             if battery.reading?.onAC == false {
-                model.post(.lowBattery(level: level), for: .seconds(4))
+                warnLowBattery(level)
             }
         }
+    }
+
+    private func warnLowBattery(_ level: Int) {
+        model.post(.lowBattery(level: level), for: .seconds(4))
+        let sound = Prefs.string(Prefs.lowBatterySound)
+        if !sound.isEmpty { NSSound(named: sound)?.play() }
     }
 
     // MARK: Events starting
@@ -664,16 +672,16 @@ final class NotchCoordinator {
             let before = volume.volume
             let result = volume.step(up: up, fine: fine)
             bumpIfAtEnd(kind: "volume", before: before, after: result.level, up: up)
-            model.post(.volume(level: result.level, muted: result.muted, output: volume.headphones), for: .seconds(1.6))
+            model.post(.volume(level: result.level, muted: result.muted, output: volume.headphones), for: .seconds(Prefs.double(Prefs.hudDuration)))
         case .mute:
             let result = volume.toggleMute()
-            model.post(.volume(level: result.level, muted: result.muted, output: volume.headphones), for: .seconds(1.6))
+            model.post(.volume(level: result.level, muted: result.muted, output: volume.headphones), for: .seconds(Prefs.double(Prefs.hudDuration)))
         case .brightnessUp, .brightnessDown:
             let up = key == .brightnessUp
             let before = brightness.level
             let level = brightness.step(up: up, fine: fine)
             bumpIfAtEnd(kind: "brightness", before: before, after: level, up: up)
-            model.post(.brightness(level: level), for: .seconds(1.6))
+            model.post(.brightness(level: level), for: .seconds(Prefs.double(Prefs.hudDuration)))
         }
     }
 

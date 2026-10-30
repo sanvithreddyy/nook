@@ -38,9 +38,10 @@ struct HUDGlyph: View {
 struct HUDValue: View {
     let note: NotchNotification
     let style: HUDStyle
+    @AppStorage(Prefs.hudShowsNumber) private var showsNumber = true
 
     var body: some View {
-        if let level = note.hudLevel {
+        if showsNumber, let level = note.hudLevel {
             let value = style == .segments ? Int((level.value * 16).rounded()) : Int((level.value * 100).rounded())
             Text("\(value)")
                 .font(.system(size: Compact.fontSize, weight: .semibold).monospacedDigit())
