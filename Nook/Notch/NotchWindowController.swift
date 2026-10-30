@@ -183,14 +183,14 @@ final class NotchWindowController {
     /// but never starts one, so a peek growing under a parked cursor doesn't hold itself open.
     func pointerMoved(fromLayoutChange: Bool = false) {
         guard !model.isSuppressed else {
-            panel.ignoresMouseEvents = true
+            setIgnoresMouse(true)
             return
         }
         // A drag out of a tile or a context menu runs its own event loop and eats the mouse-up.
         if dragBeganOnIsland, NSEvent.pressedMouseButtons & 1 == 0 { dragBeganOnIsland = false }
         let pointer = NSEvent.mouseLocation
         let inside = hitRect().contains(pointer) || companionRect()?.contains(pointer) == true
-        panel.ignoresMouseEvents = !inside && !dragBeganOnIsland
+        setIgnoresMouse(!inside && !dragBeganOnIsland)
         if !fromLayoutChange {
             let now = CACurrentMediaTime()
             let speed = lastPointer.map { hypot(pointer.x - $0.point.x, pointer.y - $0.point.y) / max(now - $0.time, 0.001) } ?? 0
@@ -203,6 +203,12 @@ final class NotchWindowController {
         // that turned to a shorter card stays open until the pointer itself moves.
         if fromLayoutChange, inside || model.isExpanded { return }
         hoverChanged(inside)
+    }
+
+    /// Setting it messages the window server and commits a window transaction even when it doesn't
+    /// change, and this runs on every mouse move anywhere on screen.
+    private func setIgnoresMouse(_ ignores: Bool) {
+        if panel.ignoresMouseEvents != ignores { panel.ignoresMouseEvents = ignores }
     }
 
     private func hoverChanged(_ inside: Bool) {
