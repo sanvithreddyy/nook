@@ -14,8 +14,9 @@ enum Motion {
     /// The closed band growing into new content (response 0.62 s) and shrinking away from it (0.38 s).
     static var grow: Animation? { spring(103, 20) }
     static var shrink: Animation? { spring(273, 33) }
-    /// How long the band rests at the notch between two kinds of content before it grows again.
-    static let handOff: Duration = .milliseconds(270)
+    /// How long after the old content goes the band turns from shrinking to growing into the new one.
+    /// As in the reference, it turns a little before it reaches the bare notch (290–380 ms there).
+    static let handOff: Duration = .milliseconds(320)
     static var peekIn: Animation? { spring(439, 36) }
     static var peekOut: Animation? { spring(816, 57) }
     /// Content sharpening into the open island: quicker than the shape, done before its overshoot.

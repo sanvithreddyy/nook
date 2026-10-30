@@ -405,8 +405,9 @@ struct IslandButtonStyle: ButtonStyle {
 /// a tenth of a second, and a press dims the glyph rather than shrinking it.
 enum ButtonFeedback {
     static let pressed = 0.4
-    static var press: Animation? { Motion.ease(.easeOut(duration: 0.08)) }
-    static func hover(_ on: Bool) -> Animation? { Motion.ease(.easeOut(duration: on ? 0.03 : 0.1)) }
+    // Fades rather than movement, so Reduce Motion keeps them as they are.
+    static var press: Animation? { Motion.isDisabled ? nil : .easeOut(duration: 0.08) }
+    static func hover(_ on: Bool) -> Animation? { Motion.isDisabled ? nil : .easeOut(duration: on ? 0.03 : 0.1) }
 }
 
 // MARK: Shared
@@ -470,7 +471,8 @@ extension AnyTransition {
     }
 }
 
-/// Half of the artwork's turn: edge-on at 90°, softened a little as it passes the edge.
+/// Half of the artwork's turn: edge-on at 90°, softened a little as it passes the edge. The old cover
+/// reaches its edge before the new one starts, so the two never show at once.
 private struct ArtworkTurn: ViewModifier {
     let angle: Double
 
@@ -478,7 +480,5 @@ private struct ArtworkTurn: ViewModifier {
         content
             .rotation3DEffect(.degrees(angle), axis: (x: 0, y: 1, z: 0), perspective: 0.5)
             .blur(radius: abs(angle) / 90 * 2)
-            // Edge-on it's a sliver; hidden there so the outgoing cover never shows behind the new one.
-            .opacity(abs(angle) < 90 ? 1 : 0)
     }
 }

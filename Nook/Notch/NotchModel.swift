@@ -218,8 +218,8 @@ final class NotchModel {
 
     /// Bumped when an expanded island should re-run its content entrance.
     private(set) var expandToken = 0
-    /// The closed band is at the bare notch between one kind of content and the next: the old one has
-    /// gone and the new one grows in once the band has shrunk. What it will show is already set.
+    /// The closed band is between one kind of content and the next: the old one has gone and the band
+    /// is shrinking toward the bare notch, to grow into the new one. What it will show is already set.
     private(set) var isHandingOff = false
 
     @ObservationIgnored private var notificationTask: Task<Void, Never>?
@@ -227,8 +227,14 @@ final class NotchModel {
     @ObservationIgnored private var handOffTask: Task<Void, Never>?
 
     var presentation: Presentation {
+        if isHandingOff, !isExpanded { return .idle }
+        return settledPresentation
+    }
+
+    /// What the island shows once any hand-over has finished. The pointer is tested against this, so
+    /// a hover over the band carries through a hand-over instead of ending as the band shrinks.
+    var settledPresentation: Presentation {
         if isExpanded { return .expanded }
-        if isHandingOff { return .idle }
         if let notification { return .notification(notification) }
         if let peek { return .peek(peek, liveActivity) }
         if let liveActivity { return .activity(liveActivity) }
@@ -303,8 +309,8 @@ final class NotchModel {
     var panelSize: CGSize = .zero
 
     /// The biggest island the panel must hold, with room for its shadow and the meeting drop beside it.
-    /// Sized for the largest home any setting allows: resizing the panel while it's on screen sends
-    /// AppKit into a constraints loop (it crashed when the home's layout changed), so it never resizes.
+    /// Sized for the largest home any setting allows, so the panel only changes size when it moves to a
+    /// screen with a different notch, never as the island changes.
     var maximumSize: CGSize {
         let home = HomeMetrics.widestPage(HomeConfig(layout: .sideBySide, columns: 3, size: .large))
         let body = CGSize(width: max(home.width, ShelfMetrics.maxWidth, Self.cardWidth), height: max(home.height, ShelfMetrics.height, 104))
@@ -381,7 +387,7 @@ final class NotchModel {
 
     // MARK: Notifications
 
-    /// Notifications also show while expanded, in the strip beside the notch.
+    /// A notice posted while the island is open shows once it closes, if it's still current.
     func post(_ note: NotchNotification, for duration: Duration = .seconds(2.2)) {
         var shown = duration
         if notification?.kind == note.kind {

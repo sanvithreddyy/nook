@@ -30,7 +30,8 @@ private struct IslandView: View {
             VStack(spacing: 0) {
                 TopRow(layout: layout, notch: model.notch.size, activity: model.liveActivity,
                        notification: model.notification, isHidden: !closed)
-                if let peek = model.peek, closed {
+                // A notice takes the band's place; the peek comes back under it once the notice goes.
+                if let peek = model.peek, closed, model.notification == nil {
                     PeekRow(peek: peek)
                         .transition(.islandBody)
                 }
@@ -71,7 +72,7 @@ private struct IslandView: View {
             }
         }
         // Only what hangs below the menu bar casts a shadow; compact views sit in it.
-        .background(alignment: .top) { Shadow(shape: shape, visible: shadow && (model.isExpanded || (closed && model.peek != nil))) }
+        .background(alignment: .top) { Shadow(shape: shape, visible: shadow && (model.isExpanded || (closed && model.peek != nil && model.notification == nil))) }
         .contentShape(shape)
         .onTapGesture { if !model.isExpanded { model.expand() } }
         // Right-click the closed island too; the open card has its own menu.

@@ -83,7 +83,8 @@ final class NotchWindowController {
     // MARK: Hit testing
 
     private func hitRect() -> CGRect {
-        Self.hitRect(for: model.layout, presentation: model.presentation, in: panel.frame)
+        let settled = model.settledPresentation
+        return Self.hitRect(for: model.layout(for: settled), presentation: settled, in: panel.frame)
     }
 
     /// The island's target rect in screen coordinates, padded so the notch is easy to hit.
