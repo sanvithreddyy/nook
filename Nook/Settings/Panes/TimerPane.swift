@@ -4,7 +4,7 @@ import SwiftUI
 struct TimerPane: View {
     @AppStorage(Prefs.timerSound) private var sound = "Glass"
 
-    private static let sounds: [String] = {
+    static let sounds: [String] = {
         let files = (try? FileManager.default.contentsOfDirectory(atPath: "/System/Library/Sounds")) ?? []
         return files.map { ($0 as NSString).deletingPathExtension }.sorted()
     }()

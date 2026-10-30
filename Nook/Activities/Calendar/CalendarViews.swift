@@ -15,7 +15,7 @@ struct CalendarActivitySide: View {
                     .foregroundStyle(.white)
                     .concentric(.leading, height: model.notch.size.height)
             } else {
-                TimelineView(.everyMinute) { context in
+                TimelineView(.minutes(to: event.start)) { context in
                     let text = EventTiming.short(event, now: context.date)
                     Text(text)
                         .font(.system(size: Compact.fontSize, weight: .semibold).monospacedDigit())
@@ -121,6 +121,13 @@ private struct EventHeading: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.top, Card.titleGap)
+    }
+}
+
+extension TimelineSchedule where Self == PeriodicTimelineSchedule {
+    /// Once a minute, on the minutes counted to `start`, so a countdown turns to "Now" as it starts.
+    static func minutes(to start: Date) -> PeriodicTimelineSchedule {
+        .periodic(from: start.addingTimeInterval(-86_400), by: 60)
     }
 }
 

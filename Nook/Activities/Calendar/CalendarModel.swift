@@ -70,6 +70,19 @@ final class CalendarModel {
         }
     }
 
+    /// Reads events again after Settings changes which calendars or events show.
+    func reloadIfRunning() {
+        if refreshTask != nil { reload() }
+    }
+
+    /// Every calendar that holds events, for Settings to list. Empty without access.
+    static func allCalendars() -> [(id: String, title: String, account: String, color: Color)] {
+        guard currentAccess() == .granted else { return [] }
+        return EKEventStore().calendars(for: .event)
+            .map { (id: $0.calendarIdentifier, title: $0.title, account: $0.source.title, color: Color(cgColor: $0.cgColor)) }
+            .sorted { ($0.account, $0.title) < ($1.account, $1.title) }
+    }
+
     /// Picks up access granted later in System Settings.
     func recheckAuthorization() {
         guard isEnabled, !isAuthorized, Self.currentAccess() == .granted else { return }
@@ -123,16 +136,17 @@ final class CalendarModel {
         events.filter { !$0.isAllDay && $0.end > now }
     }
 
-    /// The timed event starting within the lead time, or one that started less than five minutes ago,
-    /// unless its meeting card was dismissed.
+    /// The timed event starting within the lead time, or one under way for less than Settings'
+    /// "once it starts" time, unless its meeting card was dismissed.
     func eventForLiveActivity(now: Date = .now) -> CalendarEvent? {
         let lead = TimeInterval(max(Prefs.int(Prefs.calendarLeadMinutes), 1) * 60)
+        let stay = Prefs.int(Prefs.calendarStayMinutes)
         return events.first { event in
             !event.isAllDay
                 && !dismissed.contains(event.id)
                 && event.end > now
                 && event.start.timeIntervalSince(now) <= lead
-                && now.timeIntervalSince(event.start) < 5 * 60
+                && (stay < 0 || now.timeIntervalSince(event.start) < TimeInterval(stay * 60))
         }
     }
 
@@ -148,15 +162,17 @@ final class CalendarModel {
     }
 
     #if DEBUG
-    /// Sample week for screenshots; never touches EventKit. `meetingSoon` starts the design review in 4 minutes.
-    func debugPreview(meetingSoon: Bool = false) {
+    /// Sample week for screenshots; never touches EventKit. `meetingSoon` starts the design review in 4 minutes,
+    /// `startsIn` in that many seconds (to watch it start).
+    func debugPreview(meetingSoon: Bool = false, startsIn: Double? = nil) {
         let cal = Calendar.current
         let today = cal.startOfDay(for: .now)
         func at(_ day: Int, _ hour: Int, _ minute: Int = 0) -> Date {
             cal.date(byAdding: .minute, value: day * 1440 + hour * 60 + minute, to: today)!
         }
         let now = Date()
-        let soon = cal.date(bySetting: .second, value: 0, of: now.addingTimeInterval((meetingSoon ? 4 : 20) * 60)) ?? now
+        let soon = startsIn.map { now.addingTimeInterval($0) }
+            ?? cal.date(bySetting: .second, value: 0, of: now.addingTimeInterval((meetingSoon ? 4 : 20) * 60)) ?? now
         events = [
             CalendarEvent(id: "a", title: "Ops sync", start: now.addingTimeInterval(-40 * 60), end: now.addingTimeInterval(-10 * 60), color: .orange, isAllDay: false, joinURL: nil),
             CalendarEvent(id: "b", title: "Design review", start: soon, end: soon.addingTimeInterval(45 * 60), color: .blue, isAllDay: false, joinURL: URL(string: "https://meet.google.com/abc")),
@@ -220,10 +236,14 @@ final class CalendarModel {
         let start = calendar.dateInterval(of: .month, for: today)?.start ?? today
         let end = max(calendar.date(byAdding: .month, value: 2, to: start) ?? today,
                       calendar.date(byAdding: .day, value: Self.windowDays, to: today) ?? today)
-        let predicate = store.predicateForEvents(withStart: start, end: end, calendars: nil)
+        // Calendars Settings leaves out are never read.
+        let hidden = Set(Prefs.string(Prefs.calendarHidden).split(separator: ",").map(String.init))
+        let calendars = store.calendars(for: .event).filter { !hidden.contains($0.calendarIdentifier) }
+        let hideAllDay = Prefs.bool(Prefs.calendarHideAllDay)
+        let predicate = store.predicateForEvents(withStart: start, end: end, calendars: calendars)
         var seenLinks: [String: URL?] = [:]
-        let fetched = store.events(matching: predicate)
-            .filter { $0.status != .canceled }
+        let fetched = (calendars.isEmpty ? [] : store.events(matching: predicate))
+            .filter { $0.status != .canceled && !(hideAllDay && $0.isAllDay) }
             .sorted { $0.startDate < $1.startDate }
             .prefix(1000)
             .map { event in

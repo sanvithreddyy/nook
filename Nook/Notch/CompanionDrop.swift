@@ -32,7 +32,7 @@ private struct MeetingDropContent: View {
     let eventID: String
 
     var body: some View {
-        TimelineView(.everyMinute) { context in
+        TimelineView(.minutes(to: calendar.event(id: eventID)?.start ?? .now)) { context in
             let text = calendar.event(id: eventID).map { EventTiming.minimal($0, now: context.date) } ?? ""
             Text(text)
                 .font(.system(size: 11.5, weight: .semibold).monospacedDigit())

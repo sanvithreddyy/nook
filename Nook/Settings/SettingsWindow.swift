@@ -131,7 +131,10 @@ enum SettingsPane: String, CaseIterable, Identifiable {
                            "Show the title when the track changes", "Show the title on hover", "Artwork", "Keep a paused player",
                            "Paused", "Hide while the player is in front", "Show it for", "Peek", "Apps", "Sources", "Browser",
                            "Flip the artwork when the track changes", "Album art", "Music", "Media"]
-        case .calendar: ["Show upcoming events", "Show a meeting in the notch", "Access", "Calendar access", "Events"]
+        case .calendar: ["Show upcoming events", "Show a meeting in the notch", "Access", "Calendar access", "Events",
+                         "Once it starts", "Leave the notch", "Stay until it ends", "When an event starts",
+                         "Show its title under the island", "Sound", "Chime", "Hide all-day events", "All-day",
+                         "Calendars", "Calendar colors"]
         case .timer: ["Sound when it ends", "Alarm"]
         case .shelf: ["Open the shelf when a file is dragged to the notch", "Files", "Drop", "AirDrop"]
         case .huds: ["Replace the volume HUD", "Replace the brightness HUD", "Accessibility access", "Style",

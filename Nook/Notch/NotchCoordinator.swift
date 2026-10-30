@@ -42,7 +42,10 @@ final class NotchCoordinator {
         lock.onChange = { [weak self] in self?.refreshActivity() }
         lock.start()
 
-        calendar.onChange = { [weak self] in self?.refreshActivity() }
+        calendar.onChange = { [weak self] in
+            self?.refreshActivity()
+            self?.scheduleEventStart()
+        }
 
         timer.onChange = { [weak self] in self?.refreshActivity() }
         timer.onDone = { [weak self] in self?.timerDone() }
@@ -133,7 +136,9 @@ final class NotchCoordinator {
                 nowPlaying.previewPlaying()
                 debugRefresh()
                 let args = CommandLine.arguments
-                if args.contains("-preview-calendar") { calendar.debugPreview(meetingSoon: args.contains("-preview-meeting")) }
+                // -preview-meeting-in <s>: the sample meeting starts that many seconds after launch.
+                let startsIn = args.firstIndex(of: "-preview-meeting-in").flatMap { args.indices.contains($0 + 1) ? Double(args[$0 + 1]) : nil }
+                if args.contains("-preview-calendar") { calendar.debugPreview(meetingSoon: args.contains("-preview-meeting"), startsIn: startsIn) }
                 if args.contains("-preview-batteries") { batteries.debugPreview() }
                 // -home-one, -home-three, -home-small, -home-large: a home layout for this run only.
                 if args.contains("-home-one") { debugHome.layout = .oneAtATime }
@@ -282,6 +287,11 @@ final class NotchCoordinator {
             lastCalendarEnabled = calendarEnabled
             calendar.update()
         }
+        let calendarFilter = Prefs.string(Prefs.calendarHidden) + "|\(Prefs.bool(Prefs.calendarHideAllDay))"
+        if calendarFilter != lastCalendarFilter {
+            if lastCalendarFilter != nil { calendar.reloadIfRunning() }
+            lastCalendarFilter = calendarFilter
+        }
         let connectivityEnabled = Prefs.bool(Prefs.connectivity)
         if connectivityEnabled != lastConnectivityEnabled {
             if lastConnectivityEnabled != nil {
@@ -361,6 +371,39 @@ final class NotchCoordinator {
             if battery.reading?.onAC == false {
                 model.post(.lowBattery(level: level), for: .seconds(4))
             }
+        }
+    }
+
+    // MARK: Events starting
+
+    private var lastCalendarFilter: String?
+    private var eventStartTask: Task<Void, Never>?
+    /// Events already marked as they started, so a recheck doesn't chime twice.
+    private var startedEvents: Set<String> = []
+
+    /// Waits for the next timed event to start, for its sound and its title under the island.
+    private func scheduleEventStart() {
+        eventStartTask?.cancel()
+        let now = Date()
+        // A start a moment ago still counts: the 30 s recheck can land just after it.
+        guard Prefs.bool(Prefs.calendar),
+              let next = calendar.upcoming(now: now).first(where: { $0.start > now.addingTimeInterval(-2) && !startedEvents.contains($0.id) })
+        else { return }
+        let wait = max(next.start.timeIntervalSince(now), 0)
+        eventStartTask = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(wait))
+            guard !Task.isCancelled, let self else { return }
+            self.eventStarted(next)
+            self.scheduleEventStart()
+        }
+    }
+
+    private func eventStarted(_ event: CalendarEvent) {
+        guard startedEvents.insert(event.id).inserted else { return }
+        let sound = Prefs.string(Prefs.calendarChime)
+        if !sound.isEmpty { NSSound(named: sound)?.play() }
+        if Prefs.bool(Prefs.calendarPeekAtStart), !model.isExpanded, model.notification == nil {
+            model.showPeek(.event(id: event.id))
         }
     }
 
