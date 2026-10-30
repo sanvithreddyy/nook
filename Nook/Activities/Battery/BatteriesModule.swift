@@ -7,18 +7,23 @@ import SwiftUI
 struct BatteriesModule: View {
     @Environment(DeviceBatteries.self) private var batteries
     @Environment(\.homeScale) private var k
+    /// Its own width, or the whole page's when the page is wider: the places spread out evenly across
+    /// it, as the widget's do, and the rings grow into the height.
+    let width: CGFloat
 
     var body: some View {
         let devices = batteries.devices
+        let cell = width / CGFloat(max(devices.count, HomeMetrics.batterySlots))
+        let diameter = min(cell * DeviceRing.widthShare, DeviceRing.widgetDiameter * DeviceRing.maxGrowth * k)
         HStack(spacing: 0) {
             ForEach(devices) { device in
-                DeviceRing(device: device)
-                    .frame(width: HomeMetrics.batteryCell * k)
+                DeviceRing(device: device, diameter: diameter)
+                    .frame(width: cell)
                     .transition(.opacity.combined(with: .scale(scale: 0.9)))
             }
             ForEach(devices.count..<max(devices.count, HomeMetrics.batterySlots), id: \.self) { _ in
-                DeviceRing(device: nil)
-                    .frame(width: HomeMetrics.batteryCell * k)
+                DeviceRing(device: nil, diameter: diameter)
+                    .frame(width: cell)
             }
         }
         .animation(Motion.content, value: devices.map(\.id))
@@ -26,19 +31,27 @@ struct BatteriesModule: View {
     }
 }
 
-/// One device, or an empty place: the track ring alone.
+/// One device, or an empty place: the track ring alone. Measured from the widget, where a 58 pt ring
+/// sits in a 76 pt place with a 6 pt line, a 22 pt glyph and its level in 15 pt; every part keeps
+/// that proportion to the ring.
 private struct DeviceRing: View {
-    @Environment(\.homeScale) private var k
     let device: DeviceBattery?
+    let diameter: CGFloat
+
+    static let widgetDiameter: CGFloat = 58
+    /// The ring's share of its place's width.
+    static let widthShare: CGFloat = 58 / 76
+    /// Grown any further, ring and level fill the module's height and crowd the notch.
+    static let maxGrowth: CGFloat = 1.5
 
     var body: some View {
+        let s = diameter / Self.widgetDiameter
         let level = device.map { CGFloat(min(max($0.level, 0), 100)) / 100 } ?? 0
         let charging = device?.isCharging == true
         let low = device.map { $0.level <= 20 && !$0.isCharging } ?? false
         let color: Color = low ? .red : device?.isLowPower == true ? Color.status(.yellow) : Color.status(.green)
-        let diameter = 58 * k
-        let line = 6 * k
-        VStack(spacing: 9 * k) {
+        let line = 6 * s
+        VStack(spacing: 9 * s) {
             ZStack {
                 RingArc(fraction: 1, gap: charging).stroke(.white.opacity(0.16), lineWidth: line)
                 if device != nil {
@@ -47,20 +60,21 @@ private struct DeviceRing: View {
                 }
                 if charging {
                     Image(systemName: "bolt.fill")
-                        .font(.system(size: 10 * k, weight: .bold))
+                        .font(.system(size: 10 * s, weight: .bold))
                         .foregroundStyle(color)
                         .offset(y: -diameter / 2)
                 }
                 if let device {
+                    // Two tones, as the widget draws them: the AirPods' tips and the Mac's screen softer.
                     Image(systemName: device.symbol)
-                        .symbolRenderingMode(.monochrome)
-                        .font(.system(size: 22 * k))
+                        .symbolRenderingMode(.hierarchical)
+                        .font(.system(size: 22 * s))
                         .foregroundStyle(.white)
                 }
             }
             .frame(width: diameter, height: diameter)
             Text(device.map { "\($0.level)%" } ?? " ")
-                .font(.system(size: 15 * k).monospacedDigit())
+                .font(.system(size: 15 * s).monospacedDigit())
                 .foregroundStyle(low ? .red : .white)
         }
         .accessibilityElement(children: .ignore)

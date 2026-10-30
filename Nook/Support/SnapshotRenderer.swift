@@ -39,6 +39,7 @@ enum SnapshotRenderer {
             ("17-shelf-drop", { c.shelf.debugPreview([]); c.debugRefresh(); m.setDraggingFile(true); m.expand(card: .shelf) }),
             ("18-shelf", { c.shelf.debugPreview(SnapshotRenderer.sampleFiles); c.debugRefresh(); m.expand(card: .shelf) }),
             ("19-shelf-empty", { c.shelf.debugPreview([]); c.debugRefresh(); m.expand(card: .shelf) }),
+            ("20-batteries", { c.batteries.debugPreview(); c.debugRefresh(); m.expand(card: .home([.batteries])) }),
         ]
         Task { @MainActor in
             // Let the now-playing stream deliver real metadata first.

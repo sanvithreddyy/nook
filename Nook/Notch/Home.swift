@@ -146,17 +146,20 @@ struct HomePage: View {
 
     var body: some View {
         let k = model.home.scale
+        // On a page narrower than the island, Batteries takes the rest of the width rather than
+        // leaving it empty either side.
+        let spare = max(model.openBody.width - HomeMetrics.pageSize(modules, batteries: model.batteryCount, scale: k).width, 0)
         HStack(alignment: .top, spacing: HomeMetrics.gap * k) {
             ForEach(modules) { module in
+                let width = HomeMetrics.width(module, batteries: model.batteryCount) * k + (module == .batteries ? spare : 0)
                 Group {
                     switch module {
                     case .music: MusicModule()
                     case .calendar: CalendarModule()
-                    case .batteries: BatteriesModule()
+                    case .batteries: BatteriesModule(width: width)
                     }
                 }
-                .frame(width: HomeMetrics.width(module, batteries: model.batteryCount) * k,
-                       height: HomeMetrics.height * k, alignment: .topLeading)
+                .frame(width: width, height: HomeMetrics.height * k, alignment: .topLeading)
             }
         }
         .padding(.top, model.notch.size.height + HomeMetrics.below * k)
