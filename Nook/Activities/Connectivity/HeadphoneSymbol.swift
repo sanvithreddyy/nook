@@ -9,7 +9,7 @@ nonisolated enum HeadphoneSymbol {
         0x2002: ["airpods"], 0x200F: ["airpods"],
         0x2013: ["airpods.gen3", "airpods"],
         0x2019: ["airpods.gen4", "airpods.gen3", "airpods"], 0x201B: ["airpods.gen4", "airpods.gen3", "airpods"],
-        0x200E: ["airpods.pro"], 0x2014: ["airpods.pro"], 0x2024: ["airpods.pro"],
+        0x200E: ["airpods.pro.gen1", "airpods.pro"], 0x2014: ["airpods.pro"], 0x2024: ["airpods.pro"],
         0x2027: ["airpods.pro.gen3", "airpods.pro"],
         0x200A: ["airpods.max"], 0x201F: ["airpods.max"],
     ]
@@ -27,6 +27,18 @@ nonisolated enum HeadphoneSymbol {
         return nil
     }
 
+    /// A pair's single buds and its case, as the Batteries widget draws them; the pair itself for buds
+    /// without a glyph of their own.
+    static func parts(of pair: String) -> (left: String, right: String, case: String) {
+        let names: [String] = switch pair {
+        case "airpods": ["airpod.left", "airpod.right", "airpods.chargingcase.wireless.fill"]
+        case "airpods.gen3": ["airpod.gen3.left", "airpod.gen3.right", "airpods.gen3.chargingcase.wireless.fill"]
+        default: [pair + ".left", pair + ".right", pair + ".chargingcase.wireless.fill"]
+        }
+        return (available(names[0]) ?? pair, available(names[1]) ?? pair,
+                available(names[2]) ?? "airpods.chargingcase.wireless.fill")
+    }
+
     /// "2024 4c" → 0x2024.
     static func productID(modelUID: String?) -> Int? {
         guard let first = modelUID?.split(separator: " ").first else { return nil }
@@ -34,6 +46,10 @@ nonisolated enum HeadphoneSymbol {
     }
 
     private static func firstAvailable(_ names: [String]) -> String {
-        names.first { NSImage(systemSymbolName: $0, accessibilityDescription: nil) != nil } ?? "headphones"
+        names.lazy.compactMap(available).first ?? "headphones"
+    }
+
+    private static func available(_ name: String) -> String? {
+        NSImage(systemSymbolName: name, accessibilityDescription: nil) != nil ? name : nil
     }
 }
