@@ -19,13 +19,19 @@ struct HUDGlyph: View {
                         .font(.system(size: 17, weight: .medium))
                 } else {
                     // Muting swaps glyphs with a blur rather than a symbol replace, which the next quick
-                    // press (moving the waves) would cut short halfway.
-                    let name = muted || level == 0 ? "speaker.slash.fill" : "speaker.wave.3.fill"
-                    Image(systemName: name, variableValue: Double(level))
-                        .font(.system(size: 14, weight: .semibold))
-                        .opacity(muted ? 0.55 : 1)
-                        .id(name)
-                        .transition(.blurReplace)
+                    // press (moving the waves) would cut short halfway. Both are always drawn, so the HUD
+                    // leaving the island doesn't swap them away early too.
+                    let silent = muted || level == 0
+                    ZStack(alignment: .leading) {
+                        Image(systemName: "speaker.wave.3.fill", variableValue: Double(level))
+                            .opacity(silent ? 0 : 1)
+                            .blur(radius: silent ? 4 : 0)
+                        Image(systemName: "speaker.slash.fill")
+                            .opacity(silent ? (muted ? 0.55 : 1) : 0)
+                            .blur(radius: silent ? 0 : 4)
+                    }
+                    .font(.system(size: 14, weight: .semibold))
+                    .animation(Motion.level, value: silent)
                 }
             case .brightness:
                 // One sun at every level: swapping a small one for a large one made it jump.

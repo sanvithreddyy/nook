@@ -95,6 +95,49 @@ extension AnyTransition {
         )
     }
 
+    /// Volume and brightness beside the notch: in as quickly as `islandSide`. Out to the bare notch, they
+    /// stay inside the band and ride its edges back into the notch, sharp at first, then shrinking and
+    /// blurring away as they reach it, so the island and what it holds close as one thing rather than an
+    /// empty shape after the content. Out to other content (the music), they clear quickly so it comes
+    /// into an empty slot.
+    /// `travel`: the side's slot width, how far the island's edge moves in to reach the notch. A view on its
+    /// way out keeps its last place, so it's moved there itself, on the band's spring, to stay with the edge.
+    static func hudSide(_ edge: HorizontalEdge, toNotch: Bool, travel: CGFloat) -> AnyTransition {
+        let anchor: UnitPoint = edge == .leading ? .trailing : .leading
+        let inward = toNotch ? (edge == .leading ? travel : -travel) : 0
+        let shrink: AnyTransition = Motion.reduceMotion ? .identity
+            : AnyTransition.scale(scale: toNotch ? 0.7 : 0.84, anchor: anchor).combined(with: .offset(x: inward))
+        return .asymmetric(
+            insertion: islandSide(edge, quick: true),
+            removal: fadeBlur(5, toNotch ? absorbed(0.26) : Motion.ease(.easeOut(duration: 0.1)))
+                .combined(with: shrink.animation(Motion.shrink))
+        )
+    }
+
+    /// The HUD's bar under the notch: in as `islandBody`; out, it rises back into the notch with the band's
+    /// bottom edge and narrows on the same spring, fading as `hudSide` does.
+    static func hudBelow(toNotch: Bool) -> AnyTransition {
+        let retract: AnyTransition = Motion.reduceMotion ? .identity
+            : AnyTransition.modifier(active: IslandContentModifier(opacity: 1, blur: 0, scaleX: toNotch ? 0.6 : 0.8, scaleY: 1, anchor: .top),
+                                     identity: IslandContentModifier.shown(anchor: .top))
+                .combined(with: .offset(y: -14))
+        return .asymmetric(
+            insertion: islandBody,
+            removal: fadeBlur(4, toNotch ? absorbed(0.22) : Motion.ease(.easeOut(duration: 0.1)))
+                .combined(with: retract.animation(Motion.shrink))
+        )
+    }
+
+    /// A fade that holds while the content travels with the band, then goes quickly as it reaches the notch.
+    private static func absorbed(_ duration: Double) -> Animation? {
+        Motion.ease(.timingCurve(0.77, 0, 0.175, 1, duration: duration))
+    }
+
+    private static func fadeBlur(_ blur: CGFloat, _ animation: Animation?) -> AnyTransition {
+        .modifier(active: FadeBlur(opacity: 0, blur: blur), identity: FadeBlur(opacity: 1, blur: 0))
+            .animation(animation)
+    }
+
     /// Larger content (quick peek, expanded view) sharpens into place from just under the notch while
     /// the shape is still opening, and is gone within a few frames when it closes.
     static var islandBody: AnyTransition {
@@ -115,6 +158,18 @@ extension AnyTransition {
             removal: .modifier(active: CardTurn(progress: 0, arriving: false, direction: direction),
                                identity: CardTurn(progress: 1, arriving: false, direction: direction))
         )
+    }
+}
+
+/// Fading and blurring together, for a fade that runs on its own curve beside a move.
+struct FadeBlur: ViewModifier {
+    var opacity: Double
+    var blur: CGFloat
+
+    func body(content: Content) -> some View {
+        content
+            .blur(radius: blur)
+            .opacity(opacity)
     }
 }
 

@@ -360,12 +360,13 @@ final class NotchModel {
     /// Changes what the closed band shows. From or to the bare notch it's one grow or shrink. From one
     /// kind of content to another the band shrinks to the notch, rests, then grows into the new one,
     /// so two kinds never cross-fade in one slot. Returns whether it hands over that way.
-    /// `direct`: volume and brightness, which morph straight from what's showing and back, on the HUD's spring.
+    /// `direct`: volume and brightness, which morph straight from what's showing on the HUD's spring, and
+    /// back on the band's shrink, which never overshoots, so they settle into the notch as their content does.
     @discardableResult
-    private func changeBand(to next: String?, direct: Bool = false, _ change: () -> Void) -> Bool {
+    private func changeBand(to next: String?, direct: Bool = false, leaving: Bool = false, _ change: () -> Void) -> Bool {
         if direct, !isExpanded, !Motion.isDisabled {
             handOffTask?.cancel()
-            withAnimation(Motion.hud) {
+            withAnimation(leaving ? Motion.shrink : Motion.hud) {
                 change()
                 isHandingOff = false
             }
@@ -443,7 +444,7 @@ final class NotchModel {
     func dismissNotification() {
         notificationTask?.cancel()
         guard let notification else { return }
-        changeBand(to: liveActivity.map { "a-\($0.identity)" }, direct: notification.isHUD) { self.notification = nil }
+        changeBand(to: liveActivity.map { "a-\($0.identity)" }, direct: notification.isHUD, leaving: true) { self.notification = nil }
     }
 
     // MARK: Quick peek

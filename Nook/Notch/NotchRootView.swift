@@ -46,7 +46,7 @@ private struct IslandView: View {
                     HUDBelow(note: note, style: model.hudStyle, bump: model.hudBump, bumpUp: model.hudBumpUp)
                         // The slider's band runs edge to edge, the island's own bottom rounding it.
                         .padding(.horizontal, layout.topRadius + (model.hudStyle == .slider ? 0 : 12))
-                        .transition(.islandBody)
+                        .transition(.hudBelow(toNotch: model.liveActivity == nil))
                 }
             }
             // Outline: the island's own edge fills with the level.
@@ -137,14 +137,21 @@ private struct TopRow: View {
 
     var body: some View {
         let half = max(0, (layout.size.width - notch.width) / 2)
+        // Each side holds to the island's outer edge: content wider than a narrowing slot runs on under
+        // the notch, the way it leaves, rather than past the island's edge.
         HStack(spacing: 0) {
-            ZStack { content(.leading) }
-                .frame(width: max(0, half - layout.shift), height: notch.height)
+            ZStack(alignment: .leading) { content(.leading) }
+                .frame(width: max(0, half - layout.shift), height: notch.height, alignment: .leading)
             Spacer(minLength: 0)
-            ZStack { content(.trailing) }
-                .frame(width: max(0, half + layout.shift), height: notch.height)
+            ZStack(alignment: .trailing) { content(.trailing) }
+                .frame(width: max(0, half + layout.shift), height: notch.height, alignment: .trailing)
         }
         .frame(height: notch.height)
+    }
+
+    private func slotWidth(_ edge: HorizontalEdge) -> CGFloat {
+        let half = max(0, (layout.size.width - notch.width) / 2)
+        return max(0, edge == .leading ? half - layout.shift : half + layout.shift)
     }
 
     // The open card owns the strip beside the notch, so nothing shows here while it's open;
@@ -155,7 +162,7 @@ private struct TopRow: View {
         } else if let notification {
             NotificationSide(note: notification, edge: edge)
                 .id("n-\(notification.kind)")
-                .transition(.islandSide(edge, quick: notification.isHUD))
+                .transition(notification.isHUD ? .hudSide(edge, toNotch: activity == nil, travel: slotWidth(edge)) : .islandSide(edge))
         } else if let activity {
             ActivitySide(activity: activity, edge: edge)
                 .id("a-\(activity.identity)")
