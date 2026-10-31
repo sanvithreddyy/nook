@@ -328,8 +328,9 @@ final class NotchWindowController {
         guard event.phase == .changed else { return false }
         // Finger direction, as the swipes read it (reversed if Settings says so).
         let sign: CGFloat = (event.isDirectionInvertedFromDevice ? 1 : -1) * (Prefs.bool(Prefs.swipeReversed) ? -1 : 1)
-        pageX += event.scrollingDeltaX * sign
-        pageY += event.scrollingDeltaY * sign
+        // The page goes half again as far as the fingers, so a short swipe carries it.
+        pageX += event.scrollingDeltaX * sign * Self.pageGain
+        pageY += event.scrollingDeltaY * sign * Self.pageGain
         if pageAxis == nil, hypot(pageX, pageY) > 6 { pageAxis = abs(pageX) > abs(pageY) ? .horizontal : .vertical }
         guard pageAxis == .horizontal else { return false }
         let now = CACurrentMediaTime()
@@ -338,6 +339,8 @@ final class NotchWindowController {
         model.dragPage(to: pageX)
         return true
     }
+
+    private static let pageGain: CGFloat = 1.5
 
     private var pageVelocity: CGFloat {
         guard let first = pageSamples.first, let last = pageSamples.last, last.time > first.time else { return 0 }

@@ -572,8 +572,10 @@ final class NotchModel {
     func endPageDrag(velocity: CGFloat) {
         guard pageDrag != 0, pageSettle == nil else { return }
         let width = layout(for: .expanded).size.width
-        let projected = pageDrag + velocity * 0.15
-        if abs(projected) > width * 0.3, (projected < 0) == (pageDrag < 0), let next = neighbor(forDrag: pageDrag) {
+        // A short swipe is enough: an eighth of the way across, less for a quick flick, scaled by Settings' sensitivity.
+        let projected = pageDrag + velocity * 0.2
+        if abs(projected) > width * 0.12 * SwipeSensitivity.current.distance, (projected < 0) == (pageDrag < 0),
+           let next = neighbor(forDrag: pageDrag) {
             pageDirection.forward = pageDrag < 0
             settle(to: pageDrag < 0 ? -width : width, velocity: velocity, landing: next)
         } else {
