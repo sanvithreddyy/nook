@@ -31,8 +31,9 @@ struct ExpandedView: View {
                     .transition(.cardTurn(direction))
                     .opacity(1 - 0.4 * travelled)
                     .offset(x: drag)
+                // One place on every page, so they hold still as the pages turn under them.
                 PageDots(drag: drag)
-                    .padding(.horizontal, NotchModel.cardEar + inset(card))
+                    .padding(.horizontal, NotchModel.cardEar + HomeMetrics.inset * model.home.scale)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
