@@ -18,7 +18,7 @@ struct GeneralPane: View {
     @AppStorage(Prefs.swipeReversed) private var swipeReversed = false
     @AppStorage(Prefs.swipeSensitivity) private var swipeSensitivity = SwipeSensitivity.medium
     @AppStorage(Prefs.enableHaptics) private var haptics = true
-    @AppStorage(Prefs.hapticStrength) private var hapticStrength = HapticStrength.light
+    @AppStorage(Prefs.hapticStrength) private var hapticStrength = HapticStrength.medium
     @AppStorage(Prefs.hideMenuBarIcon) private var hideMenuBarIcon = false
     @AppStorage(Prefs.statusColors) private var statusColors = true
     @AppStorage(Prefs.showCompanion) private var showCompanion = true

@@ -14,12 +14,12 @@ enum HapticStrength: String, CaseIterable, Identifiable {
         }
     }
 
-    static var current: HapticStrength { HapticStrength(rawValue: Prefs.string(Prefs.hapticStrength)) ?? .light }
+    static var current: HapticStrength { HapticStrength(rawValue: Prefs.string(Prefs.hapticStrength)) ?? .medium }
 }
 
-/// macOS lets an app pick a pattern but not how hard it lands, so the strengths are built from the
-/// patterns: Light is the alignment tick, Medium the level-change click a Force Click gives, Strong
-/// that click twice in quick succession.
+/// macOS's public haptics pick a pattern but not how hard it lands, and their firmest, the level-change
+/// click, is Light. Medium and Strong come from the trackpad's own actuator, at the two strengths picked
+/// by feel; without it they fall back to the public click (once, or twice for Strong).
 enum Haptics {
     static func tap() {
         guard Prefs.bool(Prefs.enableHaptics) else { return }
@@ -38,10 +38,11 @@ enum Haptics {
         let performer = NSHapticFeedbackManager.defaultPerformer
         switch strength {
         case .light:
-            performer.perform(.alignment, performanceTime: .now)
-        case .medium:
             performer.perform(.levelChange, performanceTime: .now)
+        case .medium:
+            if !TrackpadActuator.tap(3) { performer.perform(.levelChange, performanceTime: .now) }
         case .strong:
+            guard !TrackpadActuator.tap(4) else { return }
             performer.perform(.levelChange, performanceTime: .now)
             Task {
                 try? await Task.sleep(for: .milliseconds(30))

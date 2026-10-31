@@ -53,7 +53,7 @@ extension Prefs {
             fullscreenMediaOnly: false,
             openTo: OpenTo.whatsHappening.rawValue,
             enableHaptics: true,
-            hapticStrength: HapticStrength.light.rawValue,
+            hapticStrength: HapticStrength.medium.rawValue,
             // On: pointing at the notch opens it.
             expandOnHover: true,
             hoverDelay: 0.18,
