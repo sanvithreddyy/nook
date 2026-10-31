@@ -75,6 +75,14 @@ struct HomeConfig: Equatable {
     /// Pages arranged in Settings; nil until they are, when the modules fill pages in order.
     var saved: HomeArrangement?
     var size: HomeSize = .medium
+    /// The home page, by its first module ("shelf" for the shelf); empty is the first page of modules.
+    var homePage = ""
+
+    /// Where the home page is among the arranged pages.
+    var homeIndex: Int? {
+        let pages = arrangement.pages
+        return arrangement.index(of: homePage) ?? pages.firstIndex { $0 != .shelf }
+    }
 
     var perPage: Int { layout == .oneAtATime ? 1 : max(columns, 1) }
     var scale: CGFloat { size.scale }
@@ -95,7 +103,8 @@ struct HomeConfig: Equatable {
             order: HomeOrder.saved,
             hidden: Set(HomeOrder.parse(defaults.string(forKey: Prefs.homeHidden) ?? "")),
             saved: HomeArrangement.parse(defaults.string(forKey: Prefs.homePages) ?? ""),
-            size: HomeSize(rawValue: defaults.string(forKey: Prefs.homeSize) ?? "") ?? .medium)
+            size: HomeSize(rawValue: defaults.string(forKey: Prefs.homeSize) ?? "") ?? .medium,
+            homePage: defaults.string(forKey: Prefs.homePage) ?? "")
     }
 }
 
@@ -125,6 +134,18 @@ struct HomeArrangement: Equatable {
 
     var string: String {
         pages.map { $0 == .shelf ? "shelf" : HomeOrder.string($0.modules) }.joined(separator: "|")
+    }
+
+    /// What names a page for the home setting: its first module, or "shelf".
+    static func anchor(of page: Page) -> String {
+        page == .shelf ? "shelf" : page.modules.first?.rawValue ?? ""
+    }
+
+    /// The page holding a module named by `anchor` ("shelf" for the shelf).
+    func index(of anchor: String) -> Int? {
+        guard !anchor.isEmpty else { return nil }
+        if anchor == "shelf" { return pages.firstIndex(of: .shelf) }
+        return pages.firstIndex { $0.modules.contains { $0.rawValue == anchor } }
     }
 
     /// Every module once and the shelf once, and no page with more modules on than `perPage`: the rest

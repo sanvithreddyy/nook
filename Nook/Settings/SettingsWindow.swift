@@ -169,13 +169,13 @@ enum SettingsPane: String, CaseIterable, Identifiable {
                         "Video",
                         "Rest before it responds", "Hover delay", "Gestures", "Swipe gestures", "Swipe down to open", "Swipe up to close",
                         "Swipe up to open", "Swipe down to close",
-                        "Sideways to skip tracks or turn pages", "Reverse direction", "Sensitivity", "Trackpad",
+                        "Sideways to skip tracks or turn pages", "Pages", "Follow fingers", "Turn at once", "Reverse direction", "Sensitivity", "Trackpad",
                         "Haptic feedback", "Strength", "Medium", "Strong", "Hide when an app is full screen", "Appearance", "Theme", "Dark", "Light",
                         "Status colors", "Second activity beside the island", "Shadow under the open island", "Shadow",
                         "Hairline outline", "Outline", "Border", "Hide from screenshots and recordings", "Screen recording",
                         "Screenshot", "App", "Open at login", "Hide the menu bar icon"]
         case .home: ["Preview on the notch", "Layout", "Side by Side", "One at a Time", "Modules side by side", "Size",
-                     "Modules", "Order", "Pages", "Page", "New Page", "Group", "Shelf", "AirDrop", "Music", "Left button", "Right button", "Favorite", "Output", "Shuffle", "Repeat",
+                     "Modules", "Order", "Pages", "Page", "New Page", "Group", "Home page", "Shelf", "AirDrop", "Music", "Left button", "Right button", "Favorite", "Output", "Shuffle", "Repeat",
                      "Back 15 seconds", "Forward 15 seconds", "Time after the bar", "Time left", "Length", "Remaining", "Calendar", "Week starts on",
                      "Mark days with events", "Weekends in gray", "Batteries", "Include this Mac", "Weather", "Temperature", "Fahrenheit", "Celsius", "Auto", "My Location",
                      "Add City", "Reminders", "List", "World Clock", "Time zones", "Cities", "Style", "Analog", "Digital", "Shortcuts", "Add Shortcut", "Timer"]

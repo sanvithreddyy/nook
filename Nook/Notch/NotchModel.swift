@@ -115,7 +115,8 @@ enum IslandCard: Hashable {
     /// `pages`: the home's pages as arranged, holding the modules that have something to show, and the
     /// shelf where it's placed. A timer or meeting the island shows comes just before the home pages, the
     /// drop's card just after them.
-    static func available(live: [LiveActivity], pages: [HomeArrangement.Page], shelf: Bool) -> (cards: [IslandCard], opening: IslandCard?) {
+    /// `home`: the page Settings made home, where it opens with nothing going on.
+    static func available(live: [LiveActivity], pages: [HomeArrangement.Page], shelf: Bool, home: IslandCard? = nil) -> (cards: [IslandCard], opening: IslandCard?) {
         let homes = pages.compactMap { page -> IslandCard? in page == .shelf ? nil : .home(page.modules) }
         var cards: [IslandCard] = []
         func add(_ card: IslandCard?) {
@@ -133,7 +134,7 @@ enum IslandCard: Hashable {
         let opening: IslandCard? = switch live.first {
         case .nowPlaying?: homes.first { $0.modules.contains(.music) } ?? homes.first ?? cards.first
         case let own?: own.card ?? homes.first ?? cards.first
-        case nil: homes.first ?? cards.first
+        case nil: home.flatMap { cards.contains($0) ? $0 : nil } ?? homes.first ?? cards.first
         }
         return (cards, opening)
     }
@@ -190,6 +191,8 @@ final class NotchModel {
     private(set) var cards: [IslandCard] = []
     /// The card for what's happening, which "What's happening" opens on; the first card without one.
     private(set) var opening: IslandCard?
+    /// The page Settings made home, which "Home" opens on.
+    private(set) var homeCard: IslandCard?
     /// Which way the last card turn went, for the card transition.
     let pageDirection = PageDirection()
 
@@ -502,6 +505,7 @@ final class NotchModel {
             if let opening, cards.contains(opening) { return opening }
             return cards.first
         case .home:
+            if let homeCard, cards.contains(homeCard) { return homeCard }
             return cards.first { !$0.modules.isEmpty } ?? cards.first
         case .lastPage:
             if let lastCard, cards.contains(lastCard) { return lastCard }
@@ -531,8 +535,9 @@ final class NotchModel {
     }
 
     /// Keeps an open island on a card that still exists: a track ending moves it to the next one.
-    func setCards(_ available: [IslandCard], opening: IslandCard? = nil) {
+    func setCards(_ available: [IslandCard], opening: IslandCard? = nil, home: IslandCard? = nil) {
         self.opening = opening
+        homeCard = home
         guard available != cards else { return }
         withAnimation(isExpanded ? Motion.reshape : nil) {
             cards = available

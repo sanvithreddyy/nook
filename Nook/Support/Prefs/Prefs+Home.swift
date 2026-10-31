@@ -10,6 +10,8 @@ extension Prefs {
     static let homeSize = "homeSize"
     /// The pages as arranged in Settings (HomeArrangement's string); empty until they are.
     static let homePages = "homePages"
+    /// The page the island opens on: its first module's raw value, or "shelf"; empty is the first page.
+    static let homePage = "homePage"
 
     /// Module options, kept with the home so resetting Home resets them.
     /// Music: what the player's two side buttons do (MusicButton raw values), and whether the time
@@ -46,6 +48,7 @@ extension Prefs {
             homeHidden: "",
             homeSize: HomeSize.medium.rawValue,
             homePages: "",
+            homePage: "",
             musicLeftButton: MusicButton.favorite.rawValue,
             musicRightButton: MusicButton.output.rawValue,
             musicShowsTotal: false,

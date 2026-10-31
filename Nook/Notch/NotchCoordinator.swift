@@ -661,8 +661,17 @@ final class NotchCoordinator {
             case .weather, .reminders, .clock, .timer: true
             }
         }
-        let available = IslandCard.available(live: live ?? liveActivities(), pages: pages, shelf: Prefs.bool(Prefs.shelf))
-        everyIsland { $0.setCards(available.cards, opening: available.opening) }
+        // The home page as it shows now: its modules that have something to show, or the shelf.
+        let homeCard: IslandCard? = home.homeIndex.flatMap { index in
+            switch home.arrangement.pages[index] {
+            case .shelf: return .shelf
+            case .modules(let modules):
+                let shown = pages.first { page in page.modules.contains { modules.contains($0) } }
+                return shown.map { .home($0.modules) }
+            }
+        }
+        let available = IslandCard.available(live: live ?? liveActivities(), pages: pages, shelf: Prefs.bool(Prefs.shelf), home: homeCard)
+        everyIsland { $0.setCards(available.cards, opening: available.opening, home: homeCard) }
     }
 
     private func observeShelf() {
