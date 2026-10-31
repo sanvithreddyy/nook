@@ -2,8 +2,9 @@ import AppKit
 import SwiftUI
 
 /// Every spring the island uses (mass 1, stiffness / damping), fitted to frame-by-frame measurements
-/// of a well-made notch island. Only opening overshoots. The closed band never passes its size: it
-/// grows slowly and shrinks fast, and one kind of content hands over to another at the bare notch.
+/// of a well-made notch island, then made livelier where the closed band felt stiff. Opening and the
+/// closed band growing settle a little past their size; closing and shrinking never do. One kind of
+/// content hands over to another at the bare notch.
 enum Motion {
     /// Opening: response 0.445 s at 0.6 damping, about 9 % past the open size before it settles.
     static var expand: Animation? { spring(199, 17) }
@@ -11,8 +12,10 @@ enum Motion {
     static var collapse: Animation? { spring(266, 34) }
     /// The open island changing shape: another page, the shelf making room for a drop.
     static var reshape: Animation? { spring(250, 24) }
-    /// The closed band growing into new content (response 0.62 s) and shrinking away from it (0.38 s).
-    static var grow: Animation? { spring(103, 20) }
+    /// The closed band growing into new content, quicker than the reference and with a soft settle about
+    /// 5 % past its size, as the Dynamic Island does (response 0.5 s at 0.68 damping); shrinking away from
+    /// it (0.38 s) stays critically damped.
+    static var grow: Animation? { spring(158, 17) }
     static var shrink: Animation? { spring(273, 33) }
     /// How long after the old content goes the band turns from shrinking to growing into the new one.
     /// As in the reference, it turns a little before it reaches the bare notch (290–380 ms there).
