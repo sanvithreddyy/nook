@@ -4,6 +4,8 @@ import SwiftUI
 final class SettingsWindowController {
     static let shared = SettingsWindowController()
     private var window: NSWindow?
+    /// The app in front before Settings opened, given the front back when it closes.
+    private var previousApp: NSRunningApplication?
 
     func show(activate: Bool = true, pane: SettingsPane? = nil) {
         if let pane {
@@ -32,6 +34,9 @@ final class SettingsWindowController {
                     MainActor.assumeIsolated { IslandPreview.shared.isOn = false }
                 }
             }
+            center.addObserver(forName: NSWindow.willCloseNotification, object: window, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated { self?.becomeMenuBarApp() }
+            }
             center.addObserver(forName: NSApplication.didResignActiveNotification, object: nil, queue: .main) { _ in
                 MainActor.assumeIsolated { IslandPreview.shared.isOn = false }
             }
@@ -39,11 +44,31 @@ final class SettingsWindowController {
             applyAppearance()
         }
         if activate {
+            // A menu bar app has no menus, and macOS hides the menu bar while one is in front. While
+            // Settings is open Nook is a regular app, so the menu bar stays (and it's in the Dock and
+            // Command-Tab, like any app with a window).
+            if NSApp.activationPolicy() != .regular {
+                previousApp = NSWorkspace.shared.frontmostApplication.flatMap { $0 == .current ? nil : $0 }
+                NSApp.setActivationPolicy(.regular)
+                // SwiftUI leaves a View menu with nothing in it for a window without a toolbar.
+                if let menu = NSApp.mainMenu, let view = menu.items.first(where: { $0.title == "View" }), view.submenu?.items.isEmpty ?? true {
+                    menu.removeItem(view)
+                }
+            }
             NSApp.activate()
             window?.makeKeyAndOrderFront(nil)
         } else {
             window?.orderFrontRegardless()
         }
+    }
+
+    /// Settings closed: back to a menu bar app, and the app that was in front before it gets the front again,
+    /// so the menu bar isn't left empty.
+    private func becomeMenuBarApp() {
+        guard NSApp.activationPolicy() != .accessory else { return }
+        NSApp.setActivationPolicy(.accessory)
+        if let previousApp, !previousApp.isTerminated { previousApp.activate() }
+        previousApp = nil
     }
 
     /// Only this window follows the Theme setting; the island and its menus keep their own look.

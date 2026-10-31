@@ -26,6 +26,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if CommandLine.arguments.contains("-settings-capture") { SettingsWindowController.shared.runCapture() }
         // -settings-preview <pane>: Settings on that page with "Preview on the notch" on, for captures.
         let args = CommandLine.arguments
+        // -settings-open: Settings in front as a click on Settings… opens it, then the menu bar's menus
+        // printed, to check them.
+        if args.contains("-settings-open") {
+            SettingsWindowController.shared.show()
+            Task { @MainActor in
+                try? await Task.sleep(for: .seconds(1.5))
+                for item in NSApp.mainMenu?.items ?? [] {
+                    print("\(item.title): " + (item.submenu?.items.map(\.title).filter { !$0.isEmpty }.joined(separator: ", ") ?? ""))
+                }
+                fflush(stdout)
+            }
+        }
         if let i = args.firstIndex(of: "-settings-preview"), i + 1 < args.count, let pane = SettingsPane(rawValue: args[i + 1]) {
             SettingsWindowController.shared.show(activate: false, pane: pane)
             Task { @MainActor in
