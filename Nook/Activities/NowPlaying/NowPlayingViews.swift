@@ -134,7 +134,8 @@ struct MusicModule: View {
                 Spacer(minLength: 0)
                 ControlButton(symbol: "forward.fill", size: 20 * k, label: "Next") { nowPlaying.next() }
                 Spacer(minLength: 0)
-                SideButton(kind: rightButton)
+                // A pair saved before Settings kept the sides apart shows the button once.
+                SideButton(kind: rightButton == leftButton ? .none : rightButton)
                     .frame(width: 34 * k)
             }
             .padding(.horizontal, -6 * k)

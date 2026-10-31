@@ -442,10 +442,10 @@ final class NotchCoordinator {
         case .previousTrack:
             nowPlaying.previous()
         case .timer:
-            // Pauses or resumes one that's going; otherwise starts the last length again, or five minutes.
+            // Pauses or resumes one that's going; otherwise starts the last length again.
             switch timer.state {
             case .running, .paused: timer.toggle()
-            case .idle, .done: timer.start(minutes: timer.total > 0 ? max(Int(timer.total / 60), 1) : 5)
+            case .idle, .done: timer.start(minutes: timer.lastMinutes)
             }
         case .shelf:
             if Prefs.bool(Prefs.shelf), !model.isSuppressed { model.expand(card: .shelf) }

@@ -129,8 +129,8 @@ private struct MusicModuleOptions: View {
 
     var body: some View {
         SettingsSection("Music", footer: left == .favorite || right == .favorite ? "Favorite shows only for players that take favorites, like Music." : nil) {
-            SettingsRow("Left button") { buttonPicker("Left button", $left) }
-            SettingsRow("Right button") { buttonPicker("Right button", $right) }
+            SettingsRow("Left button") { buttonPicker("Left button", $left, other: right) }
+            SettingsRow("Right button") { buttonPicker("Right button", $right, other: left) }
             SettingsRow("Time after the bar", description: "Clicking the time on the player switches it too.") {
                 Picker("Time after the bar", selection: $showsTotal) {
                     Text("Time left").tag(false)
@@ -141,9 +141,12 @@ private struct MusicModuleOptions: View {
         }
     }
 
-    private func buttonPicker(_ title: String, _ selection: Binding<MusicButton>) -> some View {
+    /// Each side offers everything but what the other side already does.
+    private func buttonPicker(_ title: String, _ selection: Binding<MusicButton>, other: MusicButton) -> some View {
         Picker(title, selection: selection) {
-            ForEach(MusicButton.allCases) { Text($0.title).tag($0) }
+            ForEach(MusicButton.allCases.filter { $0 == .none || $0 != other || $0 == selection.wrappedValue }) {
+                Text($0.title).tag($0)
+            }
         }
         .menuStyle()
     }

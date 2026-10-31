@@ -45,6 +45,15 @@ struct TimerModelTests {
         #expect(third.state == .idle)
     }
 
+    @Test func theLastLengthOutlivesStopAndRelaunch() {
+        let timer = TimerModel(defaults: defaults)
+        #expect(timer.lastMinutes == 5)
+        timer.start(minutes: 12)
+        timer.cancel()
+        #expect(timer.lastMinutes == 12)
+        #expect(TimerModel(defaults: defaults).lastMinutes == 12)
+    }
+
     @Test func cancellingClearsEverything() {
         let timer = TimerModel(defaults: defaults)
         timer.start(minutes: 3)

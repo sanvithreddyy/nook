@@ -13,6 +13,8 @@ struct NowPlayingPane: View {
     @AppStorage(Prefs.peekDuration) private var peekDuration = 3.0
     @AppStorage(Prefs.hideWhenPlayerFront) private var hideWhenPlayerFront = true
     @AppStorage(Prefs.mediaIgnoredApps) private var ignoredText = ""
+    /// Read here so an app that starts playing while Settings is open joins the list.
+    @AppStorage(Prefs.mediaSeenApps) private var seenText = ""
 
     var body: some View {
         SettingsPage(title: "Now Playing", area: Prefs.mediaArea, preview: "Opens the player on the notch while you change things here.") {
@@ -54,7 +56,7 @@ struct NowPlayingPane: View {
             }
             .disabled(!enabled)
             SettingsSection("Apps", footer: "Turn an app off and what it plays stays off the island: a browser's videos, say.") {
-                let seen = MediaSources.seen
+                let seen = seenText.split(separator: ",").map(String.init)
                 if seen.isEmpty {
                     Text("Apps show here once they've played something.")
                         .foregroundStyle(.secondary)

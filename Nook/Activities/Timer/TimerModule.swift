@@ -6,22 +6,22 @@ import SwiftUI
 struct TimerModule: View {
     @Environment(TimerModel.self) private var timer
     @Environment(\.homeScale) private var k
-    /// The length Start begins, before a timer runs.
-    @State private var minutes = 5
+    /// The length Start begins, before a timer runs: the last one started, until the dial changes it.
+    @State private var minutes: Int?
 
     var body: some View {
         VStack(spacing: 14 * k) {
             // Once a second, reading the clock itself, as the timer's drop does.
             TimelineView(.periodic(from: .now, by: 1)) { _ in
-                TimerDigits(seconds: timer.isActive ? timer.remaining(at: .now).rounded(.up) : TimeInterval(minutes * 60))
+                TimerDigits(seconds: timer.isActive ? timer.remaining(at: .now).rounded(.up) : TimeInterval(length * 60))
                     .opacity(isPaused ? 0.55 : 1)
             }
             .overlay {
                 ScrollDial { step in
                     guard !timer.isActive else { return timer.adjust(minutes: step) }
-                    let next = min(max(minutes + step, 1), 23 * 60 + 59)
+                    let next = min(max(length + step, 1), 23 * 60 + 59)
                     defer { minutes = next }
-                    return next != minutes
+                    return next != length
                 }
             }
             .help(timer.isActive ? "Scroll to add or take off minutes" : "Scroll to set the minutes")
@@ -30,7 +30,7 @@ struct TimerModule: View {
                 case .idle:
                     CapsuleButton(title: "Cancel", fill: .white.opacity(0.14)) {}
                         .disabled(true)
-                    CapsuleButton(title: "Start", fill: .green) { timer.start(minutes: minutes) }
+                    CapsuleButton(title: "Start", fill: .green) { timer.start(minutes: length) }
                 case .done:
                     CapsuleButton(title: "Repeat", fill: .white.opacity(0.14)) { timer.repeatLast() }
                     CapsuleButton(title: "Stop", fill: .orange) { timer.cancel() }
@@ -44,6 +44,7 @@ struct TimerModule: View {
         .animation(Motion.content, value: timer.state)
     }
 
+    private var length: Int { minutes ?? timer.lastMinutes }
     private var isPaused: Bool { if case .paused = timer.state { true } else { false } }
 }
 

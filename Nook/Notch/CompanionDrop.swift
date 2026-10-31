@@ -5,6 +5,7 @@ import SwiftUI
 /// Pointing at it or clicking it opens its card.
 struct CompanionDrop: View {
     @Environment(NotchModel.self) private var model
+    @AppStorage(Prefs.islandOutline) private var outline = false
     let activity: LiveActivity
 
     var body: some View {
@@ -19,6 +20,8 @@ struct CompanionDrop: View {
         }
         .frame(width: size.width, height: size.height)
         .background { if Motion.reduceMotion { shape.fill(.black) } }
+        // The island's outline goes round the drop too, arriving with its content as it settles.
+        .overlay { if outline { EdgeOutline(shape: shape) } }
         .contentShape(shape)
         .onTapGesture { if let card = activity.card { model.expand(card: card) } }
         .accessibilityElement(children: .combine)

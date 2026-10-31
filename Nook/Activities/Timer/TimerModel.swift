@@ -17,6 +17,9 @@ final class TimerModel {
     private(set) var state: State = .idle
     /// The length it was started with, grown by the dial; the ring drains against it.
     private(set) var total: TimeInterval = 0
+    /// The length last started, kept after it stops and across launches: what Start and the
+    /// shortcut begin next.
+    private(set) var lastMinutes = 5
 
     @ObservationIgnored var onChange: (() -> Void)?
     @ObservationIgnored var onDone: (() -> Void)?
@@ -56,6 +59,8 @@ final class TimerModel {
 
     func start(minutes: Int) {
         total = TimeInterval(minutes * 60)
+        lastMinutes = minutes
+        defaults.set(minutes, forKey: Key.lastMinutes)
         set(.running(end: .now.addingTimeInterval(total)))
     }
 
@@ -138,6 +143,7 @@ final class TimerModel {
         static let end = "timerEnd"
         static let paused = "timerPausedRemaining"
         static let total = "timerTotal"
+        static let lastMinutes = "timerLastMinutes"
     }
 
     private func save() {
@@ -154,6 +160,8 @@ final class TimerModel {
     /// A timer that was running when Nook quit carries on; one that ran out meanwhile is dropped
     /// rather than ringing late.
     private func restore() {
+        let last = defaults.integer(forKey: Key.lastMinutes)
+        lastMinutes = last > 0 ? last : 5
         total = defaults.double(forKey: Key.total)
         let end = defaults.double(forKey: Key.end)
         let paused = defaults.double(forKey: Key.paused)

@@ -59,18 +59,7 @@ private struct IslandView: View {
         .environment(\.islandNamespace, shared)
         .background(shape.fill(LiquidSplit.fill))
         .clipShape(shape)
-        .overlay {
-            if outline {
-                shape.stroke(.white.opacity(0.22), lineWidth: 1)
-                    // Not along the top, which is the screen's own edge.
-                    .mask {
-                        VStack(spacing: 0) {
-                            Color.clear.frame(height: 1)
-                            Rectangle()
-                        }
-                    }
-            }
-        }
+        .overlay { if outline { EdgeOutline(shape: shape) } }
         // Only what hangs below the menu bar casts a shadow; compact views sit in it.
         .background(alignment: .top) { Shadow(shape: shape, visible: shadow && (model.isExpanded || (closed && model.peek != nil && model.notification == nil))) }
         .contentShape(shape)
@@ -205,5 +194,20 @@ private struct PeekRow: View {
         .padding(.horizontal, 18)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .padding(.bottom, 4)
+    }
+}
+
+/// The island's hairline edge, for the outline setting: not along the top, which is the screen's own edge.
+struct EdgeOutline: View {
+    let shape: NotchShape
+
+    var body: some View {
+        shape.stroke(.white.opacity(0.22), lineWidth: 1)
+            .mask {
+                VStack(spacing: 0) {
+                    Color.clear.frame(height: 1)
+                    Rectangle()
+                }
+            }
     }
 }
