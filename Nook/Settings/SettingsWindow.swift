@@ -98,10 +98,12 @@ final class SettingsWindowController {
                 print("PANE \(pane.rawValue) \(window?.windowNumber ?? 0)")
                 fflush(stdout)
                 try? await Task.sleep(for: .milliseconds(1500))
-                // -capture-end: the same page scrolled to its end, for pages longer than the window.
+                // -capture-end: the same page scrolled to its end, for pages longer than the window;
+                // -capture-middle: halfway, for pages longer than two windows.
                 if CommandLine.arguments.contains("-capture-end"), let page = pageScroller(), page.documentView?.frame.height ?? 0 > page.contentView.bounds.height {
                     let doc = page.documentView?.frame.height ?? 0
-                    let end = (page.documentView?.isFlipped ?? true) ? doc - page.contentView.bounds.height : 0
+                    let bottom = doc - page.contentView.bounds.height
+                    let end = (page.documentView?.isFlipped ?? true) ? (CommandLine.arguments.contains("-capture-middle") ? bottom / 2 : bottom) : 0
                     page.contentView.scroll(to: NSPoint(x: 0, y: end))
                     page.reflectScrolledClipView(page.contentView)
                     try? await Task.sleep(for: .milliseconds(400))
@@ -173,7 +175,7 @@ enum SettingsPane: String, CaseIterable, Identifiable {
                         "Hairline outline", "Outline", "Border", "Hide from screenshots and recordings", "Screen recording",
                         "Screenshot", "App", "Open at login", "Hide the menu bar icon"]
         case .home: ["Preview on the notch", "Layout", "Side by Side", "One at a Time", "Modules side by side", "Size",
-                     "Modules", "Order", "Music", "Left button", "Right button", "Favorite", "Output", "Shuffle", "Repeat",
+                     "Modules", "Order", "Pages", "Page", "New Page", "Group", "Shelf", "AirDrop", "Music", "Left button", "Right button", "Favorite", "Output", "Shuffle", "Repeat",
                      "Back 15 seconds", "Forward 15 seconds", "Time after the bar", "Time left", "Length", "Remaining", "Calendar", "Week starts on",
                      "Mark days with events", "Weekends in gray", "Batteries", "Include this Mac", "Weather", "My Location",
                      "Add City", "Reminders", "List", "World Clock", "Time zones", "Cities", "Style", "Analog", "Digital", "Shortcuts", "Add Shortcut", "Timer"]

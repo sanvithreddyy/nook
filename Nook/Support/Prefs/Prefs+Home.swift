@@ -8,6 +8,8 @@ extension Prefs {
     static let homeOrder = "homeOrder"
     static let homeHidden = "homeHidden"
     static let homeSize = "homeSize"
+    /// The pages as arranged in Settings (HomeArrangement's string); empty until they are.
+    static let homePages = "homePages"
 
     /// Module options, kept with the home so resetting Home resets them.
     /// Music: what the player's two side buttons do (MusicButton raw values), and whether the time
@@ -41,6 +43,7 @@ extension Prefs {
             homeOrder: HomeOrder.string(HomeModule.allCases),
             homeHidden: "",
             homeSize: HomeSize.medium.rawValue,
+            homePages: "",
             musicLeftButton: MusicButton.favorite.rawValue,
             musicRightButton: MusicButton.output.rawValue,
             musicShowsTotal: false,

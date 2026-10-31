@@ -624,8 +624,10 @@ final class NotchCoordinator {
                 }
             }
         }
-        let modules = model.home.modules.filter { module in
-            switch module {
+        let home = model.home
+        let pages = home.arrangement.pages { module in
+            guard !home.hidden.contains(module) else { return false }
+            return switch module {
             case .music: Prefs.bool(Prefs.nowPlaying) && nowPlaying.hasTrack
             case .calendar: Prefs.bool(Prefs.calendar)
             case .batteries: devices > 0
@@ -634,9 +636,8 @@ final class NotchCoordinator {
             case .weather, .reminders, .clock, .timer: true
             }
         }
-        let cards = IslandCard.available(live: live ?? liveActivities(), modules: modules,
-                                         perPage: model.home.perPage, shelf: Prefs.bool(Prefs.shelf))
-        everyIsland { $0.setCards(cards) }
+        let available = IslandCard.available(live: live ?? liveActivities(), pages: pages, shelf: Prefs.bool(Prefs.shelf))
+        everyIsland { $0.setCards(available.cards, opening: available.opening) }
     }
 
     private func observeShelf() {

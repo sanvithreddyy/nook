@@ -110,27 +110,32 @@ enum IslandCard: Hashable {
     /// Files kept for later and AirDrop.
     case shelf
 
-    /// The pages the island can open to, most relevant first, so hovering opens what the closed
-    /// island shows. `live`: what's going on, the island's own activity first, then the drop beside it.
-    /// `modules`: the home's modules that have something to show, in their order, `perPage` to a page.
-    /// The home pages come next, then the drop's card, then the shelf, which is always last: empty,
-    /// it's a drop target.
-    static func available(live: [LiveActivity], modules: [HomeModule], perPage: Int, shelf: Bool) -> [IslandCard] {
-        let size = max(perPage, 1)
-        let pages = stride(from: 0, to: modules.count, by: size).map { start in
-            IslandCard.home(Array(modules[start..<min(start + size, modules.count)]))
-        }
+    /// The pages left to right, and the one the island opens on: what the closed island shows, so
+    /// hovering opens it. `live`: what's going on, the island's own activity first, then the drop beside it.
+    /// `pages`: the home's pages as arranged, holding the modules that have something to show, and the
+    /// shelf where it's placed. A timer or meeting the island shows comes just before the home pages, the
+    /// drop's card just after them.
+    static func available(live: [LiveActivity], pages: [HomeArrangement.Page], shelf: Bool) -> (cards: [IslandCard], opening: IslandCard?) {
+        let homes = pages.compactMap { page -> IslandCard? in page == .shelf ? nil : .home(page.modules) }
         var cards: [IslandCard] = []
         func add(_ card: IslandCard?) {
             if let card, !cards.contains(card) { cards.append(card) }
         }
-        if let own = live.first {
-            add(own == .nowPlaying ? pages.first { $0.modules.contains(.music) } : own.card)
-        }
-        pages.forEach(add)
+        if let own = live.first, own != .nowPlaying { add(own.card) }
+        homes.forEach(add)
         live.dropFirst().forEach { add($0.card) }
-        if shelf { add(.shelf) }
-        return cards
+        if shelf {
+            // As many home pages before it as Settings put there.
+            let before = pages.firstIndex(of: .shelf).map { index in pages[..<index].filter { $0 != .shelf }.count } ?? homes.count
+            let at = before == 0 ? 0 : before >= homes.count ? cards.count : cards.firstIndex(of: homes[before]) ?? cards.count
+            cards.insert(.shelf, at: at)
+        }
+        let opening: IslandCard? = switch live.first {
+        case .nowPlaying?: homes.first { $0.modules.contains(.music) } ?? homes.first ?? cards.first
+        case let own?: own.card ?? homes.first ?? cards.first
+        case nil: homes.first ?? cards.first
+        }
+        return (cards, opening)
     }
 
     var modules: [HomeModule] {
@@ -181,8 +186,10 @@ final class NotchModel {
     private(set) var isExpanded = false
     /// The card the open island shows.
     private(set) var card: IslandCard = .shelf
-    /// Cards the island can open to, most relevant first. Set by the coordinator.
+    /// Cards the island can open to, left to right. Set by the coordinator.
     private(set) var cards: [IslandCard] = []
+    /// The card for what's happening, which "What's happening" opens on; the first card without one.
+    private(set) var opening: IslandCard?
     /// Which way the last card turn went, for the card transition.
     let pageDirection = PageDirection()
 
@@ -471,6 +478,7 @@ final class NotchModel {
     private var openingCard: IslandCard? {
         switch openTo {
         case .whatsHappening:
+            if let opening, cards.contains(opening) { return opening }
             return cards.first
         case .home:
             return cards.first { !$0.modules.isEmpty } ?? cards.first
@@ -502,13 +510,14 @@ final class NotchModel {
     }
 
     /// Keeps an open island on a card that still exists: a track ending moves it to the next one.
-    func setCards(_ available: [IslandCard]) {
+    func setCards(_ available: [IslandCard], opening: IslandCard? = nil) {
+        self.opening = opening
         guard available != cards else { return }
         withAnimation(isExpanded ? Motion.reshape : nil) {
             cards = available
             guard isExpanded, !available.contains(card) else { return }
             pageDirection.forward = true
-            if let first = available.first { card = first } else { isExpanded = false }
+            if let next = opening.flatMap({ available.contains($0) ? $0 : nil }) ?? available.first { card = next } else { isExpanded = false }
         }
     }
 

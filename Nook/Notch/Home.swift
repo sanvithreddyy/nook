@@ -68,21 +68,181 @@ struct HomeConfig: Equatable {
     var layout: HomeLayout = .sideBySide
     /// Modules on one page when side by side.
     var columns = 2
-    /// The modules that are on, in their order.
-    var modules: [HomeModule] = HomeModule.allCases
+    /// Every module in its order, for the automatic pages.
+    var order: [HomeModule] = HomeModule.allCases
+    /// Modules turned off.
+    var hidden: Set<HomeModule> = []
+    /// Pages arranged in Settings; nil until they are, when the modules fill pages in order.
+    var saved: HomeArrangement?
     var size: HomeSize = .medium
 
     var perPage: Int { layout == .oneAtATime ? 1 : max(columns, 1) }
     var scale: CGFloat { size.scale }
 
+    /// The pages: as arranged, or the modules in order a page at a time, with the shelf last.
+    var arrangement: HomeArrangement {
+        (saved ?? HomeArrangement(pages: [.modules(order), .shelf])).normalized(hidden: hidden, perPage: perPage)
+    }
+
+    /// The modules that are on, in page order.
+    var modules: [HomeModule] { arrangement.pages.flatMap(\.modules).filter { !hidden.contains($0) } }
+
     static var current: HomeConfig {
         let defaults = UserDefaults.standard
-        let hidden = Set(HomeOrder.parse(defaults.string(forKey: Prefs.homeHidden) ?? ""))
         return HomeConfig(
             layout: HomeLayout(rawValue: defaults.string(forKey: Prefs.homeLayout) ?? "") ?? .sideBySide,
             columns: min(max(defaults.integer(forKey: Prefs.homeColumns), 2), 3),
-            modules: HomeOrder.saved.filter { !hidden.contains($0) },
+            order: HomeOrder.saved,
+            hidden: Set(HomeOrder.parse(defaults.string(forKey: Prefs.homeHidden) ?? "")),
+            saved: HomeArrangement.parse(defaults.string(forKey: Prefs.homePages) ?? ""),
             size: HomeSize(rawValue: defaults.string(forKey: Prefs.homeSize) ?? "") ?? .medium)
+    }
+}
+
+/// The open island's pages as Settings arranges them: modules grouped onto pages, and the shelf
+/// (AirDrop and files) as a page of its own wherever it's placed, first to swipe to it from the left.
+/// Saved as "music,calendar|shelf|batteries,weather".
+struct HomeArrangement: Equatable {
+    enum Page: Hashable {
+        case modules([HomeModule])
+        case shelf
+
+        var modules: [HomeModule] {
+            if case .modules(let modules) = self { modules } else { [] }
+        }
+    }
+
+    var pages: [Page]
+
+    static func parse(_ text: String) -> HomeArrangement? {
+        let pages = text.split(separator: "|").compactMap { part -> Page? in
+            if part == "shelf" { return .shelf }
+            let modules = HomeOrder.parse(String(part))
+            return modules.isEmpty ? nil : .modules(modules)
+        }
+        return pages.isEmpty ? nil : HomeArrangement(pages: pages)
+    }
+
+    var string: String {
+        pages.map { $0 == .shelf ? "shelf" : HomeOrder.string($0.modules) }.joined(separator: "|")
+    }
+
+    /// Every module once and the shelf once, and no page with more modules on than `perPage`: the rest
+    /// carry on in a page after it. Modules that are off take no room. Modules it doesn't know yet (from
+    /// a later version) get pages of their own after the last page of modules.
+    func normalized(hidden: Set<HomeModule>, perPage: Int) -> HomeArrangement {
+        let room = max(perPage, 1)
+        var seen = Set<HomeModule>()
+        var result: [Page] = []
+        for page in pages {
+            switch page {
+            case .shelf:
+                if !result.contains(.shelf) { result.append(.shelf) }
+            case .modules(let modules):
+                var current: [HomeModule] = []
+                var on = 0
+                for module in modules where seen.insert(module).inserted {
+                    let isOn = !hidden.contains(module)
+                    if isOn, on == room {
+                        result.append(.modules(current))
+                        current = []
+                        on = 0
+                    }
+                    current.append(module)
+                    if isOn { on += 1 }
+                }
+                if !current.isEmpty { result.append(.modules(current)) }
+            }
+        }
+        let missing = HomeModule.allCases.filter { !seen.contains($0) }.map { Page.modules([$0]) }
+        let after = (result.lastIndex { $0 != .shelf } ?? -1) + 1
+        result.insert(contentsOf: missing, at: after)
+        if !result.contains(.shelf) { result.append(.shelf) }
+        return HomeArrangement(pages: result)
+    }
+
+    /// The island's pages: on each, the modules `showing` says have something to show; pages left
+    /// empty are left out.
+    func pages(showing: (HomeModule) -> Bool) -> [Page] {
+        pages.compactMap { page in
+            guard case .modules(let modules) = page else { return page }
+            let shown = modules.filter(showing)
+            return shown.isEmpty ? nil : .modules(shown)
+        }
+    }
+
+    // MARK: Editing, as Settings drags things about
+
+    /// Drops a module on another: in the same page it takes that place; on another page it goes in
+    /// beside it if there's room, and swaps with it if the page is full.
+    mutating func move(_ module: HomeModule, onto target: HomeModule, hidden: Set<HomeModule>, perPage: Int) {
+        guard module != target, let from = location(of: module), let to = location(of: target) else { return }
+        var source = pages[from.page].modules
+        var destination = pages[to.page].modules
+        if from.page == to.page {
+            source.move(fromOffsets: IndexSet(integer: from.index), toOffset: to.index > from.index ? to.index + 1 : to.index)
+            pages[from.page] = .modules(source)
+        } else if hidden.contains(module) || hasRoom(destination, hidden: hidden, perPage: perPage) {
+            source.remove(at: from.index)
+            destination.insert(module, at: to.index)
+            pages[from.page] = .modules(source)
+            pages[to.page] = .modules(destination)
+        } else {
+            source[from.index] = target
+            destination[to.index] = module
+            pages[from.page] = .modules(source)
+            pages[to.page] = .modules(destination)
+        }
+        dropEmptyPages()
+    }
+
+    /// Drops a module on a page's title: to the end of that page, if there's room.
+    mutating func move(_ module: HomeModule, toPage page: Int, hidden: Set<HomeModule>, perPage: Int) {
+        guard let from = location(of: module), from.page != page, pages.indices.contains(page), pages[page] != .shelf else { return }
+        let destination = pages[page].modules
+        guard hidden.contains(module) || hasRoom(destination, hidden: hidden, perPage: perPage) else { return }
+        var source = pages[from.page].modules
+        source.remove(at: from.index)
+        pages[from.page] = .modules(source)
+        pages[page] = .modules(destination + [module])
+        dropEmptyPages()
+    }
+
+    /// A page of its own, last.
+    mutating func moveToNewPage(_ module: HomeModule) {
+        guard let from = location(of: module) else { return }
+        var source = pages[from.page].modules
+        source.remove(at: from.index)
+        pages[from.page] = .modules(source)
+        pages.append(.modules([module]))
+        dropEmptyPages()
+    }
+
+    /// Moves a whole page (the shelf among them) to where another one is.
+    mutating func movePage(_ from: Int, to: Int) {
+        guard from != to, pages.indices.contains(from), pages.indices.contains(to) else { return }
+        pages.move(fromOffsets: IndexSet(integer: from), toOffset: to > from ? to + 1 : to)
+    }
+
+    /// Moves a whole page to the end.
+    mutating func movePageToEnd(_ from: Int) {
+        guard pages.indices.contains(from), from != pages.count - 1 else { return }
+        pages.append(pages.remove(at: from))
+    }
+
+    func hasRoom(_ page: [HomeModule], hidden: Set<HomeModule>, perPage: Int) -> Bool {
+        page.filter { !hidden.contains($0) }.count < max(perPage, 1)
+    }
+
+    private func location(of module: HomeModule) -> (page: Int, index: Int)? {
+        for (page, content) in pages.enumerated() {
+            if let index = content.modules.firstIndex(of: module) { return (page, index) }
+        }
+        return nil
+    }
+
+    private mutating func dropEmptyPages() {
+        pages.removeAll { $0 != .shelf && $0.modules.isEmpty }
     }
 }
 

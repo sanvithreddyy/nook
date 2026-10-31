@@ -31,15 +31,7 @@ struct HomePane: View {
                     .segmentedStyle()
                 }
             }
-            SettingsSection("Modules", footer: "Drag to reorder. A module shows when it has something to show: Music while a track is loaded.") {
-                ModuleList(order: order, hidden: hidden) { newOrder in
-                    orderText = HomeOrder.string(newOrder)
-                } toggle: { module, on in
-                    var set = hidden
-                    if on { set.remove(module) } else { set.insert(module) }
-                    hiddenText = HomeOrder.string(HomeModule.allCases.filter(set.contains))
-                }
-            }
+            PageEditor(config: config, capacity: layout == .oneAtATime ? "A page holds one module." : "A page holds \(columns == 3 ? "three" : "two") side by side.")
             MusicModuleOptions()
             CalendarModuleOptions()
             BatteriesModuleOptions()
@@ -50,74 +42,230 @@ struct HomePane: View {
         }
     }
 
-    private var order: [HomeModule] {
+    @AppStorage(Prefs.homePages) private var pagesText = ""
+
+    /// The home as these settings have it, for the page editor.
+    private var config: HomeConfig {
         var order: [HomeModule] = []
         for module in HomeOrder.parse(orderText) + HomeModule.allCases where !order.contains(module) { order.append(module) }
-        return order
+        return HomeConfig(layout: layout, columns: columns, order: order, hidden: Set(HomeOrder.parse(hiddenText)),
+                          saved: HomeArrangement.parse(pagesText), size: size)
     }
-
-    private var hidden: Set<HomeModule> { Set(HomeOrder.parse(hiddenText)) }
 }
 
-/// Rows you drag to reorder, each with its switch. Plain settings rows rather than a List, so they line
-/// up with every other row; a row moves into place as the drag passes over its neighbours.
-private struct ModuleList: View {
-    let order: [HomeModule]
-    let hidden: Set<HomeModule>
-    let move: ([HomeModule]) -> Void
-    let toggle: (HomeModule, Bool) -> Void
-    @State private var dragging: HomeModule?
+/// The open island's pages, each its own group of rows. Drag a module onto another page to put it
+/// there (a full page swaps the two), a page by its name to move it, or a module onto New Page for a
+/// page of its own. The shelf is a page too, so it can go first and be one swipe to the left.
+private struct PageEditor: View {
+    @AppStorage(Prefs.homePages) private var pagesText = ""
+    @AppStorage(Prefs.homeHidden) private var hiddenText = ""
+    let config: HomeConfig
+    /// How many modules a page holds, for the footer.
+    let capacity: String
+    @State private var dragging: Dragged?
+    @State private var target: String?
+
+    enum Dragged: Equatable {
+        case module(HomeModule)
+        case page(Int)
+    }
 
     var body: some View {
-        ForEach(order) { module in
-            HStack(spacing: 10) {
-                Image(systemName: "line.3.horizontal")
-                    .foregroundStyle(.tertiary)
-                    .accessibilityHidden(true)
-                Text(module.title)
-                Spacer(minLength: 12)
-                Toggle(module.title, isOn: Binding(get: { !hidden.contains(module) }, set: { toggle(module, $0) }))
-                    .toggleStyle(.switch)
-                    .labelsHidden()
+        let arrangement = config.arrangement
+        VStack(alignment: .leading, spacing: 0) {
+            ForEach(Array(arrangement.pages.enumerated()), id: \.offset) { index, page in
+                VStack(alignment: .leading, spacing: 8) {
+                    pageTitle(index, page: page, in: arrangement)
+                    VStack(spacing: 0) {
+                        switch page {
+                        case .shelf:
+                            ShelfRow()
+                                .onDrag { start(.page(index)) }
+                                .onDrop(of: [.text], delegate: drop(id: "p\(index)", accepts: { pageMove($0, to: index) }) { edit($0) { arrangement, dragged in
+                                    if case .page(let from) = dragged { arrangement.movePage(from, to: index) }
+                                } })
+                        case .modules(let modules):
+                            ForEach(Array(modules.enumerated()), id: \.element) { row, module in
+                                if row > 0 { Divider() }
+                                moduleRow(module, page: index)
+                            }
+                        }
+                    }
+                    .padding(.horizontal, 14)
+                    .background(SettingsTheme.group, in: .rect(cornerRadius: 12))
+                    .overlay {
+                        if target == "p\(index)" {
+                            RoundedRectangle(cornerRadius: 12).strokeBorder(Color.accentColor, lineWidth: 2)
+                        }
+                    }
+                }
+                .padding(.top, 20)
             }
-            .padding(.vertical, 9)
-            .contentShape(Rectangle())
-            .onDrag {
-                dragging = module
-                return NSItemProvider(object: module.rawValue as NSString)
-            }
-            .onDrop(of: [.text], delegate: ReorderDrop(target: module, order: order, dragging: $dragging, move: move))
-            .accessibilityAction(named: "Move up") { shift(module, by: -1) }
-            .accessibilityAction(named: "Move down") { shift(module, by: 1) }
+            newPage(arrangement)
+            Text("\(capacity) A module shows when it has something to show: Music while a track is loaded.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.horizontal, 2)
+                .padding(.top, 8)
         }
+        .animation(.easeOut(duration: 0.2), value: arrangement)
     }
 
-    private func shift(_ module: HomeModule, by step: Int) {
-        guard let index = order.firstIndex(of: module), order.indices.contains(index + step) else { return }
-        var next = order
-        next.swapAt(index, index + step)
-        move(next)
+    /// "Page 2", dragged to move the page; a module dropped on it joins the page if there's room.
+    private func pageTitle(_ index: Int, page: HomeArrangement.Page, in arrangement: HomeArrangement) -> some View {
+        HStack {
+            Text("Page \(index + 1)").font(.headline)
+            Spacer()
+            Image(systemName: "line.3.horizontal")
+                .foregroundStyle(.tertiary)
+                .accessibilityHidden(true)
+        }
+        .contentShape(Rectangle())
+        .onDrag { start(.page(index)) }
+        .onDrop(of: [.text], delegate: drop(id: "p\(index)", accepts: { dragged in
+            switch dragged {
+            case .page: return pageMove(dragged, to: index)
+            case .module(let module):
+                return page != .shelf && !page.modules.contains(module)
+                    && (config.hidden.contains(module) || arrangement.hasRoom(page.modules, hidden: config.hidden, perPage: config.perPage))
+            }
+        }) { edit($0) { arrangement, dragged in
+            switch dragged {
+            case .page(let from): arrangement.movePage(from, to: index)
+            case .module(let module): arrangement.move(module, toPage: index, hidden: config.hidden, perPage: config.perPage)
+            }
+        } })
+        .accessibilityAction(named: "Move page left") { edit(.page(index)) { arrangement, _ in arrangement.movePage(index, to: index - 1) } }
+        .accessibilityAction(named: "Move page right") { edit(.page(index)) { arrangement, _ in arrangement.movePage(index, to: index + 1) } }
+    }
+
+    private func moduleRow(_ module: HomeModule, page: Int) -> some View {
+        HStack(spacing: 10) {
+            Image(systemName: "line.3.horizontal")
+                .foregroundStyle(.tertiary)
+                .accessibilityHidden(true)
+            Text(module.title)
+            Spacer(minLength: 12)
+            Toggle(module.title, isOn: Binding(get: { !config.hidden.contains(module) }, set: { on in
+                var hidden = config.hidden
+                if on { hidden.remove(module) } else { hidden.insert(module) }
+                hiddenText = HomeOrder.string(HomeModule.allCases.filter(hidden.contains))
+            }))
+            .toggleStyle(.switch)
+            .labelsHidden()
+        }
+        .padding(.vertical, 9)
+        .contentShape(Rectangle())
+        .background {
+            if target == module.rawValue {
+                RoundedRectangle(cornerRadius: 6).fill(Color.accentColor.opacity(0.14)).padding(.horizontal, -8)
+            }
+        }
+        .onDrag { start(.module(module)) }
+        .onDrop(of: [.text], delegate: drop(id: module.rawValue, accepts: { dragged in
+            switch dragged {
+            case .module(let other): return other != module
+            case .page: return pageMove(dragged, to: page)
+            }
+        }) { edit($0) { arrangement, dragged in
+            switch dragged {
+            case .module(let other): arrangement.move(other, onto: module, hidden: config.hidden, perPage: config.perPage)
+            case .page(let from): arrangement.movePage(from, to: page)
+            }
+        } })
+    }
+
+    /// Where a module gets a page of its own, or a page goes last.
+    private func newPage(_ arrangement: HomeArrangement) -> some View {
+        Text("New Page")
+            .foregroundStyle(.secondary)
+            .frame(maxWidth: .infinity)
+            .frame(height: 44)
+            .background {
+                RoundedRectangle(cornerRadius: 12)
+                    .strokeBorder(target == "new" ? Color.accentColor : Color.primary.opacity(0.15),
+                                  style: StrokeStyle(lineWidth: target == "new" ? 2 : 1, dash: target == "new" ? [] : [5, 4]))
+            }
+            .padding(.top, 20)
+            .onDrop(of: [.text], delegate: drop(id: "new", accepts: { dragged in
+                if case .page(let from) = dragged { return from != arrangement.pages.count - 1 }
+                return true
+            }) { edit($0) { arrangement, dragged in
+                switch dragged {
+                case .module(let module): arrangement.moveToNewPage(module)
+                case .page(let from): arrangement.movePageToEnd(from)
+                }
+            } })
+    }
+
+    private func pageMove(_ dragged: Dragged, to index: Int) -> Bool {
+        if case .page(let from) = dragged { return from != index }
+        return false
+    }
+
+    private func start(_ dragged: Dragged) -> NSItemProvider {
+        dragging = dragged
+        return NSItemProvider(object: "nook-page" as NSString)
+    }
+
+    private func drop(id: String, accepts: @escaping (Dragged) -> Bool, perform: @escaping (Dragged) -> Void) -> PageDrop {
+        PageDrop(id: id, target: $target, dragging: $dragging, accepts: accepts, perform: perform)
+    }
+
+    /// Applies a drag to the pages as shown, and saves them.
+    private func edit(_ dragged: Dragged, _ change: (inout HomeArrangement, Dragged) -> Void) {
+        var arrangement = config.arrangement
+        change(&arrangement, dragged)
+        pagesText = arrangement.normalized(hidden: config.hidden, perPage: config.perPage).string
     }
 }
 
-private struct ReorderDrop: DropDelegate {
-    let target: HomeModule
-    let order: [HomeModule]
-    @Binding var dragging: HomeModule?
-    let move: ([HomeModule]) -> Void
+/// The shelf's page in the editor: it has no modules, only its place among the pages.
+private struct ShelfRow: View {
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "line.3.horizontal")
+                .foregroundStyle(.tertiary)
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 1) {
+                Text("Shelf")
+                Text("AirDrop and the files you keep").font(.caption).foregroundStyle(.secondary)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.vertical, 9)
+        .contentShape(Rectangle())
+    }
+}
+
+/// A place in the page editor something can be dropped: lit while a drag it takes is over it.
+private struct PageDrop: DropDelegate {
+    let id: String
+    @Binding var target: String?
+    @Binding var dragging: PageEditor.Dragged?
+    let accepts: (PageEditor.Dragged) -> Bool
+    let perform: (PageEditor.Dragged) -> Void
+
+    func validateDrop(info: DropInfo) -> Bool { dragging.map(accepts) ?? false }
 
     func dropEntered(info: DropInfo) {
-        guard let dragging, dragging != target,
-              let from = order.firstIndex(of: dragging), let to = order.firstIndex(of: target) else { return }
-        var next = order
-        next.move(fromOffsets: IndexSet(integer: from), toOffset: to > from ? to + 1 : to)
-        withAnimation(.easeOut(duration: 0.15)) { move(next) }
+        if validateDrop(info: info) { target = id }
+    }
+
+    func dropExited(info: DropInfo) {
+        if target == id { target = nil }
     }
 
     func dropUpdated(info: DropInfo) -> DropProposal? { DropProposal(operation: .move) }
 
     func performDrop(info: DropInfo) -> Bool {
-        dragging = nil
+        defer {
+            dragging = nil
+            target = nil
+        }
+        guard let dragging, accepts(dragging) else { return false }
+        perform(dragging)
         return true
     }
 }

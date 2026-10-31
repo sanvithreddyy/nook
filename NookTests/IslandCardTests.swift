@@ -1,39 +1,106 @@
 import CoreGraphics
 import Testing
 
-/// Hovering opens the first page, so it has to be what the closed island is showing.
+/// Pages run left to right as arranged; the island opens on what the closed island shows.
 struct IslandCardTests {
-    private let all: [HomeModule] = [.music, .calendar, .batteries]
+    private func pages(_ groups: [[HomeModule]], shelfAt: Int? = nil) -> [HomeArrangement.Page] {
+        var pages = groups.map(HomeArrangement.Page.modules)
+        pages.insert(.shelf, at: shelfAt ?? pages.count)
+        return pages
+    }
 
     @Test func musicOpensTheHomePageThatHoldsIt() {
-        let cards = IslandCard.available(live: [.nowPlaying], modules: all, perPage: 2, shelf: true)
-        #expect(cards == [.home([.music, .calendar]), .home([.batteries]), .shelf])
+        let result = IslandCard.available(live: [.nowPlaying], pages: pages([[.music, .calendar], [.batteries]]), shelf: true)
+        #expect(result.cards == [.home([.music, .calendar]), .home([.batteries]), .shelf])
+        #expect(result.opening == .home([.music, .calendar]))
     }
 
-    @Test func musicOrderedLastStillOpensFirst() {
-        let cards = IslandCard.available(live: [.nowPlaying], modules: [.calendar, .batteries, .music], perPage: 2, shelf: false)
-        #expect(cards == [.home([.music]), .home([.calendar, .batteries])])
+    @Test func musicOnALaterPageStillOpensItWithoutMovingIt() {
+        let result = IslandCard.available(live: [.nowPlaying], pages: pages([[.calendar, .batteries], [.music]]), shelf: false)
+        #expect(result.cards == [.home([.calendar, .batteries]), .home([.music])])
+        #expect(result.opening == .home([.music]))
     }
 
-    @Test func aTimerTheNotchShowsOpensBeforeTheHome() {
-        let cards = IslandCard.available(live: [.timer, .nowPlaying], modules: all, perPage: 2, shelf: true)
-        #expect(cards == [.timer, .home([.music, .calendar]), .home([.batteries]), .shelf])
+    @Test func aTimerTheNotchShowsComesBeforeTheHomeAndOpens() {
+        let result = IslandCard.available(live: [.timer, .nowPlaying], pages: pages([[.music, .calendar], [.batteries]]), shelf: true)
+        #expect(result.cards == [.timer, .home([.music, .calendar]), .home([.batteries]), .shelf])
+        #expect(result.opening == .timer)
     }
 
     @Test func theDropBesideTheIslandComesAfterTheHome() {
-        let cards = IslandCard.available(live: [.nowPlaying, .calendar(id: "m")], modules: all, perPage: 3, shelf: true)
-        #expect(cards == [.home([.music, .calendar, .batteries]), .meeting(id: "m"), .shelf])
+        let result = IslandCard.available(live: [.nowPlaying, .calendar(id: "m")], pages: pages([[.music, .calendar, .batteries]]), shelf: true)
+        #expect(result.cards == [.home([.music, .calendar, .batteries]), .meeting(id: "m"), .shelf])
     }
 
-    @Test func oneAtATimeGivesEachModuleItsOwnPage() {
-        let cards = IslandCard.available(live: [], modules: all, perPage: 1, shelf: true)
-        #expect(cards == [.home([.music]), .home([.calendar]), .home([.batteries]), .shelf])
+    /// The shelf first, to swipe to it from the left, or between pages.
+    @Test func theShelfGoesWhereItIsPlaced() {
+        let first = IslandCard.available(live: [.timer, .nowPlaying], pages: pages([[.music, .calendar], [.batteries]], shelfAt: 0), shelf: true)
+        #expect(first.cards == [.shelf, .timer, .home([.music, .calendar]), .home([.batteries])])
+        #expect(first.opening == .timer)
+        let between = IslandCard.available(live: [.nowPlaying], pages: pages([[.music, .calendar], [.batteries]], shelfAt: 1), shelf: true)
+        #expect(between.cards == [.home([.music, .calendar]), .shelf, .home([.batteries])])
+        #expect(between.opening == .home([.music, .calendar]))
     }
 
-    @Test func nothingGoingOnOpensTheHomeThenTheShelf() {
-        #expect(IslandCard.available(live: [], modules: [.calendar, .batteries], perPage: 2, shelf: true) == [.home([.calendar, .batteries]), .shelf])
-        #expect(IslandCard.available(live: [], modules: [], perPage: 2, shelf: true) == [.shelf])
-        #expect(IslandCard.available(live: [], modules: [], perPage: 2, shelf: false).isEmpty)
+    @Test func nothingGoingOnOpensTheHome() {
+        let some = IslandCard.available(live: [], pages: pages([[.calendar, .batteries]], shelfAt: 0), shelf: true)
+        #expect(some.cards == [.shelf, .home([.calendar, .batteries])])
+        #expect(some.opening == .home([.calendar, .batteries]))
+        #expect(IslandCard.available(live: [], pages: [.shelf], shelf: true).cards == [.shelf])
+        #expect(IslandCard.available(live: [], pages: [.shelf], shelf: false).cards.isEmpty)
+    }
+}
+
+/// Settings' page arrangement: modules fill pages in order until arranged, a full page carries on in
+/// the next, modules that are off take no room, and drags group, swap and move pages.
+struct HomeArrangementTests {
+    private typealias Page = HomeArrangement.Page
+
+    @Test func untouchedPagesFollowTheOrder() {
+        #expect(HomeConfig().arrangement.pages == [.modules([.music, .calendar]), .modules([.batteries, .weather]),
+                                                  .modules([.reminders, .clock]), .modules([.shortcuts, .timer]), .shelf])
+        #expect(HomeConfig(layout: .oneAtATime).arrangement.pages.prefix(2) == [.modules([.music]), .modules([.calendar])])
+    }
+
+    @Test func aFullPageCarriesOnAndOffModulesTakeNoRoom() {
+        let three = HomeArrangement(pages: [.modules([.music, .calendar, .batteries])])
+        #expect(three.normalized(hidden: [], perPage: 2).pages.prefix(2) == [.modules([.music, .calendar]), .modules([.batteries])])
+        #expect(three.normalized(hidden: [.calendar], perPage: 2).pages.first == .modules([.music, .calendar, .batteries]))
+    }
+
+    @Test func savedPagesRoundTripAndPickUpNewModules() {
+        let saved = HomeArrangement.parse("shelf|music,calendar|stocks")
+        #expect(saved?.pages == [.shelf, .modules([.music, .calendar])])
+        #expect(saved?.string == "shelf|music,calendar")
+        let completed = saved?.normalized(hidden: [], perPage: 2).pages ?? []
+        #expect(completed.first == .shelf)
+        #expect(completed.count == 2 + HomeModule.allCases.count - 2)
+        #expect(HomeArrangement.parse("") == nil)
+    }
+
+    @Test func droppingOnAFullPageSwapsAndOnARoomyOneJoins() {
+        let start = HomeArrangement(pages: [.modules([.music, .calendar]), .modules([.batteries, .weather]), .shelf])
+        var swapped = start
+        swapped.move(.batteries, onto: .music, hidden: [], perPage: 2)
+        #expect(swapped.pages == [.modules([.batteries, .calendar]), .modules([.music, .weather]), .shelf])
+        var joined = start
+        joined.move(.batteries, onto: .music, hidden: [], perPage: 3)
+        #expect(joined.pages == [.modules([.batteries, .music, .calendar]), .modules([.weather]), .shelf])
+        var reordered = start
+        reordered.move(.music, onto: .calendar, hidden: [], perPage: 2)
+        #expect(reordered.pages.first == .modules([.calendar, .music]))
+    }
+
+    @Test func pagesMoveAndModulesGetPagesOfTheirOwn() {
+        var arrangement = HomeArrangement(pages: [.modules([.music, .calendar]), .modules([.batteries]), .shelf])
+        arrangement.movePage(2, to: 0)
+        #expect(arrangement.pages == [.shelf, .modules([.music, .calendar]), .modules([.batteries])])
+        arrangement.moveToNewPage(.calendar)
+        #expect(arrangement.pages == [.shelf, .modules([.music]), .modules([.batteries]), .modules([.calendar])])
+        arrangement.move(.batteries, toPage: 1, hidden: [], perPage: 2)
+        #expect(arrangement.pages == [.shelf, .modules([.music, .batteries]), .modules([.calendar])])
+        arrangement.movePageToEnd(0)
+        #expect(arrangement.pages.last == .shelf)
     }
 }
 
