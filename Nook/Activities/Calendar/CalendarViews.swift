@@ -46,8 +46,9 @@ struct EventPeek: View {
 
 // MARK: Cards
 
-/// An event about to start or under way, laid out like Apple's AirDrop request: the icon beside the
-/// notch, the title and one grey line under it, then Dismiss and Join.
+/// An event about to start or under way, laid out like Apple's AirDrop request: Calendar's red glyph
+/// beside the notch, the title and one grey line under it, the time to go where AirDrop shows the file,
+/// then Dismiss and Join.
 struct MeetingCard: View {
     @Environment(CalendarModel.self) private var calendar
     @Environment(NotchModel.self) private var model
@@ -55,11 +56,21 @@ struct MeetingCard: View {
 
     var body: some View {
         if let event = calendar.event(id: eventID) {
-            TimelineView(.everyMinute) { context in
+            TimelineView(.minutes(to: event.start)) { context in
+                let started = event.start <= context.date
                 VStack(alignment: .leading, spacing: 0) {
-                    CardGlyph(symbol: "calendar")
-                    EventHeading(title: event.title,
-                                 detail: [EventTiming.relative(event, now: context.date), event.meetingService ?? EventTiming.range(event)])
+                    CardGlyph(symbol: "calendar", tint: .red, mode: .hierarchical)
+                    HStack(alignment: .top, spacing: 16) {
+                        EventHeading(title: event.title,
+                                     detail: [started ? EventTiming.left(event, now: context.date) : EventTiming.range(event), event.meetingService])
+                        Text(EventTiming.short(event, now: context.date))
+                            .font(.system(size: 26, weight: .regular).monospacedDigit())
+                            .foregroundStyle(.white)
+                            .contentTransition(.numericText(countsDown: true))
+                            .animation(Motion.level, value: EventTiming.short(event, now: context.date))
+                            .fixedSize()
+                            .padding(.top, Card.titleGap - 3)
+                    }
                     Spacer(minLength: 0)
                     HStack(spacing: 10) {
                         CardButton("Dismiss") {
@@ -86,15 +97,18 @@ struct MeetingCard: View {
     }
 }
 
-/// A card's icon, in the wing left of the notch.
+/// A card's icon in its app's colour, in the wing left of the notch, as large as the AirDrop request's.
 struct CardGlyph: View {
     @Environment(NotchModel.self) private var model
     let symbol: String
+    var tint: Color = .white
+    var mode: SymbolRenderingMode = .monochrome
 
     var body: some View {
         Image(systemName: symbol)
-            .font(.system(size: 17, weight: .medium))
-            .foregroundStyle(.white)
+            .font(.system(size: 21, weight: .regular))
+            .symbolRenderingMode(mode)
+            .foregroundStyle(tint)
             .frame(height: model.notch.size.height, alignment: .center)
             .accessibilityHidden(true)
     }
@@ -108,13 +122,13 @@ private struct EventHeading: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 1) {
             Text(title)
-                .font(.system(size: 14, weight: .semibold))
+                .font(.system(size: 15, weight: .semibold))
                 .foregroundStyle(.white)
                 .lineLimit(1)
             let line = detail.compactMap { $0 }.joined(separator: " · ")
             if !line.isEmpty {
                 Text(line)
-                    .font(.system(size: 13).monospacedDigit())
+                    .font(.system(size: 15).monospacedDigit())
                     .foregroundStyle(.white.opacity(0.55))
                     .lineLimit(1)
             }
@@ -160,15 +174,10 @@ enum EventTiming {
         return formatter
     }()
 
-    /// "Now · 20 min left", "In 25 min", "Today", "Tomorrow", "Monday".
-    static func relative(_ event: CalendarEvent, now: Date) -> String {
-        if event.start <= now {
-            let left = Int((event.end.timeIntervalSince(now) / 60).rounded(.up))
-            return left <= 60 ? "Now · \(left) min left" : "Now · until " + event.end.formatted(date: .omitted, time: .shortened)
-        }
-        let minutes = Int((event.start.timeIntervalSince(now) / 60).rounded(.up))
-        if minutes <= 60 { return "In \(minutes) min" }
-        return dayName(event.start, now: now)
+    /// Under way: "12 min left", or "Until 4:00 PM" past an hour.
+    static func left(_ event: CalendarEvent, now: Date) -> String {
+        let minutes = Int((event.end.timeIntervalSince(now) / 60).rounded(.up))
+        return minutes <= 60 ? "\(max(minutes, 0)) min left" : "Until " + event.end.formatted(date: .omitted, time: .shortened)
     }
 
     /// "Today", "Tomorrow", "Monday" within the week, then "Mon, Nov 2".

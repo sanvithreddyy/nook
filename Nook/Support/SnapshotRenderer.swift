@@ -40,6 +40,10 @@ enum SnapshotRenderer {
             ("18-shelf", { c.shelf.debugPreview(SnapshotRenderer.sampleFiles); c.debugRefresh(); m.expand(card: .shelf) }),
             ("19-shelf-empty", { c.shelf.debugPreview([]); c.debugRefresh(); m.expand(card: .shelf) }),
             ("20-batteries", { c.batteries.debugPreview(); c.debugRefresh(); m.expand(card: .home([.batteries])) }),
+            ("21-timer", { c.nowPlaying.debugClear(); c.timer.debugShow(.running(end: .now.addingTimeInterval(297)), total: 300); m.expand(card: .timer) }),
+            ("21a-timer-paused", { c.nowPlaying.debugClear(); c.timer.debugShow(.paused(remaining: 754), total: 900); m.expand(card: .timer) }),
+            ("21b-timer-done", { c.nowPlaying.debugClear(); c.timer.debugShow(.done, total: 300); m.expand(card: .timer) }),
+            ("22-meeting-under-way", { c.nowPlaying.debugClear(); c.timer.debugShow(.idle, total: 0); c.calendar.debugPreview(meetingSoon: true, startsIn: -240); c.debugRefresh(); m.expand() }),
         ]
         Task { @MainActor in
             // Let the now-playing stream deliver real metadata first.

@@ -83,30 +83,17 @@ struct TimerDropContent: View {
     }
 }
 
-/// The open timer, like the iPhone's Timer Live Activity: the time left large in orange, then pause
-/// and cancel as round buttons. Two-finger scrolling over the time adds or takes off minutes, one
-/// detent per minute. Finished, the buttons become Repeat and Stop.
+/// The open timer, as Clock's timer Live Activity lays it out: pause and cancel as round buttons on the
+/// left, and on the right "Timer" over the time left, large in orange. Two-finger scrolling over the
+/// time adds or takes off minutes, one detent per minute. Finished, the buttons become Repeat and Stop.
 struct TimerCard: View {
     @Environment(TimerModel.self) private var timer
     @Environment(NotchModel.self) private var model
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            Image(systemName: "timer")
-                .font(.system(size: 17, weight: .medium))
-                .foregroundStyle(.orange)
-                .frame(height: model.notch.size.height)
-                .accessibilityHidden(true)
+            CardGlyph(symbol: "timer", tint: .orange)
             HStack(alignment: .center, spacing: 12) {
-                VStack(alignment: .leading, spacing: 0) {
-                    TimerText(size: 34, weight: .medium)
-                        .overlay { ScrollDial { step in timer.adjust(minutes: step) } }
-                        .help("Scroll to add or take off minutes")
-                    Text(caption)
-                        .font(.system(size: 12))
-                        .foregroundStyle(.white.opacity(0.5))
-                }
-                Spacer(minLength: 0)
                 if timer.state == .done {
                     RoundButton(symbol: "arrow.counterclockwise", label: "Repeat", tint: .white) { timer.repeatLast() }
                     RoundButton(symbol: "xmark", label: "Stop", tint: .orange) {
@@ -121,24 +108,25 @@ struct TimerCard: View {
                         model.collapse()
                     }
                 }
+                Spacer(minLength: 0)
+                VStack(alignment: .trailing, spacing: -2) {
+                    Text("Timer")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(.orange)
+                    TimerText(size: 46, weight: .medium)
+                        .overlay { ScrollDial { step in timer.adjust(minutes: step) } }
+                        .help("Scroll to add or take off minutes")
+                }
             }
-            .padding(.top, 2)
+            // In the middle of the room under the notch line.
+            .frame(maxHeight: .infinity)
+            .padding(.bottom, Card.inset)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .contextMenu {
             TimerMenu()
             Divider()
             SettingsMenuItem(pane: .timer)
-        }
-    }
-
-    private var caption: String {
-        let length = timer.total >= 3600 ? "\(Int(timer.total / 3600)) hr \(Int(timer.total.truncatingRemainder(dividingBy: 3600) / 60)) min"
-                                         : "\(Int((timer.total / 60).rounded())) min"
-        switch timer.state {
-        case .paused: return "Paused · \(length)"
-        case .done: return "Timer · \(length)"
-        default: return "Timer · \(length)"
         }
     }
 }
@@ -153,10 +141,10 @@ private struct RoundButton: View {
     var body: some View {
         Button(action: action) {
             Image(systemName: symbol)
-                .font(.system(size: 16, weight: .bold))
+                .font(.system(size: 19, weight: .bold))
                 .contentTransition(.symbolEffect(.replace))
                 .foregroundStyle(tint)
-                .frame(width: 42, height: 42)
+                .frame(width: 50, height: 50)
                 .background(Circle().fill(tint.opacity(tint == .white ? 0.14 : 0.24)))
         }
         .buttonStyle(IslandButtonStyle())

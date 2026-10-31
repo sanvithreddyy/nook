@@ -69,6 +69,13 @@ final class TimerModel {
         total = seconds
         set(.running(end: .now.addingTimeInterval(seconds)))
     }
+
+    /// Shows a state without saving it, for snapshots: the store is shared with the installed copy.
+    func debugShow(_ state: State, total: TimeInterval) {
+        self.total = total
+        self.state = state
+        onChange?()
+    }
     #endif
 
     func pause() {

@@ -152,7 +152,8 @@ extension IslandCard {
     }
 }
 
-/// Full-width capsule button for a card's actions, like the AirDrop request's Decline and Accept.
+/// Full-width capsule button for a card's actions, coloured as the AirDrop request's Decline and Accept:
+/// grey with white type, and the accent at 42% with light blue type (measured from Apple's image).
 struct CardButton: View {
     enum Style { case primary, secondary }
 
@@ -184,7 +185,7 @@ struct CardButtonStyle: ButtonStyle {
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .foregroundStyle(style == .primary ? .black : .white)
+            .foregroundStyle(style == .primary ? Color(red: 0.36, green: 0.78, blue: 1) : .white)
             .background(Capsule().fill(fill(pressed: configuration.isPressed)))
             .contentShape(Capsule())
             .animation(ButtonFeedback.press, value: configuration.isPressed)
@@ -194,8 +195,8 @@ struct CardButtonStyle: ButtonStyle {
 
     private func fill(pressed: Bool) -> Color {
         switch style {
-        case .primary: .white.opacity(pressed ? 0.8 : (hovering ? 0.9 : 1))
-        case .secondary: .white.opacity(pressed ? 0.26 : (hovering ? 0.21 : 0.16))
+        case .primary: Color(nsColor: .systemBlue).opacity(pressed ? 0.34 : (hovering ? 0.5 : 0.42))
+        case .secondary: .white.opacity(pressed ? 0.3 : (hovering ? 0.42 : 0.37))
         }
     }
 }
