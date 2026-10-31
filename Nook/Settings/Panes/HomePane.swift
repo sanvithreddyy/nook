@@ -332,9 +332,16 @@ private struct BatteriesModuleOptions: View {
 private struct WeatherModuleOptions: View {
     @AppStorage(Prefs.weatherCurrentLocation) private var currentLocation = true
     @AppStorage(Prefs.weatherPlaces) private var places = ""
+    @AppStorage(Prefs.weatherUnit) private var unit = TemperatureUnit.auto
 
     var body: some View {
         SettingsSection("Weather", footer: "One place at a time; click its name on the island for the next. Forecasts from Open-Meteo.") {
+            SettingsRow("Temperature", description: unit == .auto ? "As this Mac is set in Language & Region." : nil) {
+                Picker("Temperature", selection: $unit) {
+                    ForEach(TemperatureUnit.allCases) { Text($0.title).tag($0) }
+                }
+                .segmentedStyle()
+            }
             SettingsToggle("My Location", description: "The weather where this Mac is.", isOn: $currentLocation)
             PlaceList(json: $places, limit: 8)
         }

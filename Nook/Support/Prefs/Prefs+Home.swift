@@ -30,6 +30,8 @@ extension Prefs {
     /// Weather: this Mac's location, then the cities added (Place JSON), one at a time.
     static let weatherCurrentLocation = "weatherCurrentLocation"
     static let weatherPlaces = "weatherPlaces"
+    /// Weather: TemperatureUnit raw value; read off the main actor with the forecast.
+    nonisolated static let weatherUnit = "weatherUnit"
     /// Reminders: the list shown (a calendar identifier); empty is the default list.
     static let remindersList = "remindersList"
     /// Shortcuts: the ones shown, in order (a JSON array of names); empty is the first four.
@@ -56,6 +58,7 @@ extension Prefs {
             clockStyle: ClockStyle.analog.rawValue,
             weatherCurrentLocation: true,
             weatherPlaces: "",
+            weatherUnit: TemperatureUnit.auto.rawValue,
             remindersList: "",
             shortcutsPicked: "",
         ])

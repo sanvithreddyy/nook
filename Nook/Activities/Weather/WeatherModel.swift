@@ -114,10 +114,16 @@ final class WeatherModel: NSObject {
 
     // MARK: Reading
 
-    /// Celsius or Fahrenheit as the Mac is set (Language & Region), as Weather follows it.
+    /// Fahrenheit or Celsius as Settings picks, or by default as the Mac is set (Language & Region),
+    /// as Weather follows it.
     nonisolated static var usesFahrenheit: Bool {
-        if let unit = UserDefaults.standard.string(forKey: "AppleTemperatureUnit") { return unit == "Fahrenheit" }
-        return Locale.current.measurementSystem == .us
+        switch TemperatureUnit(rawValue: UserDefaults.standard.string(forKey: Prefs.weatherUnit) ?? "") ?? .auto {
+        case .fahrenheit: return true
+        case .celsius: return false
+        case .auto:
+            if let unit = UserDefaults.standard.string(forKey: "AppleTemperatureUnit") { return unit == "Fahrenheit" }
+            return Locale.current.measurementSystem == .us
+        }
     }
 
     nonisolated private static func forecast(latitude: Double, longitude: Double, fahrenheit: Bool) async -> Data? {
@@ -245,5 +251,20 @@ extension WeatherModel: @preconcurrency CLLocationManagerDelegate {
     func locationManager(_ manager: CLLocationManager, didFailWithError error: any Error) {
         // The cities still read; a later open asks for the location again.
         read()
+    }
+}
+
+/// The weather's unit: as the Mac is set, or always one.
+nonisolated enum TemperatureUnit: String, CaseIterable, Identifiable {
+    case auto, fahrenheit, celsius
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .auto: "Auto"
+        case .fahrenheit: "°F"
+        case .celsius: "°C"
+        }
     }
 }

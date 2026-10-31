@@ -397,7 +397,7 @@ final class NotchCoordinator {
             lastCalendarFilter = calendarFilter
         }
         // The weather's places and the reminders' list, read again only when they change.
-        let weatherPlaces = "\(Prefs.bool(Prefs.weatherCurrentLocation))|" + Prefs.string(Prefs.weatherPlaces)
+        let weatherPlaces = "\(Prefs.bool(Prefs.weatherCurrentLocation))|\(Prefs.string(Prefs.weatherUnit))|" + Prefs.string(Prefs.weatherPlaces)
         if weatherPlaces != lastWeatherPlaces {
             lastWeatherPlaces = weatherPlaces
             weather.refresh(force: true)

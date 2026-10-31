@@ -177,7 +177,7 @@ enum SettingsPane: String, CaseIterable, Identifiable {
         case .home: ["Preview on the notch", "Layout", "Side by Side", "One at a Time", "Modules side by side", "Size",
                      "Modules", "Order", "Pages", "Page", "New Page", "Group", "Shelf", "AirDrop", "Music", "Left button", "Right button", "Favorite", "Output", "Shuffle", "Repeat",
                      "Back 15 seconds", "Forward 15 seconds", "Time after the bar", "Time left", "Length", "Remaining", "Calendar", "Week starts on",
-                     "Mark days with events", "Weekends in gray", "Batteries", "Include this Mac", "Weather", "My Location",
+                     "Mark days with events", "Weekends in gray", "Batteries", "Include this Mac", "Weather", "Temperature", "Fahrenheit", "Celsius", "Auto", "My Location",
                      "Add City", "Reminders", "List", "World Clock", "Time zones", "Cities", "Style", "Analog", "Digital", "Shortcuts", "Add Shortcut", "Timer"]
         case .nowPlaying: ["Preview on the notch", "Show what's playing", "Closed island", "Waveform", "Color the waveform from the artwork",
                            "Show the title when the track changes", "Show the title on hover", "Artwork", "Keep a paused player",
