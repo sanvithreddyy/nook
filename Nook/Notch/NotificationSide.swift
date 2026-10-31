@@ -13,7 +13,7 @@ struct NotificationSide: View {
             case .volume, .brightness:
                 if model.hudStyle.usesSides {
                     if edge == .leading {
-                        HUDGlyph(note: note)
+                        HUDGlyph(note: note, ups: model.hudUps, downs: model.hudDowns)
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .padding(.leading, Compact.outer)
                     } else {

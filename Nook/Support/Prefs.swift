@@ -56,11 +56,12 @@ enum SettingsAppearance: String, CaseIterable, Identifiable {
 enum HUDStyle: String, CaseIterable, Identifiable {
     /// Glyph and value beside the notch, a thin bar on a ledge below.
     case ledge
-    /// A thick slider like Control Center's, the glyph inside it.
+    /// The island's lower band fills with the level like Control Center's sliders, the glyph and
+    /// level inside it.
     case slider
     /// Sixteen segments, one per press, like the Mac's old volume overlay.
     case segments
-    /// The island's own edge fills with the level.
+    /// The island's own edge lights up to the level.
     case outline
 
     var id: String { rawValue }
@@ -78,9 +79,9 @@ enum HUDStyle: String, CaseIterable, Identifiable {
     var below: CGFloat {
         switch self {
         case .ledge: 18
-        case .slider: 42
+        case .slider: 28
         case .segments: 20
-        case .outline: 16
+        case .outline: 6
         }
     }
 

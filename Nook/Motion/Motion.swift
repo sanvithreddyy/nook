@@ -26,6 +26,12 @@ enum Motion {
     static var content: Animation? { spring(987, 63) }
     /// HUD level changes while a HUD is already showing.
     static var level: Animation? { spring(400, 34) }
+    /// Volume and brightness arriving and leaving: straight from what the band shows and back, quickly,
+    /// with a little life (response 0.32 s at 0.78 damping). A key's answer can't wait for a hand-over.
+    static var hud: Animation? { spring(386, 31) }
+    /// The HUD's bar meeting a new level: a quick kick a few percent past it (0.28 s at 0.7 damping).
+    static var levelKick: Animation? { spring(503, 31) }
+
     /// Drop targets lighting up under a drag.
     static var press: Animation? { spring(630, 43) }
 
@@ -78,11 +84,12 @@ struct IslandContentModifier: ViewModifier {
 extension AnyTransition {
     /// Content beside the notch blurs in while the band grows and blurs out fast as it shrinks, so old
     /// and new never share a slot.
-    static func islandSide(_ edge: HorizontalEdge) -> AnyTransition {
+    /// `quick`: a key's answer (volume, brightness), in almost at once.
+    static func islandSide(_ edge: HorizontalEdge, quick: Bool = false) -> AnyTransition {
         let anchor: UnitPoint = edge == .leading ? .trailing : .leading
         return .asymmetric(
             insertion: .modifier(active: IslandContentModifier.hidden(blur: 6, scaleX: 0.9, scaleY: 0.9, anchor: anchor), identity: IslandContentModifier.shown(anchor: anchor))
-                .animation(Motion.ease(.easeOut(duration: 0.2))?.delay(0.12)),
+                .animation(Motion.ease(.easeOut(duration: quick ? 0.16 : 0.2))?.delay(quick ? 0.03 : 0.12)),
             removal: .modifier(active: IslandContentModifier.hidden(blur: 6, scaleX: 0.9, scaleY: 0.9, anchor: anchor), identity: IslandContentModifier.shown(anchor: anchor))
                 .animation(Motion.ease(.easeOut(duration: 0.08)))
         )

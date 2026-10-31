@@ -47,7 +47,7 @@ private struct HUDStylePicker: View {
                 Button { selection = style.rawValue } label: {
                     VStack(spacing: 6) {
                         HUDStyleThumbnail(style: style)
-                            .frame(width: 118, height: 46)
+                            .frame(width: 128, height: 58)
                             .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
                             .overlay(
                                 RoundedRectangle(cornerRadius: 8, style: .continuous)
@@ -66,45 +66,92 @@ private struct HUDStylePicker: View {
     }
 }
 
-/// One style drawn at real size on a sample island, scaled down.
+/// One style drawn small, as the Layout picker draws the home: a little island hanging in the middle of
+/// a wallpaper, holding the style's own shapes at 62.
 private struct HUDStyleThumbnail: View {
     let style: HUDStyle
+    private let level: CGFloat = 0.62
+    /// The notch's row, drawn small.
+    private let row: CGFloat = 15
 
     var body: some View {
-        let note = NotchNotification.volume(level: 0.62, muted: false, output: nil)
-        let notch = NotchMetrics.simulated.size
-        let side = notch.height + 4 + (style == .slider ? 13 : 8)
-        let size = CGSize(width: notch.width + side * 2, height: notch.height + style.below)
-        let layout = IslandLayout(size: size, topRadius: 6, bottomRadius: Compact.bottomRadius)
         ZStack(alignment: .top) {
             LinearGradient(colors: [Color(red: 0.27, green: 0.35, blue: 0.49), Color(red: 0.62, green: 0.69, blue: 0.81)],
                            startPoint: .topLeading, endPoint: .bottomTrailing)
-            ZStack(alignment: .top) {
-                VStack(spacing: 0) {
-                    HStack(spacing: 0) {
-                        if style.usesSides {
-                            HUDGlyph(note: note)
-                                .frame(width: side, alignment: .leading)
-                                .padding(.leading, Compact.outer)
-                            Spacer(minLength: 0)
-                            HUDValue(note: note, style: style)
-                                .frame(width: side - Compact.outer, alignment: .trailing)
-                                .padding(.trailing, Compact.outer)
-                        }
-                    }
-                    .frame(height: notch.height)
-                    HUDBelow(note: note, style: style, bump: 0, bumpUp: true)
-                        .padding(.horizontal, layout.topRadius + (style == .slider ? 4 : 12))
-                }
-                if style == .outline {
-                    HUDOutline(level: 0.62, muted: false, layout: layout, notchHeight: notch.height)
-                }
+            switch style {
+            case .ledge: ledge(steps: false)
+            case .segments: ledge(steps: true)
+            case .slider: fill
+            case .outline: outline
             }
-            .frame(width: size.width, height: size.height, alignment: .top)
-            .background(NotchShape(topRadius: layout.topRadius, bottomRadius: layout.bottomRadius).fill(.black))
-            .scaleEffect(0.42, anchor: .top)
         }
         .environment(\.colorScheme, .dark)
         .accessibilityHidden(true)
+    }
+
+    private var shape: NotchShape { NotchShape(topRadius: 4, bottomRadius: 9) }
+
+    /// The speaker and the level beside the notch.
+    private func sides(dark: Bool = false) -> some View {
+        HStack {
+            Image(systemName: "speaker.wave.2.fill").font(.system(size: 7.5, weight: .semibold))
+            Spacer(minLength: 0)
+            Text(style == .segments ? "10" : "62").font(.system(size: 7.5, weight: .semibold).monospacedDigit())
+        }
+        .foregroundStyle(dark ? Color(white: 0.16) : .white)
+        .padding(.horizontal, 9)
+        .frame(height: row)
+    }
+
+    private func ledge(steps: Bool) -> some View {
+        VStack(spacing: 0) {
+            sides()
+            Group {
+                if steps {
+                    HStack(spacing: 1.4) {
+                        ForEach(0..<16, id: \.self) { index in
+                            RoundedRectangle(cornerRadius: 0.8).fill(.white.opacity(index < 10 ? 1 : 0.2))
+                        }
+                    }
+                } else {
+                    GeometryReader { geo in
+                        Capsule().fill(.white.opacity(0.2))
+                            .overlay(alignment: .leading) { Capsule().fill(.white).frame(width: geo.size.width * level) }
+                    }
+                }
+            }
+            .frame(height: 2.6)
+            .padding(.horizontal, 10)
+            .padding(.top, 2)
+            Spacer(minLength: 0)
+        }
+        .frame(width: 100, height: 27)
+        .background(shape.fill(.black))
+    }
+
+    private var fill: some View {
+        VStack(spacing: 0) {
+            Color.clear.frame(height: row)
+            GeometryReader { geo in
+                ZStack(alignment: .leading) {
+                    Rectangle().fill(.white.opacity(0.13))
+                    Rectangle().fill(.white).frame(width: geo.size.width * level)
+                    sides()
+                    sides(dark: true).mask(alignment: .leading) { Rectangle().frame(width: geo.size.width * level) }
+                }
+            }
+            .padding(.horizontal, 4)
+        }
+        .frame(width: 92, height: 31)
+        .background(shape.fill(.black))
+        .clipShape(shape)
+    }
+
+    private var outline: some View {
+        let size = CGSize(width: 100, height: 19)
+        return sides()
+            .frame(width: size.width, height: size.height, alignment: .top)
+            .background(shape.fill(.black))
+            .overlay { HUDOutline(level: Float(level), muted: false, layout: IslandLayout(size: size, topRadius: 4, bottomRadius: 9), line: 1.4) }
     }
 }

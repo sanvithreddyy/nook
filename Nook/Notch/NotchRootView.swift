@@ -44,13 +44,14 @@ private struct IslandView: View {
                 }
                 if closed, let note = model.notification, note.isHUD {
                     HUDBelow(note: note, style: model.hudStyle, bump: model.hudBump, bumpUp: model.hudBumpUp)
-                        .padding(.horizontal, layout.topRadius + (model.hudStyle == .slider ? 4 : 12))
+                        // The slider's band runs edge to edge, the island's own bottom rounding it.
+                        .padding(.horizontal, layout.topRadius + (model.hudStyle == .slider ? 0 : 12))
                         .transition(.islandBody)
                 }
             }
             // Outline: the island's own edge fills with the level.
             if closed, model.hudStyle == .outline, let level = model.notification?.hudLevel {
-                HUDOutline(level: level.value, muted: level.muted, layout: layout, notchHeight: model.notch.size.height)
+                HUDOutline(level: level.value, muted: level.muted, layout: layout)
                     .frame(width: layout.size.width, height: layout.size.height)
                     .transition(.opacity)
             }
@@ -154,7 +155,7 @@ private struct TopRow: View {
         } else if let notification {
             NotificationSide(note: notification, edge: edge)
                 .id("n-\(notification.kind)")
-                .transition(.islandSide(edge))
+                .transition(.islandSide(edge, quick: notification.isHUD))
         } else if let activity {
             ActivitySide(activity: activity, edge: edge)
                 .id("a-\(activity.identity)")

@@ -5,15 +5,28 @@ import Testing
 @MainActor
 struct HandOffTests {
     private let volume = NotchNotification.volume(level: 0.5, muted: false, output: nil)
+    private let charging = NotchNotification.charging(level: 80)
 
     @Test func aNoticeOverMusicHandsOverAndKeepsWhereItsGoing() {
         let model = NotchModel()
         model.setLiveActivity(.nowPlaying)
-        model.post(volume)
+        model.post(charging)
         // While the band shrinks it draws the bare notch, but it's already headed for the notice.
         #expect(model.isHandingOff == true)
         #expect(model.presentation == .idle)
-        #expect(model.settledPresentation == .notification(volume))
+        #expect(model.settledPresentation == .notification(charging))
+    }
+
+    /// A key's answer can't wait: volume goes straight from the music to its level, and straight back.
+    @Test func volumeOverMusicGoesStraightIn() {
+        let model = NotchModel()
+        model.setLiveActivity(.nowPlaying)
+        model.post(volume)
+        #expect(model.isHandingOff == false)
+        #expect(model.presentation == .notification(volume))
+        model.dismissNotification()
+        #expect(model.isHandingOff == false)
+        #expect(model.presentation == .activity(.nowPlaying))
     }
 
     @Test func fromNothingTheBandJustGrows() {

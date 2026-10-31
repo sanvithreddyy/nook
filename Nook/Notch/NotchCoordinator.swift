@@ -235,6 +235,31 @@ final class NotchCoordinator {
                     switch args[i + 1] {
                     case "low": model.post(.lowBattery(level: 20), for: .seconds(30))
                     case "charging": model.post(.charging(level: 84), for: .seconds(30))
+                    // hud: volume pressed as people press it: up, up, up, down, mute and back, then held up
+                    // to the top and pressed past it; for recording the motion.
+                    case "hud":
+                        var level: Float = 0.5
+                        @MainActor func show(muted: Bool = false) { model.post(.volume(level: level, muted: muted, output: nil), for: .seconds(1.6)) }
+                        show()
+                        for step: Float in [1, 1, 1, -1] {
+                            try? await Task.sleep(for: .milliseconds(320))
+                            level += step / 16
+                            show()
+                        }
+                        try? await Task.sleep(for: .milliseconds(450))
+                        show(muted: true)
+                        try? await Task.sleep(for: .milliseconds(600))
+                        show()
+                        for _ in 0..<9 {
+                            try? await Task.sleep(for: .milliseconds(85))
+                            level = min(level + 1 / 16, 1)
+                            show()
+                        }
+                        for _ in 0..<2 {
+                            try? await Task.sleep(for: .milliseconds(300))
+                            show()
+                            model.bumpHUD(up: true)
+                        }
                     // lowpower: on, then off in place a moment later, for recording the switch.
                     case "lowpower":
                         model.post(.lowPowerMode(on: true, level: 62), for: .seconds(2.2))

@@ -216,6 +216,11 @@ final class NotchModel {
     /// Counts presses past either end of the volume or brightness range, to stretch the bar.
     private(set) var hudBump = 0
     private(set) var hudBumpUp = true
+    /// Counts presses that raised or lowered the level, for the glyph to answer each one.
+    private(set) var hudUps = 0
+    private(set) var hudDowns = 0
+    /// A held key repeats faster than a bounce plays, and a bounce cut short leaves the glyph mid-shape.
+    @ObservationIgnored private var lastHUDBounce = Date.distantPast
     /// Hidden while a fullscreen app owns the notch screen.
     var isSuppressed = false
 
@@ -272,7 +277,7 @@ final class NotchModel {
             switch note {
             case .volume, .brightness:
                 // Glyph and value beside the notch, the level below it (the slider holds the glyph itself).
-                let side = hudStyle == .slider ? slot + 13 : slot + 8
+                let side = hudStyle == .slider ? slot : slot + 8
                 return compact(leading: side, trailing: side, below: hudStyle.below)
             case .charging(let level), .onBattery(let level), .lowBattery(let level):
                 return compact(leading: Compact.textSide(note.title),
@@ -357,8 +362,17 @@ final class NotchModel {
     /// Changes what the closed band shows. From or to the bare notch it's one grow or shrink. From one
     /// kind of content to another the band shrinks to the notch, rests, then grows into the new one,
     /// so two kinds never cross-fade in one slot. Returns whether it hands over that way.
+    /// `direct`: volume and brightness, which morph straight from what's showing and back, on the HUD's spring.
     @discardableResult
-    private func changeBand(to next: String?, _ change: () -> Void) -> Bool {
+    private func changeBand(to next: String?, direct: Bool = false, _ change: () -> Void) -> Bool {
+        if direct, !isExpanded, !Motion.isDisabled {
+            handOffTask?.cancel()
+            withAnimation(Motion.hud) {
+                change()
+                isHandingOff = false
+            }
+            return false
+        }
         let current = bandKind
         // Already at the notch: the grow that's waiting picks up the new content.
         if isHandingOff {
@@ -409,8 +423,14 @@ final class NotchModel {
     func post(_ note: NotchNotification, for duration: Duration = .seconds(2.2)) {
         var shown = duration
         if notification?.kind == note.kind {
+            // At most one bounce per 160 ms, and none while the glyph swaps in or out of mute.
+            if let old = notification?.hudLevel, let new = note.hudLevel, old.value != new.value, old.muted == new.muted,
+               Date.now.timeIntervalSince(lastHUDBounce) > 0.16 {
+                lastHUDBounce = .now
+                if new.value > old.value { hudUps &+= 1 } else { hudDowns &+= 1 }
+            }
             withAnimation(Motion.level) { notification = note }
-        } else if changeBand(to: "n-\(note.kind)", { notification = note }) {
+        } else if changeBand(to: "n-\(note.kind)", direct: note.isHUD, { notification = note }) {
             // It shows once the band has handed over, for as long as asked.
             shown += Motion.handOff
         }
@@ -430,8 +450,8 @@ final class NotchModel {
 
     func dismissNotification() {
         notificationTask?.cancel()
-        guard notification != nil else { return }
-        changeBand(to: liveActivity.map { "a-\($0.identity)" }) { notification = nil }
+        guard let notification else { return }
+        changeBand(to: liveActivity.map { "a-\($0.identity)" }, direct: notification.isHUD) { self.notification = nil }
     }
 
     // MARK: Quick peek
