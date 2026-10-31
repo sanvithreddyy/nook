@@ -219,11 +219,6 @@ final class NotchModel {
     /// Counts presses past either end of the volume or brightness range, to stretch the bar.
     private(set) var hudBump = 0
     private(set) var hudBumpUp = true
-    /// Counts presses that raised or lowered the level, for the glyph to answer each one.
-    private(set) var hudUps = 0
-    private(set) var hudDowns = 0
-    /// A held key repeats faster than a bounce plays, and a bounce cut short leaves the glyph mid-shape.
-    @ObservationIgnored private var lastHUDBounce = Date.distantPast
     /// Hidden while a fullscreen app owns the notch screen.
     var isSuppressed = false
 
@@ -426,12 +421,6 @@ final class NotchModel {
     func post(_ note: NotchNotification, for duration: Duration = .seconds(2.2)) {
         var shown = duration
         if notification?.kind == note.kind {
-            // At most one bounce per 160 ms, and none while the glyph swaps in or out of mute.
-            if let old = notification?.hudLevel, let new = note.hudLevel, old.value != new.value, old.muted == new.muted,
-               Date.now.timeIntervalSince(lastHUDBounce) > 0.16 {
-                lastHUDBounce = .now
-                if new.value > old.value { hudUps &+= 1 } else { hudDowns &+= 1 }
-            }
             withAnimation(Motion.level) { notification = note }
         } else if changeBand(to: "n-\(note.kind)", direct: note.isHUD, { notification = note }) {
             // It shows once the band has handed over, for as long as asked.

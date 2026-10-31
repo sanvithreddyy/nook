@@ -8,9 +8,6 @@ struct HUDGlyph: View {
     let note: NotchNotification
     /// Dark, for the inside of the slider's white fill.
     var dark = false
-    /// Presses that raised or lowered the level: each one bounces the glyph the way it went.
-    var ups = 0
-    var downs = 0
 
     var body: some View {
         Group {
@@ -30,16 +27,15 @@ struct HUDGlyph: View {
                         .id(name)
                         .transition(.blurReplace)
                 }
-            case .brightness(let level):
-                Image(systemName: level < 0.5 ? "sun.min.fill" : "sun.max.fill")
+            case .brightness:
+                // One sun at every level: swapping a small one for a large one made it jump.
+                Image(systemName: "sun.max.fill")
                     .font(.system(size: 15, weight: .semibold))
             default:
                 EmptyView()
             }
         }
         .contentTransition(.symbolEffect(.replace))
-        .symbolEffect(.bounce.up, options: .speed(1.6), value: Motion.reduceMotion ? 0 : ups)
-        .symbolEffect(.bounce.down, options: .speed(1.6), value: Motion.reduceMotion ? 0 : downs)
         .foregroundStyle(dark ? Color(white: 0.16) : .white)
     }
 }
