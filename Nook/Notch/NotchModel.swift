@@ -465,7 +465,6 @@ final class NotchModel {
             isExpanded = true
             peek = nil
         }
-        Haptics.tap()
     }
 
     /// Where the island opens when nothing asks for a page. A page that's gone falls back to the first.
@@ -495,7 +494,6 @@ final class NotchModel {
     func page(_ step: Int) {
         guard isExpanded, let index = cards.firstIndex(of: card), cards.indices.contains(index + step) else { return }
         show(cards[index + step])
-        Haptics.tap()
     }
 
     func setDraggingFile(_ dragging: Bool) {

@@ -277,10 +277,10 @@ final class NotchWindowController {
     private func handleScroll(_ event: NSEvent) {
         guard Prefs.bool(Prefs.swipeGestures), let direction = swipe.consume(event) else { return }
         switch direction {
-        case .down, .up:
-            guard Prefs.bool(Prefs.swipeOpenClose) else { return }
-            if direction == .down, !model.isExpanded { model.expand() }
-            if direction == .up, model.isExpanded { model.collapse() }
+        case .down:
+            if Prefs.bool(Prefs.swipeToOpen), !model.isExpanded { model.expand() }
+        case .up:
+            if Prefs.bool(Prefs.swipeToClose), model.isExpanded { model.collapse() }
         case .left, .right:
             guard Prefs.bool(Prefs.swipeSideways) else { return }
             onSwipe?(direction)

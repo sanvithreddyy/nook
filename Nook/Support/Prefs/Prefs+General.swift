@@ -21,7 +21,9 @@ extension Prefs {
     static let hoverDelay = "hoverDelay"
     static let swipeGestures = "swipeGestures"
     /// Two fingers down opens the island, up closes it.
-    static let swipeOpenClose = "swipeOpenClose"
+    static let swipeToOpen = "swipeToOpen"
+    /// Two fingers up closes it; on its own so a swipe up can't close the island by accident.
+    static let swipeToClose = "swipeToClose"
     /// Two fingers sideways skips tracks, or turns pages when the island is open.
     static let swipeSideways = "swipeSideways"
     /// Every swipe goes the other way.
@@ -58,7 +60,8 @@ extension Prefs {
             expandOnHover: true,
             hoverDelay: 0.18,
             swipeGestures: true,
-            swipeOpenClose: true,
+            swipeToOpen: true,
+            swipeToClose: true,
             swipeSideways: true,
             swipeReversed: false,
             swipeSensitivity: SwipeSensitivity.medium.rawValue,

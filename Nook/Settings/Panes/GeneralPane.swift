@@ -13,7 +13,8 @@ struct GeneralPane: View {
     @AppStorage(Prefs.expandOnHover) private var expandOnHover = true
     @AppStorage(Prefs.hoverDelay) private var hoverDelay = 0.18
     @AppStorage(Prefs.swipeGestures) private var swipeGestures = true
-    @AppStorage(Prefs.swipeOpenClose) private var swipeOpenClose = true
+    @AppStorage(Prefs.swipeToOpen) private var swipeToOpen = true
+    @AppStorage(Prefs.swipeToClose) private var swipeToClose = true
     @AppStorage(Prefs.swipeSideways) private var swipeSideways = true
     @AppStorage(Prefs.swipeReversed) private var swipeReversed = false
     @AppStorage(Prefs.swipeSensitivity) private var swipeSensitivity = SwipeSensitivity.medium
@@ -67,7 +68,7 @@ struct GeneralPane: View {
                     Slider(value: $hoverDelay, in: 0.05...0.6, step: 0.05)
                         .accessibilityLabel("Rest before it responds")
                 }
-                SettingsToggle("Haptic feedback", description: "Felt on the trackpad when the island opens, turns a page, skips a track or takes a file.",
+                SettingsToggle("Haptic feedback", description: "Felt on the trackpad when a file lands on the shelf, a timer ends, or the timer's dial clicks.",
                                isOn: $haptics)
                 SettingsRow("Strength") {
                     Picker("Strength", selection: $hapticStrength) {
@@ -87,7 +88,8 @@ struct GeneralPane: View {
                 SettingsToggle("Swipe gestures", description: "Two fingers on the trackpad, with the pointer on the island.",
                                isOn: $swipeGestures)
                 Group {
-                    SettingsToggle(swipeReversed ? "Up to open, down to close" : "Down to open, up to close", isOn: $swipeOpenClose)
+                    SettingsToggle(swipeReversed ? "Swipe up to open" : "Swipe down to open", isOn: $swipeToOpen)
+                    SettingsToggle(swipeReversed ? "Swipe down to close" : "Swipe up to close", isOn: $swipeToClose)
                     SettingsToggle("Sideways to skip tracks or turn pages", isOn: $swipeSideways)
                     SettingsToggle("Reverse direction", isOn: $swipeReversed)
                     SettingsRow("Sensitivity") {

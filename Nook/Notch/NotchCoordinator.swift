@@ -840,10 +840,8 @@ final class NotchCoordinator {
         switch direction {
         case .left:
             nowPlaying.next()
-            Haptics.tap()
         case .right:
             nowPlaying.previous()
-            Haptics.tap()
         default:
             break
         }
