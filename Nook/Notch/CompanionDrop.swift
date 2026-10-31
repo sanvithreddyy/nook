@@ -129,7 +129,7 @@ nonisolated private struct LiquidShape: Shape {
         return path
     }
 
-    /// The bridge between two equal round ends (after Hiroyuki Sato's metaball curves): tangent points
+    /// The bridge between two equal round ends, drawn as metaball curves: tangent points
     /// spread as they near each other, and the neck pinches off a little past touching.
     static func neck(from c1: CGPoint, _ c2: CGPoint, radius r: CGFloat) -> Path? {
         let d = hypot(c2.x - c1.x, c2.y - c1.y)
