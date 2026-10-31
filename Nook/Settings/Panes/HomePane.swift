@@ -46,6 +46,7 @@ struct HomePane: View {
             WeatherModuleOptions()
             RemindersModuleOptions()
             ClockModuleOptions()
+            ShortcutsModuleOptions()
         }
     }
 
@@ -229,6 +230,50 @@ private struct ClockModuleOptions: View {
                 }
             }
         }
+    }
+}
+
+private struct ShortcutsModuleOptions: View {
+    @AppStorage(Prefs.shortcutsPicked) private var pickedText = ""
+    /// Every shortcut, read when the section shows; nil until then or if Shortcuts can't be read.
+    @State private var all: [String]?
+
+    var body: some View {
+        let picked = ShortcutsModel.picks(from: pickedText)
+        let rest = (all ?? []).filter { !picked.contains($0) }
+        SettingsSection("Shortcuts", footer: "Up to four, in this order. With none picked, the island shows your first four.") {
+            ForEach(picked, id: \.self) { name in
+                HStack(spacing: 10) {
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(name)
+                        if let all, !all.contains(name) {
+                            Text("Not in Shortcuts").font(.caption).foregroundStyle(.secondary)
+                        }
+                    }
+                    Spacer(minLength: 12)
+                    Button { pickedText = ShortcutsModel.json(picked.filter { $0 != name }) } label: {
+                        Image(systemName: "minus.circle.fill")
+                            .foregroundStyle(.secondary)
+                    }
+                    .buttonStyle(.plain)
+                    .help("Remove \(name)")
+                    .accessibilityLabel("Remove \(name)")
+                }
+                .padding(.vertical, 9)
+            }
+            HStack {
+                Menu("Add Shortcut…") {
+                    ForEach(rest, id: \.self) { name in
+                        Button(name) { pickedText = ShortcutsModel.json(picked + [name]) }
+                    }
+                }
+                .fixedSize()
+                .disabled(picked.count >= 4 || rest.isEmpty)
+                Spacer()
+            }
+            .padding(.vertical, 9)
+        }
+        .task { all = await ShortcutsModel.list() }
     }
 }
 

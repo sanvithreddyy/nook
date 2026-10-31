@@ -5,9 +5,10 @@ import SwiftUI
 struct ShortcutsModule: View {
     @Environment(ShortcutsModel.self) private var shortcuts
     @Environment(\.homeScale) private var k
+    @AppStorage(Prefs.shortcutsPicked) private var picked = ""
 
     var body: some View {
-        let names = Array(shortcuts.names.prefix(4))
+        let names = ShortcutsModel.shown(names: shortcuts.names, picked: ShortcutsModel.picks(from: picked))
         Grid(horizontalSpacing: 7 * k, verticalSpacing: 7 * k) {
             ForEach(0..<2, id: \.self) { row in
                 GridRow {

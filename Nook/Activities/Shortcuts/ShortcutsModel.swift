@@ -3,6 +3,7 @@ import Observation
 
 /// The shortcuts the Shortcuts module offers, read and run through macOS's own `shortcuts` tool. macOS
 /// keeps each shortcut's colour and icon to itself, so the module colours them in order.
+/// Settings picks up to four of them; with none picked the module shows the first four.
 @Observable
 final class ShortcutsModel {
     private(set) var names: [String] = []
@@ -17,11 +18,22 @@ final class ShortcutsModel {
         guard !reading else { return }
         reading = true
         Task {
-            let output = await Self.shortcuts(["list"])
+            let found = await Self.list() ?? names
             reading = false
-            let found = output?.split(separator: "\n").map(String.init).filter { !$0.isEmpty } ?? names
             if found != names { names = found }
         }
+    }
+
+    /// Every shortcut by name, as Shortcuts lists them; nil when the tool fails.
+    nonisolated static func list() async -> [String]? {
+        await shortcuts(["list"])?.split(separator: "\n").map(String.init).filter { !$0.isEmpty }
+    }
+
+    /// The four the module shows: the picked ones that still exist, in their order, or the first four
+    /// when none are picked (or none of the picked are left).
+    static func shown(names: [String], picked: [String]) -> [String] {
+        let kept = picked.filter(names.contains)
+        return Array((kept.isEmpty ? names : kept).prefix(4))
     }
 
     func run(_ name: String) {
@@ -49,6 +61,15 @@ final class ShortcutsModel {
             process.waitUntilExit()
             return process.terminationStatus == 0 ? String(decoding: data, as: UTF8.self) : nil
         }.value
+    }
+
+    /// The picked names, saved as a JSON array (names can hold commas).
+    static func picks(from json: String) -> [String] {
+        (try? JSONDecoder().decode([String].self, from: Data(json.utf8))) ?? []
+    }
+
+    static func json(_ picks: [String]) -> String {
+        picks.isEmpty ? "" : String(decoding: (try? JSONEncoder().encode(picks)) ?? Data(), as: UTF8.self)
     }
 
     #if DEBUG

@@ -70,3 +70,24 @@ struct WeatherReportTests {
         #expect(WeatherModel.sky(code: 95, isDay: true).condition == "Thunderstorms")
     }
 }
+
+/// The Shortcuts module shows the picked shortcuts that still exist, or the first four.
+struct ShortcutsPickTests {
+    let all = ["A", "B", "C", "D", "E, with a comma"]
+
+    @Test func noPicksShowsTheFirstFour() {
+        #expect(ShortcutsModel.shown(names: all, picked: []) == ["A", "B", "C", "D"])
+    }
+
+    @Test func picksKeepTheirOrderAndDropMissingOnes() {
+        #expect(ShortcutsModel.shown(names: all, picked: ["E, with a comma", "Gone", "B"]) == ["E, with a comma", "B"])
+        #expect(ShortcutsModel.shown(names: all, picked: ["Gone"]) == ["A", "B", "C", "D"])
+    }
+
+    @Test func picksRoundTripThroughJSON() {
+        let picks = ["E, with a comma", "A"]
+        #expect(ShortcutsModel.picks(from: ShortcutsModel.json(picks)) == picks)
+        #expect(ShortcutsModel.json([]) == "")
+        #expect(ShortcutsModel.picks(from: "").isEmpty)
+    }
+}

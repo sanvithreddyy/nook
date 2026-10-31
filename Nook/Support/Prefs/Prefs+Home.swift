@@ -30,6 +30,8 @@ extension Prefs {
     static let weatherPlaces = "weatherPlaces"
     /// Reminders: the list shown (a calendar identifier); empty is the default list.
     static let remindersList = "remindersList"
+    /// Shortcuts: the ones shown, in order (a JSON array of names); empty is the first four.
+    static let shortcutsPicked = "shortcutsPicked"
 
     static var homeArea: PrefsArea {
         PrefsArea(id: "home", defaults: [
@@ -52,6 +54,7 @@ extension Prefs {
             weatherCurrentLocation: true,
             weatherPlaces: "",
             remindersList: "",
+            shortcutsPicked: "",
         ])
     }
 }
