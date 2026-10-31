@@ -260,6 +260,20 @@ final class NotchCoordinator {
                     switch args[i + 1] {
                     case "low": model.post(.lowBattery(level: 20), for: .seconds(30))
                     case "charging": model.post(.charging(level: 84), for: .seconds(30))
+                    // hudhide: volume up twice and left to go, then brightness up twice and left to go; for
+                    // recording how they leave.
+                    case "hudhide":
+                        for (index, start) in [Float(0.5), 0.56].enumerated() {
+                            @MainActor func show(_ level: Float) {
+                                model.post(index == 0 ? .volume(level: level, muted: false, output: nil) : .brightness(level: level), for: .seconds(1.6))
+                            }
+                            show(start)
+                            for press in 1...2 {
+                                try? await Task.sleep(for: .milliseconds(320))
+                                show(start + Float(press) / 16)
+                            }
+                            try? await Task.sleep(for: .seconds(1.6 + 1.4))
+                        }
                     // hud: volume pressed as people press it: up, up, up, down, mute and back, then held up
                     // to the top and pressed past it; for recording the motion.
                     case "hud":

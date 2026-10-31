@@ -180,7 +180,7 @@ final class NotchWindowController {
         if let outside = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown], handler: { [weak self] _ in
             #if DEBUG
             // A recorded swipe runs on its own while the Mac is in use.
-            if CommandLine.arguments.contains("-preview-swipe") { return }
+            if CommandLine.arguments.contains("-preview-swipe") || Self.ignoresPointer { return }
             #endif
             // Clicking another app also ends Settings' preview, which would otherwise hold the island open.
             IslandPreview.shared.isOn = false
@@ -193,6 +193,13 @@ final class NotchWindowController {
     /// `fromLayoutChange`: the island resized under a still pointer. That can end a hover
     /// but never starts one, so a peek growing under a parked cursor doesn't hold itself open.
     func pointerMoved(fromLayoutChange: Bool = false) {
+        #if DEBUG
+        // -ignore-pointer: a recording runs on its own while the Mac is in use; the pointer passes through.
+        if Self.ignoresPointer {
+            setIgnoresMouse(true)
+            return
+        }
+        #endif
         guard !model.isSuppressed else {
             setIgnoresMouse(true)
             return
@@ -341,6 +348,10 @@ final class NotchWindowController {
     }
 
     private static let pageGain: CGFloat = 1.5
+
+    #if DEBUG
+    private static let ignoresPointer = CommandLine.arguments.contains("-ignore-pointer")
+    #endif
 
     private var pageVelocity: CGFloat {
         guard let first = pageSamples.first, let last = pageSamples.last, last.time > first.time else { return 0 }
