@@ -69,7 +69,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         guard statusItem == nil else { return }
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
-        item.button?.image = NSImage(systemSymbolName: "rectangle.topthird.inset.filled", accessibilityDescription: "Nook")
+        let image = NSImage(named: "MenuBarIcon")
+        image?.accessibilityDescription = "Nook"
+        item.button?.image = image
         let menu = NSMenu()
         menu.addItem(withTitle: "Settings…", action: #selector(openSettings), keyEquivalent: ",").target = self
         menu.addItem(.separator())
