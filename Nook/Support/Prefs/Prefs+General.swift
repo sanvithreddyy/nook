@@ -14,6 +14,8 @@ extension Prefs {
     /// The page the island opens on: OpenTo raw value.
     static let openTo = "openTo"
     static let enableHaptics = "enableHaptics"
+    /// How strongly: HapticStrength raw value.
+    static let hapticStrength = "hapticStrength"
     static let expandOnHover = "expandOnHover"
     /// Seconds the pointer rests on the island before it opens or shows the track.
     static let hoverDelay = "hoverDelay"
@@ -51,6 +53,7 @@ extension Prefs {
             fullscreenMediaOnly: false,
             openTo: OpenTo.whatsHappening.rawValue,
             enableHaptics: true,
+            hapticStrength: HapticStrength.light.rawValue,
             // On: pointing at the notch opens it.
             expandOnHover: true,
             hoverDelay: 0.18,

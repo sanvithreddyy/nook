@@ -213,9 +213,7 @@ struct ScrollDial: NSViewRepresentable {
             while abs(travel) >= Self.detent {
                 let step = travel > 0 ? 1 : -1
                 travel -= CGFloat(step) * Self.detent
-                if onStep?(step) == true, Prefs.bool(Prefs.enableHaptics) {
-                    NSHapticFeedbackManager.defaultPerformer.perform(.levelChange, performanceTime: .now)
-                }
+                if onStep?(step) == true { Haptics.detent() }
             }
         }
     }

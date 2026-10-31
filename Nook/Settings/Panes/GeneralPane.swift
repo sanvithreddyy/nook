@@ -18,6 +18,7 @@ struct GeneralPane: View {
     @AppStorage(Prefs.swipeReversed) private var swipeReversed = false
     @AppStorage(Prefs.swipeSensitivity) private var swipeSensitivity = SwipeSensitivity.medium
     @AppStorage(Prefs.enableHaptics) private var haptics = true
+    @AppStorage(Prefs.hapticStrength) private var hapticStrength = HapticStrength.light
     @AppStorage(Prefs.hideMenuBarIcon) private var hideMenuBarIcon = false
     @AppStorage(Prefs.statusColors) private var statusColors = true
     @AppStorage(Prefs.showCompanion) private var showCompanion = true
@@ -66,7 +67,17 @@ struct GeneralPane: View {
                     Slider(value: $hoverDelay, in: 0.05...0.6, step: 0.05)
                         .accessibilityLabel("Rest before it responds")
                 }
-                SettingsToggle("Haptic feedback", isOn: $haptics)
+                SettingsToggle("Haptic feedback", description: "Felt on the trackpad when the island opens, turns a page, skips a track or takes a file.",
+                               isOn: $haptics)
+                SettingsRow("Strength") {
+                    Picker("Strength", selection: $hapticStrength) {
+                        ForEach(HapticStrength.allCases) { Text($0.title).tag($0) }
+                    }
+                    .segmentedStyle()
+                    // Picked with the trackpad, so it's felt as it's chosen.
+                    .onChange(of: hapticStrength) { _, strength in Haptics.play(strength) }
+                }
+                .disabled(!haptics)
                 SettingsToggle("Hide when an app is full screen", isOn: $hideInFullscreen)
                 SettingsToggle("Only when it's the app that's playing", description: "A video full screen hides the island; other full-screen apps keep it.",
                                isOn: $fullscreenMediaOnly)

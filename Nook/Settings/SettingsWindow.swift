@@ -168,7 +168,7 @@ enum SettingsPane: String, CaseIterable, Identifiable {
                         "Rest before it responds", "Hover delay", "Gestures", "Swipe gestures", "Down to open, up to close",
                         "Up to open, down to close",
                         "Sideways to skip tracks or turn pages", "Reverse direction", "Sensitivity", "Trackpad",
-                        "Haptic feedback", "Hide when an app is full screen", "Appearance", "Theme", "Dark", "Light",
+                        "Haptic feedback", "Strength", "Medium", "Strong", "Hide when an app is full screen", "Appearance", "Theme", "Dark", "Light",
                         "Status colors", "Second activity beside the island", "Shadow under the open island", "Shadow",
                         "Hairline outline", "Outline", "Border", "Hide from screenshots and recordings", "Screen recording",
                         "Screenshot", "App", "Open at login", "Hide the menu bar icon"]
