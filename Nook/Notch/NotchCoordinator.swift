@@ -313,7 +313,9 @@ final class NotchCoordinator {
 
     /// Runs on every defaults change, so each step only acts when its own setting moved.
     private func applyPreferences() {
-        let display = UserDefaults.standard.string(forKey: Prefs.display)
+        // Where the island goes and its shape there.
+        let display = [Prefs.display, Prefs.closedHeight, Prefs.closedHeightCustom, Prefs.notchlessStyle]
+            .map { "\(UserDefaults.standard.object(forKey: $0) ?? "")" }.joined(separator: "|")
         if display != lastAppliedDisplay {
             lastAppliedDisplay = display
             buildWindow()

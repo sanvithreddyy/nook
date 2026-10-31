@@ -170,6 +170,42 @@ enum OpenTo: String, CaseIterable, Identifiable {
 }
 
 /// The screen the island shows on: the built-in one, the main one, or one by name.
+/// How tall the closed island is.
+enum ClosedHeight: String, CaseIterable, Identifiable {
+    /// The notch's own height; on a screen without one, the menu bar's.
+    case notch
+    case menuBar
+    case custom
+    var id: String { rawValue }
+    var title: String {
+        switch self {
+        case .notch: "Notch"
+        case .menuBar: "Menu Bar"
+        case .custom: "Custom"
+        }
+    }
+    static var current: ClosedHeight { ClosedHeight(rawValue: Prefs.string(Prefs.closedHeight)) ?? .notch }
+}
+
+/// What the island is on a screen without a notch.
+enum NotchlessStyle: String, CaseIterable, Identifiable {
+    /// A notch drawn where there isn't one.
+    case notch
+    /// A pill a little below the top edge, as Apple's own Mac island.
+    case pill
+    /// Nothing until there's something to show.
+    case hidden
+    var id: String { rawValue }
+    var title: String {
+        switch self {
+        case .notch: "Notch"
+        case .pill: "Pill"
+        case .hidden: "Hidden"
+        }
+    }
+    static var current: NotchlessStyle { NotchlessStyle(rawValue: Prefs.string(Prefs.notchlessStyle)) ?? .notch }
+}
+
 enum DisplayChoice: Hashable, Identifiable {
     case builtIn, main
     /// While it's unplugged the island waits on the built-in display.

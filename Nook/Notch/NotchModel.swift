@@ -250,7 +250,7 @@ final class NotchModel {
         let slot = notch.slot
         switch presentation {
         case .idle:
-            return IslandLayout(size: n, topRadius: 6, bottomRadius: notch.isHardware ? 10 : 9)
+            return IslandLayout(size: n, topRadius: 6, bottomRadius: notch.isPill ? n.height / 2 : notch.isHardware ? 10 : 9)
         case .activity(let activity):
             // Glyphs sit snug against the notch; a countdown needs room for its longest text.
             switch activity {
@@ -322,7 +322,7 @@ final class NotchModel {
         let home = HomeMetrics.widestPage(HomeConfig(layout: .sideBySide, columns: 3, size: .large))
         let body = CGSize(width: max(home.width, ShelfMetrics.maxWidth, Self.cardWidth), height: max(home.height, ShelfMetrics.height, 104))
         let widest = max(body.width + Self.cardEar * 2, notch.size.width + (notch.slot + 84) * 2)
-        return CGSize(width: widest + 120, height: notch.size.height + body.height + 40)
+        return CGSize(width: widest + 120, height: notch.topInset + notch.size.height + body.height + 40)
     }
 
     // MARK: Live activity

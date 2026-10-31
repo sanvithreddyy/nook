@@ -3,6 +3,11 @@ import Foundation
 extension Prefs {
     static let hideMenuBarIcon = "hideMenuBarIcon"
     static let display = "display"                      // DisplayChoice raw value
+    /// The closed island's height: ClosedHeight raw value, and the points when it's Custom.
+    static let closedHeight = "closedHeight"
+    static let closedHeightCustom = "closedHeightCustom"
+    /// The island on screens without a notch: NotchlessStyle raw value.
+    static let notchlessStyle = "notchlessStyle"
     static let hideInFullscreen = "hideInFullscreen"
     /// Only a full-screen app that is what's playing hides the island (a video, say).
     static let fullscreenMediaOnly = "fullscreenMediaOnly"
@@ -38,6 +43,9 @@ extension Prefs {
         PrefsArea(id: "general", defaults: [
             hideMenuBarIcon: false,
             display: DisplayChoice.builtIn.rawValue,
+            closedHeight: ClosedHeight.notch.rawValue,
+            closedHeightCustom: 32.0,
+            notchlessStyle: NotchlessStyle.notch.rawValue,
             // Off by default: detection of other apps' fullscreen spaces is heuristic.
             hideInFullscreen: false,
             fullscreenMediaOnly: false,

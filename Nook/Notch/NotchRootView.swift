@@ -5,10 +5,17 @@ struct NotchRootView: View {
 
     var body: some View {
         IslandView()
+            .padding(.top, model.notch.topInset)
             .frame(width: model.panelSize.width, height: model.panelSize.height, alignment: .top)
-            .opacity(model.isSuppressed ? 0 : 1)
+            .opacity(model.isSuppressed || isHiddenIdle ? 0 : 1)
             .animation(.easeOut(duration: 0.2), value: model.isSuppressed)
             .preferredColorScheme(.dark)
+            .animation(.easeOut(duration: 0.2), value: isHiddenIdle)
+    }
+
+    /// Hidden on a screen without a notch: nothing shows until there's something to, or the pointer is there.
+    private var isHiddenIdle: Bool {
+        model.notch.hidesWhenIdle && model.settledPresentation == .idle && !model.isHovering
     }
 }
 
@@ -22,7 +29,7 @@ private struct IslandView: View {
 
     var body: some View {
         let layout = model.layout
-        let shape = NotchShape(topRadius: layout.topRadius, bottomRadius: layout.bottomRadius)
+        let shape = NotchShape(topRadius: layout.topRadius, bottomRadius: layout.bottomRadius, pill: model.notch.isPill)
         // Between two kinds of closed content the band shows nothing while it rests at the notch.
         let closed = !model.isExpanded && !model.isHandingOff
 
@@ -59,7 +66,7 @@ private struct IslandView: View {
         .environment(\.islandNamespace, shared)
         .background(shape.fill(LiquidSplit.fill))
         .clipShape(shape)
-        .overlay { if outline { EdgeOutline(shape: shape) } }
+        .overlay { if outline { EdgeOutline(shape: shape, alongTop: model.notch.isPill) } }
         // Only what hangs below the menu bar casts a shadow; compact views sit in it.
         .background(alignment: .top) { Shadow(shape: shape, visible: shadow && (model.isExpanded || (closed && model.peek != nil && model.notification == nil))) }
         .contentShape(shape)
@@ -87,7 +94,7 @@ private struct IslandView: View {
                 Color.clear.frame(width: layout.size.width + NotchModel.companionGap, height: 1)
                 if model.showsCompanion, let companion = model.companion {
                     CompanionDrop(activity: companion)
-                        .transition(.liquidSplit(size: model.companionSize))
+                        .transition(.liquidSplit(size: model.companionSize, pill: model.notch.isPill))
                 }
             }
         }
@@ -197,15 +204,17 @@ private struct PeekRow: View {
     }
 }
 
-/// The island's hairline edge, for the outline setting: not along the top, which is the screen's own edge.
+/// The island's hairline edge, for the outline setting: not along the top, which is the screen's own
+/// edge, unless it's a pill floating below it.
 struct EdgeOutline: View {
     let shape: NotchShape
+    var alongTop = false
 
     var body: some View {
         shape.stroke(.white.opacity(0.22), lineWidth: 1)
             .mask {
                 VStack(spacing: 0) {
-                    Color.clear.frame(height: 1)
+                    Color.clear.frame(height: alongTop ? 0 : 1)
                     Rectangle()
                 }
             }

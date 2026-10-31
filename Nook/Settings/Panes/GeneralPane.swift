@@ -4,6 +4,9 @@ import SwiftUI
 
 struct GeneralPane: View {
     @AppStorage(Prefs.display) private var display = DisplayChoice.builtIn.rawValue
+    @AppStorage(Prefs.closedHeight) private var closedHeight = ClosedHeight.notch
+    @AppStorage(Prefs.closedHeightCustom) private var customHeight = 32.0
+    @AppStorage(Prefs.notchlessStyle) private var notchless = NotchlessStyle.notch
     @AppStorage(Prefs.hideInFullscreen) private var hideInFullscreen = false
     @AppStorage(Prefs.fullscreenMediaOnly) private var fullscreenMediaOnly = false
     @AppStorage(Prefs.openTo) private var openTo = OpenTo.whatsHappening
@@ -32,6 +35,24 @@ struct GeneralPane: View {
                         ForEach(DisplayChoice.choices(keeping: display)) { Text($0.label).tag($0.rawValue) }
                     }
                     .menuStyle()
+                }
+                SettingsRow("Closed height", description: closedHeight == .notch ? nil : "Never shorter than a real notch.") {
+                    Picker("Closed height", selection: $closedHeight) {
+                        ForEach(ClosedHeight.allCases) { Text($0.title).tag($0) }
+                    }
+                    .segmentedStyle()
+                }
+                if closedHeight == .custom {
+                    SettingsRow("Height", value: "\(Int(customHeight)) pt", wide: true) {
+                        Slider(value: $customHeight, in: 24...44, step: 1)
+                            .accessibilityLabel("Height")
+                    }
+                }
+                SettingsRow("Without a notch", description: "On screens that have none: a drawn notch, a pill like Apple's own island, or nothing until there's something to show.") {
+                    Picker("Without a notch", selection: $notchless) {
+                        ForEach(NotchlessStyle.allCases) { Text($0.title).tag($0) }
+                    }
+                    .segmentedStyle()
                 }
                 SettingsToggle("Open when the pointer rests on it", isOn: $expandOnHover)
                 SettingsRow("Opens to", description: openTo == .whatsHappening ? "The page for what the closed island shows: the music, a meeting, a timer." : nil) {

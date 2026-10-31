@@ -23,7 +23,7 @@ final class NotchWindowController {
     init<Content: View>(screen: NSScreen, model: NotchModel, @ViewBuilder content: () -> Content) {
         self.screen = screen
         self.model = model
-        model.notch = screen.notchMetrics
+        model.notch = screen.islandMetrics
         panel = NotchPanel(contentRect: .zero)
         let host = NotchHostingView(rootView: AnyView(content().ignoresSafeArea()))
         host.sizingOptions = []
@@ -63,7 +63,7 @@ final class NotchWindowController {
 
     func place(on screen: NSScreen) {
         self.screen = screen
-        model.notch = screen.notchMetrics
+        model.notch = screen.islandMetrics
         var size = model.maximumSize
         size.width = min(size.width, screen.frame.width)
         model.panelSize = size
@@ -84,15 +84,16 @@ final class NotchWindowController {
 
     private func hitRect() -> CGRect {
         let settled = model.settledPresentation
-        return Self.hitRect(for: model.layout(for: settled), presentation: settled, in: panel.frame)
+        return Self.hitRect(for: model.layout(for: settled), presentation: settled, in: panel.frame, inset: model.notch.topInset)
     }
 
     /// The island's target rect in screen coordinates, padded so the notch is easy to hit.
-    static func hitRect(for layout: IslandLayout, presentation: Presentation, in frame: CGRect) -> CGRect {
+    /// `inset`: a pill starts this far below the top edge; the strip above it counts as the island.
+    static func hitRect(for layout: IslandLayout, presentation: Presentation, in frame: CGRect, inset: CGFloat = 0) -> CGRect {
         var rect = CGRect(x: frame.midX + layout.shift - layout.size.width / 2,
-                          y: frame.maxY - layout.size.height,
+                          y: frame.maxY - layout.size.height - inset,
                           width: layout.size.width,
-                          height: layout.size.height)
+                          height: layout.size.height + inset)
         switch presentation {
         case .idle:
             rect = rect.insetBy(dx: -10, dy: 0)
@@ -117,15 +118,15 @@ final class NotchWindowController {
     /// The drop beside the island (a timer, a meeting about to start), when it shows.
     private func companionRect() -> CGRect? {
         guard model.showsCompanion else { return nil }
-        return Self.companionRect(island: model.layout, drop: model.companionSize, in: panel.frame)
+        return Self.companionRect(island: model.layout, drop: model.companionSize, in: panel.frame, inset: model.notch.topInset)
     }
 
     /// The drop's target rect: just right of the island, padded a little below like the island's.
-    static func companionRect(island: IslandLayout, drop: CGSize, in frame: CGRect) -> CGRect {
+    static func companionRect(island: IslandLayout, drop: CGSize, in frame: CGRect, inset: CGFloat = 0) -> CGRect {
         var rect = CGRect(x: frame.midX + island.shift + island.size.width / 2 + NotchModel.companionGap,
-                          y: frame.maxY - drop.height,
+                          y: frame.maxY - drop.height - inset,
                           width: drop.width,
-                          height: drop.height)
+                          height: drop.height + inset)
         rect.origin.y -= 4
         // Same reach past the top edge as the island, for a pointer pushed into the menu bar.
         rect.size.height += 5

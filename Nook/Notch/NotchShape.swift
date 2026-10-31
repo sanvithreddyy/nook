@@ -2,9 +2,12 @@ import SwiftUI
 
 /// The island outline: concave "ears" where it meets the top edge, smoothed (squircle-like) bottom corners.
 /// Drawn as one closed outline so there is no anti-aliasing seam between the ears and the body.
+/// As a pill (screens without a notch) it floats free of the top edge like Apple's own Mac island: the
+/// same body, every corner round, and no ears.
 nonisolated struct NotchShape: Shape {
     var topRadius: CGFloat
     var bottomRadius: CGFloat
+    var pill = false
 
     var animatableData: AnimatablePair<CGFloat, CGFloat> {
         get { AnimatablePair(topRadius, bottomRadius) }
@@ -17,6 +20,10 @@ nonisolated struct NotchShape: Shape {
     func path(in rect: CGRect) -> Path {
         let w = rect.width, h = rect.height
         let ear = max(0, min(topRadius, w / 4, h / 2))
+        if pill {
+            let body = rect.insetBy(dx: ear, dy: 0)
+            return RoundedRectangle(cornerRadius: max(0, min(bottomRadius, body.height / 2, body.width / 2)), style: .continuous).path(in: body)
+        }
         let bodyWidth = w - ear * 2
         // A smoothed corner starts 1.5 radii from the corner; the control points sit close to it,
         // so curvature ramps up from zero instead of jumping like a circular arc.

@@ -10,7 +10,7 @@ struct CompanionDrop: View {
 
     var body: some View {
         let size = model.companionSize
-        let shape = NotchShape(topRadius: NotchModel.companionEar, bottomRadius: size.height / 2)
+        let shape = NotchShape(topRadius: NotchModel.companionEar, bottomRadius: size.height / 2, pill: model.notch.isPill)
         Group {
             switch activity {
             case .calendar(let id): MeetingDropContent(eventID: id)
@@ -21,7 +21,7 @@ struct CompanionDrop: View {
         .frame(width: size.width, height: size.height)
         .background { if Motion.reduceMotion { shape.fill(.black) } }
         // The island's outline goes round the drop too, arriving with its content as it settles.
-        .overlay { if outline { EdgeOutline(shape: shape) } }
+        .overlay { if outline { EdgeOutline(shape: shape, alongTop: model.notch.isPill) } }
         .contentShape(shape)
         .onTapGesture { if let card = activity.card { model.expand(card: card) } }
         .accessibilityElement(children: .combine)
@@ -56,6 +56,7 @@ private struct MeetingDropContent: View {
 struct LiquidSplit: ViewModifier, Animatable {
     var progress: CGFloat
     let size: CGSize
+    var pill = false
 
     var animatableData: CGFloat {
         get { progress }
@@ -78,7 +79,7 @@ struct LiquidSplit: ViewModifier, Animatable {
             // These follow `progress` frame by frame; animating them again on top makes them lag.
             .transaction { $0.animation = nil }
             .background(alignment: .topLeading) {
-                LiquidShape(geometry: geometry)
+                LiquidShape(geometry: geometry, pill: pill)
                     .fill(Self.fill)
                     .frame(width: size.width, height: size.height)
             }
@@ -87,10 +88,10 @@ struct LiquidSplit: ViewModifier, Animatable {
 
 extension AnyTransition {
     /// The drop splitting off the island's right end, and merging back.
-    static func liquidSplit(size: CGSize) -> AnyTransition {
+    static func liquidSplit(size: CGSize, pill: Bool = false) -> AnyTransition {
         // Reduce Motion: the drop fades in where it rests instead of travelling.
         if Motion.reduceMotion { return .opacity.animation(Motion.ease(.easeOut(duration: 0.2))) }
-        return .modifier(active: LiquidSplit(progress: 0, size: size), identity: LiquidSplit(progress: 1, size: size))
+        return .modifier(active: LiquidSplit(progress: 0, size: size, pill: pill), identity: LiquidSplit(progress: 1, size: size, pill: pill))
             .animation(Motion.ease(.spring(duration: 0.62, bounce: 0.22)))
     }
 }
@@ -115,11 +116,12 @@ nonisolated struct SplitGeometry {
 
 nonisolated private struct LiquidShape: Shape {
     let geometry: SplitGeometry
+    let pill: Bool
 
     func path(in rect: CGRect) -> Path {
         let r = geometry.radius
         let ear = geometry.ear
-        var path = NotchShape(topRadius: ear, bottomRadius: r)
+        var path = NotchShape(topRadius: ear, bottomRadius: r, pill: pill)
             .path(in: CGRect(x: geometry.dropCenter - r - ear, y: 0, width: r * 2 + ear * 2, height: rect.height))
         if let neck = Self.neck(from: CGPoint(x: geometry.islandCenter, y: r), CGPoint(x: geometry.dropCenter, y: r), radius: r) {
             path.addPath(neck)

@@ -44,6 +44,12 @@ enum SnapshotRenderer {
             ("21a-timer-paused", { c.nowPlaying.debugClear(); c.timer.debugShow(.paused(remaining: 754), total: 900); m.expand(card: .timer) }),
             ("21b-timer-done", { c.nowPlaying.debugClear(); c.timer.debugShow(.done, total: 300); m.expand(card: .timer) }),
             ("22-meeting-under-way", { c.nowPlaying.debugClear(); c.timer.debugShow(.idle, total: 0); c.calendar.debugPreview(meetingSoon: true, startsIn: -240); c.debugRefresh(); m.expand() }),
+            // Last: a screen without a notch, with the island as a pill.
+            ("23-pill-idle", { m.notch = NotchMetrics(size: CGSize(width: 185, height: 32), isHardware: false, isPill: true) }),
+            ("23a-pill-playing", { c.nowPlaying.previewPlaying(); c.timer.debugShow(.idle, total: 0); c.calendar.debugPreview(); c.debugRefresh() }),
+            ("23b-pill-volume", { m.post(.volume(level: 0.56, muted: false, output: nil)) }),
+            ("23c-pill-low-battery", { m.post(.lowBattery(level: 20)) }),
+            ("23d-pill-open", { c.nowPlaying.previewPlaying(); c.debugRefresh(); m.expand() }),
         ]
         Task { @MainActor in
             // Let the now-playing stream deliver real metadata first.

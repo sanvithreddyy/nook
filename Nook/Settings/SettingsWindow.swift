@@ -136,7 +136,8 @@ enum SettingsPane: String, CaseIterable, Identifiable {
     /// A test checks each row label in Settings/Panes is listed here.
     var keywords: [String] {
         switch self {
-        case .general: ["Island", "Show on", "Display", "Screen", "Monitor", "Open when the pointer rests on it", "Hover",
+        case .general: ["Island", "Show on", "Display", "Screen", "Monitor", "Closed height", "Notch", "Menu Bar", "Custom", "Height",
+                        "Without a notch", "Pill", "Hidden", "All Displays", "Open when the pointer rests on it", "Hover",
                         "Opens to", "What's happening", "Last page", "Only when it's the app that's playing", "Full screen",
                         "Video",
                         "Rest before it responds", "Hover delay", "Gestures", "Swipe gestures", "Down to open, up to close",
