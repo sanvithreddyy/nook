@@ -16,6 +16,8 @@ enum SnapshotRenderer {
         // No panel in this mode; the island is drawn on a canvas of this size instead.
         m.panelSize = size
         let wallpaper = NSImage(contentsOfFile: "/System/Library/Desktop Pictures/Sonoma.heic")
+        let two = [("New York", "America/New_York"), ("Bengaluru", "Asia/Kolkata")]
+        let four = [("Chicago", "America/Chicago"), ("Hyderabad", "Asia/Kolkata"), ("London", "Europe/London"), ("Tokyo", "Asia/Tokyo")]
         let states: [(String, () -> Void)] = [
             ("01-idle", {}),
             ("02-hover", { m.setHovering(true) }),
@@ -44,6 +46,10 @@ enum SnapshotRenderer {
             ("21a-timer-paused", { c.nowPlaying.debugClear(); c.timer.debugShow(.paused(remaining: 754), total: 900); m.expand(card: .timer) }),
             ("21b-timer-done", { c.nowPlaying.debugClear(); c.timer.debugShow(.done, total: 300); m.expand(card: .timer) }),
             ("22-meeting-under-way", { c.nowPlaying.debugClear(); c.timer.debugShow(.idle, total: 0); c.calendar.debugPreview(meetingSoon: true, startsIn: -240); c.debugRefresh(); m.expand() }),
+            ("24-clock-two", { SnapshotRenderer.clock(two, .analog); c.nowPlaying.previewPlaying(); c.debugRefresh(); m.expand(card: .home([.clock])) }),
+            ("24a-clock-four", { SnapshotRenderer.clock(four, .analog); c.debugRefresh(); m.expand(card: .home([.calendar, .clock])) }),
+            ("24b-digital-two", { SnapshotRenderer.clock(two, .digital); c.debugRefresh(); m.expand(card: .home([.clock])) }),
+            ("24c-digital-four", { SnapshotRenderer.clock(four, .digital); c.debugRefresh(); m.expand(card: .home([.calendar, .clock])) }),
             // Last: a screen without a notch, with the island as a pill.
             ("23-pill-idle", { m.notch = NotchMetrics(size: CGSize(width: 185, height: 32), isHardware: false, isPill: true) }),
             ("23a-pill-playing", { c.nowPlaying.previewPlaying(); c.timer.debugShow(.idle, total: 0); c.calendar.debugPreview(); c.debugRefresh() }),
@@ -63,6 +69,14 @@ enum SnapshotRenderer {
             }
             NSApp.terminate(nil)
         }
+    }
+
+    /// World Clock cities and style for this run only; nothing is saved.
+    static func clock(_ cities: [(String, String)], _ style: ClockStyle) {
+        UserDefaults.standard.setVolatileDomain([
+            Prefs.clockPlaces: Place.json(cities.map { Place(name: $0.0, latitude: 0, longitude: 0, timeZoneID: $0.1) }),
+            Prefs.clockStyle: style.rawValue,
+        ], forName: UserDefaults.argumentDomain)
     }
 
     static var sampleFiles: [URL] {

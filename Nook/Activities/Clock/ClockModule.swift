@@ -68,8 +68,9 @@ enum ClockStyle: String, CaseIterable, Identifiable {
     }
 }
 
-/// Apple's World Clock widget on the notch: four clocks, each with its city, its day and how far it is
-/// from here. A face is white in its daytime and dark at night, as Apple draws them; the second hand ticks.
+/// Apple's World Clock on the notch, in either style. Analog: a face per city, as macOS's Clock draws
+/// them, with the city, its day and how far it is from here under each; the faces grow into the room
+/// the page gives them. Digital: Clock's World Clock list, a row per city with the time large on the right.
 struct ClockModule: View {
     @Environment(\.homeScale) private var k
     @AppStorage(Prefs.clockPlaces) private var placesJSON = ""
@@ -80,47 +81,93 @@ struct ClockModule: View {
         // Faces tick each second; digits change on the minute.
         let minute = Calendar.current.dateInterval(of: .minute, for: .now)?.start ?? .now
         TimelineView(.periodic(from: minute, by: style == .analog ? 1 : 60)) { context in
+            switch style {
+            case .analog: AnalogClocks(cities: cities, date: context.date)
+            case .digital: DigitalClocks(cities: cities, date: context.date)
+            }
+        }
+    }
+}
+
+/// A face per city side by side, each as large as its share of the width and the height left under it
+/// for the three lines allow.
+private struct AnalogClocks: View {
+    @Environment(\.homeScale) private var k
+    let cities: [ClockCity]
+    let date: Date
+
+    var body: some View {
+        GeometryReader { geometry in
+            let cell = geometry.size.width / CGFloat(max(cities.count, 1))
+            let labels = 52 * k
+            let diameter = max(min(cell * 0.8, geometry.size.height - labels, 112 * k), 0)
             HStack(spacing: 0) {
                 ForEach(cities) { city in
                     VStack(spacing: 0) {
-                        Group {
-                            switch style {
-                            case .analog:
-                                ClockFace(date: context.date, timeZone: city.timeZone)
-                                    .frame(width: 66 * k)
-                            case .digital:
-                                // One size for all, set by how many share the width: "10:30 PM" fits four across.
-                                DigitalTime(date: context.date, timeZone: city.timeZone, size: cities.count > 3 ? 22 : cities.count > 2 ? 26 : 30)
-                                    .padding(.horizontal, 3 * k)
-                            }
-                        }
-                        .frame(height: 66 * k)
+                        ClockFace(date: date, timeZone: city.timeZone)
+                            .frame(width: diameter, height: diameter)
                         Text(city.name)
                             .font(.system(size: 12.5 * k, weight: .semibold))
                             .foregroundStyle(.white)
                             .lineLimit(1)
                             .padding(.top, 9 * k)
                         Group {
-                            Text(city.day(at: context.date))
-                            Text(city.offset(at: context.date))
+                            Text(city.day(at: date))
+                            Text(city.offset(at: date))
                         }
                         .font(.system(size: 11 * k, weight: .semibold))
                         .foregroundStyle(.white.opacity(0.5))
                     }
                     .frame(maxWidth: .infinity)
                     .accessibilityElement(children: .ignore)
-                    .accessibilityLabel("\(city.name), \(context.date.formatted(Date.FormatStyle(time: .shortened, timeZone: city.timeZone)))")
+                    .accessibilityLabel("\(city.name), \(date.formatted(Date.FormatStyle(time: .shortened, timeZone: city.timeZone)))")
                 }
             }
-            .frame(maxHeight: .infinity)
+            .frame(width: geometry.size.width, height: geometry.size.height)
         }
     }
 }
 
-/// The time there in large light digits, AM or PM small beside them where the Mac uses a 12-hour clock,
-/// as Clock's World Clock list writes it.
-private struct DigitalTime: View {
+/// Clock's World Clock list: a row per city, "Today, +1HRS" in grey over the city's name on the left and
+/// the time in large light digits on the right, hairlines between. The rows share the height.
+private struct DigitalClocks: View {
     @Environment(\.homeScale) private var k
+    let cities: [ClockCity]
+    let date: Date
+
+    var body: some View {
+        GeometryReader { geometry in
+            let row = geometry.size.height / CGFloat(max(cities.count, 1))
+            VStack(spacing: 0) {
+                ForEach(Array(cities.enumerated()), id: \.element.id) { index, city in
+                    HStack(alignment: .center, spacing: 12 * k) {
+                        VStack(alignment: .leading, spacing: 0) {
+                            Text("\(city.day(at: date)), \(city.offset(at: date))")
+                                .font(.system(size: min(max(row * 0.19, 11 * k), 13 * k)))
+                                .foregroundStyle(.white.opacity(0.5))
+                            Text(city.name)
+                                .font(.system(size: min(max(row * 0.28, 14 * k), 21 * k)))
+                                .foregroundStyle(.white)
+                        }
+                        .lineLimit(1)
+                        Spacer(minLength: 0)
+                        DigitalTime(date: date, timeZone: city.timeZone, size: min(row * 0.6, 46 * k))
+                    }
+                    .frame(height: row)
+                    .overlay(alignment: .top) {
+                        if index > 0 { Rectangle().fill(.white.opacity(0.14)).frame(height: 1 / 2) }
+                    }
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel("\(city.name), \(date.formatted(Date.FormatStyle(time: .shortened, timeZone: city.timeZone)))")
+                }
+            }
+        }
+    }
+}
+
+/// The time there in large light digits, AM or PM smaller in the same weight where the Mac uses a
+/// 12-hour clock, as Clock's World Clock list writes it.
+private struct DigitalTime: View {
     let date: Date
     let timeZone: TimeZone
     let size: CGFloat
@@ -128,25 +175,29 @@ private struct DigitalTime: View {
     var body: some View {
         let style = Date.FormatStyle(timeZone: timeZone)
         let digits = Text(date.formatted(style.hour(.defaultDigits(amPM: .omitted)).minute()))
-            .font(.system(size: size * k, weight: .light).monospacedDigit())
-        let half = Text(Self.twelveHour ? " " + date.formatted(style.hour(.defaultDigits(amPM: .abbreviated))).filter(\.isLetter) : "")
-            .font(.system(size: 11 * k, weight: .semibold))
-        // One text, so a time too wide for its column shrinks rather than overlapping its neighbour.
-        Text("\(digits)\(half)")
+            .font(.system(size: size, weight: .light).monospacedDigit())
+        let half = Text(Self.twelveHour ? date.formatted(style.hour(.defaultDigits(amPM: .abbreviated))).filter(\.isLetter) : "")
+            .font(.system(size: size * 0.5, weight: .light))
+        Text("\(digits)\(Text(Self.twelveHour ? "\u{2009}" : ""))\(half)")
             .foregroundStyle(.white)
             .lineLimit(1)
-            .minimumScaleFactor(0.6)
+            .fixedSize()
             .contentTransition(.numericText())
     }
 
     private static let twelveHour = DateFormatter.dateFormat(fromTemplate: "j", options: 0, locale: .current)?.contains("a") ?? false
 }
 
-/// An analog face with its twelve numbers, the hour and minute hands narrowing to a thin neck at the
-/// centre, and an orange second hand.
+/// An analog face as macOS's Clock draws it, measured from Clock on macOS 27 at 2x: numerals near the rim,
+/// thin hands with round ends, a ring at the centre in the hands' colour holding the orange second hand's
+/// dot, and the second hand a hairline with a short tail. White in the city's daytime; at night grey,
+/// since Clock's black face would vanish on the black island.
 private struct ClockFace: View {
     let date: Date
     let timeZone: TimeZone
+
+    /// Clock's second hand, measured.
+    private static let orange = Color(red: 0.957, green: 0.655, blue: 0.349)
 
     var body: some View {
         Canvas { context, size in
@@ -163,33 +214,30 @@ private struct ClockFace: View {
             context.fill(Path(ellipseIn: CGRect(x: c.x - r, y: c.y - r, width: r * 2, height: r * 2)), with: .color(face))
             for n in 1...12 {
                 let angle = Double(n) / 12 * 2 * .pi
-                let at = CGPoint(x: c.x + sin(angle) * r * 0.76, y: c.y - cos(angle) * r * 0.76)
-                context.draw(Text("\(n)").font(.system(size: r * 0.235, weight: .semibold)).foregroundStyle(ink), at: at)
+                // Digits sit a little high in their line, so the centre moves down to centre them optically.
+                let at = CGPoint(x: c.x + sin(angle) * r * 0.79, y: c.y - cos(angle) * r * 0.79 + r * 0.015)
+                context.draw(Text("\(n)").font(.system(size: r * 0.27, weight: .semibold)).foregroundStyle(ink), at: at)
             }
 
             func point(_ fraction: Double, _ length: CGFloat) -> CGPoint {
                 let angle = fraction * 2 * .pi
                 return CGPoint(x: c.x + sin(angle) * length, y: c.y - cos(angle) * length)
             }
-            func hand(_ fraction: Double, length: CGFloat, color: Color) {
-                var neck = Path()
-                neck.move(to: c)
-                neck.addLine(to: point(fraction, r * 0.16))
-                context.stroke(neck, with: .color(color), style: StrokeStyle(lineWidth: r * 0.05, lineCap: .round))
-                var blade = Path()
-                blade.move(to: point(fraction, r * 0.16))
-                blade.addLine(to: point(fraction, length))
-                context.stroke(blade, with: .color(color), style: StrokeStyle(lineWidth: r * 0.1, lineCap: .round))
+            func hand(_ fraction: Double, length: CGFloat, width: CGFloat) {
+                var line = Path()
+                line.move(to: c)
+                line.addLine(to: point(fraction, length))
+                context.stroke(line, with: .color(ink), style: StrokeStyle(lineWidth: width, lineCap: .round))
             }
-            hand((hour.truncatingRemainder(dividingBy: 12) + minute / 60) / 12, length: r * 0.5, color: ink)
-            hand((minute + second / 60) / 60, length: r * 0.8, color: ink)
+            hand((hour.truncatingRemainder(dividingBy: 12) + minute / 60) / 12, length: r * 0.5, width: r * 0.045)
+            hand((minute + second / 60) / 60, length: r * 0.9, width: r * 0.038)
+            context.fill(Path(ellipseIn: CGRect(x: c.x - r * 0.05, y: c.y - r * 0.05, width: r * 0.1, height: r * 0.1)), with: .color(ink))
 
             var seconds = Path()
-            seconds.move(to: point(second / 60 + 0.5, r * 0.18))
-            seconds.addLine(to: point(second / 60, r * 0.88))
-            context.stroke(seconds, with: .color(.orange), style: StrokeStyle(lineWidth: r * 0.035, lineCap: .round))
-            context.fill(Path(ellipseIn: CGRect(x: c.x - r * 0.075, y: c.y - r * 0.075, width: r * 0.15, height: r * 0.15)), with: .color(.orange))
-            context.fill(Path(ellipseIn: CGRect(x: c.x - r * 0.03, y: c.y - r * 0.03, width: r * 0.06, height: r * 0.06)), with: .color(face))
+            seconds.move(to: point(second / 60 + 0.5, r * 0.11))
+            seconds.addLine(to: point(second / 60, r * 0.9))
+            context.stroke(seconds, with: .color(Self.orange), style: StrokeStyle(lineWidth: max(r * 0.017, 1), lineCap: .butt))
+            context.fill(Path(ellipseIn: CGRect(x: c.x - r * 0.026, y: c.y - r * 0.026, width: r * 0.052, height: r * 0.052)), with: .color(Self.orange))
         }
     }
 }
