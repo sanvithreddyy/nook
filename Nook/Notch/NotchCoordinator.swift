@@ -81,7 +81,8 @@ final class NotchCoordinator {
         }
         battery.onLowPowerModeChange = { [weak self] on in
             guard Prefs.bool(Prefs.battery), Prefs.bool(Prefs.lowPowerNotice) else { return }
-            self?.everyIsland { $0.post(.lowPowerMode(on: on), for: .seconds(2.2)) }
+            let level = self?.battery.reading?.level ?? 100
+            self?.everyIsland { $0.post(.lowPowerMode(on: on, level: level), for: .seconds(2.2)) }
         }
         battery.start()
 
@@ -234,6 +235,11 @@ final class NotchCoordinator {
                     switch args[i + 1] {
                     case "low": model.post(.lowBattery(level: 20), for: .seconds(30))
                     case "charging": model.post(.charging(level: 84), for: .seconds(30))
+                    // lowpower: on, then off in place a moment later, for recording the switch.
+                    case "lowpower":
+                        model.post(.lowPowerMode(on: true, level: 62), for: .seconds(2.2))
+                        try? await Task.sleep(for: .seconds(1.4))
+                        model.post(.lowPowerMode(on: false, level: 62), for: .seconds(2.2))
                     case "switch": model.post(.audioSwitched(symbol: "airpods.pro.gen1"), for: .seconds(30))
                     default: model.post(.device(name: "AirPods Pro", symbol: "airpods.pro.gen1", battery: 87), for: .seconds(30))
                     }

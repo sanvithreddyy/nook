@@ -38,7 +38,8 @@ enum NotchNotification: Equatable {
     case charging(level: Int)
     case onBattery(level: Int)
     case lowBattery(level: Int)
-    case lowPowerMode(on: Bool)
+    /// With the Mac's battery level, drawn beside On or Off.
+    case lowPowerMode(on: Bool, level: Int)
     case device(name: String, symbol: String, battery: Int?)
     /// Sound moved to these headphones (AirPods' automatic switching, or picked in Control Center).
     case audioSwitched(symbol: String)
@@ -269,8 +270,10 @@ final class NotchModel {
             case .charging(let level), .onBattery(let level), .lowBattery(let level):
                 return compact(leading: Compact.textSide(note.title),
                                trailing: Compact.inner + Compact.textWidth("\(level)%", digits: true) + 6 + Compact.battery + Compact.outer - 3)
-            case .lowPowerMode(let on):
-                return compact(leading: Compact.textSide(note.title), trailing: Compact.textSide(on ? "On" : "Off"))
+            case .lowPowerMode:
+                // As wide for On as for Off, so switching only changes the words.
+                let word = max(Compact.textWidth("On"), Compact.textWidth("Off"))
+                return compact(leading: Compact.textSide(note.title), trailing: Compact.inner + word + 6 + Compact.battery + Compact.outer - 3)
             case .device, .audioSwitched:
                 return compact(leading: slot, trailing: slot)
             }

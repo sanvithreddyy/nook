@@ -28,11 +28,22 @@ struct NotificationSide: View {
                 battery(level: level, style: .normal)
             case .lowBattery(let level):
                 battery(level: level, style: .low)
-            case .lowPowerMode(let on):
+            case .lowPowerMode(let on, let level):
+                // Like Charging and Low Battery: what it is on the left; on the right On in yellow beside the
+                // battery drawn yellow, as macOS's own battery turns in Low Power Mode, or Off beside a plain one.
                 if edge == .leading {
                     words(note.title)
                 } else {
-                    words(on ? "On" : "Off", color: on ? .status(.yellow) : .white.opacity(0.6), edge: .trailing)
+                    HStack(spacing: 6) {
+                        Text(on ? "On" : "Off")
+                            .font(.system(size: Compact.fontSize, weight: .semibold))
+                            .foregroundStyle(on ? Color.status(.yellow) : .white.opacity(0.6))
+                            .contentTransition(.interpolate)
+                        BatteryGlyph(level: Double(level) / 100, style: on ? .lowPower : .normal)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .trailing)
+                    .padding(.trailing, Compact.outer - 3)
+                    .animation(Motion.level, value: on)
                 }
             case .device(_, let symbol, let battery):
                 if edge == .leading {

@@ -31,6 +31,8 @@ enum SnapshotRenderer {
             ("09-charging", { m.post(.charging(level: 84)) }),
             ("10-on-battery", { m.post(.onBattery(level: 84)) }),
             ("11-low-battery", { m.post(.lowBattery(level: 20)) }),
+            ("11a-low-power-on", { m.post(.lowPowerMode(on: true, level: 62)) }),
+            ("11b-low-power-off", { m.post(.lowPowerMode(on: false, level: 62)) }),
             ("12a-device-no-level", { m.post(.device(name: "Magic Keyboard", symbol: "keyboard", battery: nil)) }),
             ("12-device", { m.post(.device(name: "AirPods Pro", symbol: "airpods.pro.gen1", battery: 87)) }),
             ("12b-audio-switched", { m.post(.audioSwitched(symbol: "airpods.pro.gen1")) }),
