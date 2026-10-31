@@ -131,6 +131,9 @@ final class NowPlayingModel {
             let sample = "/System/Library/Desktop Pictures/.thumbnails/Big Sur Night Grasses.heic"
             if let data = FileManager.default.contents(atPath: sample) { loadArtwork(data) }
         }
+        // -preview-player <bundle id>: the app the track plays in, to check what depends on it.
+        let args = CommandLine.arguments
+        if let i = args.firstIndex(of: "-preview-player"), i + 1 < args.count { bundleIdentifier = args[i + 1] }
         elapsedAtTimestamp = duration * 0.3
         elapsedTimestamp = Date()
         isPlaying = true

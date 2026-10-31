@@ -40,6 +40,9 @@ final class NotchCoordinator {
     private var pauseGraceTask: Task<Void, Never>?
     private var permissionTask: Task<Void, Never>?
     private var nowPlayingVisible = false
+    /// The player's own app is full screen, as when a video plays, and Settings asks for the closed
+    /// island to leave it out then.
+    private var playerFullscreen = false
     /// A low-battery warning raised while the island was hidden, shown once it's back.
     private var pendingLowBattery: Int?
 
@@ -404,8 +407,6 @@ final class NotchCoordinator {
         for name in [NSWorkspace.activeSpaceDidChangeNotification, NSWorkspace.didActivateApplicationNotification] {
             observers.append(workspace.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
                 Task { @MainActor in
-                    // The player's app may have come to the front, or left it.
-                    self?.refreshActivity()
                     // Space switches finish animating after the notification; check again once settled.
                     self?.updateFullscreen()
                     try? await Task.sleep(for: .milliseconds(450))
@@ -518,22 +519,30 @@ final class NotchCoordinator {
         }
     }
 
-    /// Each island hides for a full-screen app on its own screen.
+    /// Each island hides for a full-screen app on its own screen, and the closed island leaves out what's
+    /// playing while the player itself is full screen.
     private func updateFullscreen() {
         var shown = false
+        // An app left out of the island under Apps still counts: its video is still what's playing.
+        let playing = nowPlaying.title.isEmpty ? nil : nowPlaying.bundleIdentifier
+        let hidesIsland = Prefs.bool(Prefs.hideInFullscreen)
+        let hidesPlayer = playing != nil && Prefs.bool(Prefs.hideWhenPlayerFullscreen)
+        var playerFull = false
         for island in islands {
-            var hide = false
-            if Prefs.bool(Prefs.hideInFullscreen), let owner = FullscreenDetector.fullscreenApp(on: island.window.screen) {
-                // Only the app that's playing, if asked: a video full screen, not a full-screen editor. An app
-                // left out of the island under Apps still counts: its video is still what's playing.
-                hide = !Prefs.bool(Prefs.fullscreenMediaOnly)
-                    || (!nowPlaying.title.isEmpty && NSRunningApplication(processIdentifier: owner)?.bundleIdentifier == nowPlaying.bundleIdentifier)
-            }
+            let owner = hidesIsland || hidesPlayer ? FullscreenDetector.fullscreenApp(on: island.window.screen) : nil
+            let ownerIsPlayer = playing != nil && owner.flatMap { NSRunningApplication(processIdentifier: $0)?.bundleIdentifier } == playing
+            if ownerIsPlayer { playerFull = true }
+            // Only the app that's playing, if asked: a video full screen, not a full-screen editor.
+            let hide = owner != nil && hidesIsland && (!Prefs.bool(Prefs.fullscreenMediaOnly) || ownerIsPlayer)
             guard hide != island.model.isSuppressed else { continue }
             island.model.isSuppressed = hide
             if hide { island.model.collapse() }
             island.window.setSuppressed(hide)
             if !hide { shown = true }
+        }
+        if (hidesPlayer && playerFull) != playerFullscreen {
+            playerFullscreen = hidesPlayer && playerFull
+            refreshActivity()
         }
         if shown, let level = pendingLowBattery {
             pendingLowBattery = nil
@@ -626,7 +635,7 @@ final class NotchCoordinator {
     /// to start. The first is the island's own activity; the next becomes the drop beside it.
     private func liveActivities() -> [LiveActivity] {
         var live: [LiveActivity] = []
-        if Prefs.bool(Prefs.nowPlaying), nowPlaying.hasTrack, nowPlayingVisible, !playerInFront { live.append(.nowPlaying) }
+        if Prefs.bool(Prefs.nowPlaying), nowPlaying.hasTrack, nowPlayingVisible, !playerFullscreen { live.append(.nowPlaying) }
         var timed: [(activity: LiveActivity, due: Date)] = []
         if timer.isActive { timed.append((.timer, .now.addingTimeInterval(timer.remaining()))) }
         if Prefs.bool(Prefs.calendar), let meeting = calendar.eventForLiveActivity() { timed.append((.calendar(id: meeting.id), meeting.start)) }
@@ -790,12 +799,6 @@ final class NotchCoordinator {
                 self?.observeModuleData()
             }
         }
-    }
-
-    /// The player's own app is in front and Settings asks for the island to leave it alone then.
-    private var playerInFront: Bool {
-        Prefs.bool(Prefs.hideWhenPlayerFront) && nowPlaying.bundleIdentifier != nil
-            && NSWorkspace.shared.frontmostApplication?.bundleIdentifier == nowPlaying.bundleIdentifier
     }
 
     private func playbackChanged() {

@@ -181,7 +181,7 @@ enum SettingsPane: String, CaseIterable, Identifiable {
                      "Add City", "Reminders", "List", "World Clock", "Time zones", "Cities", "Style", "Analog", "Digital", "Shortcuts", "Add Shortcut", "Timer"]
         case .nowPlaying: ["Preview on the notch", "Show what's playing", "Closed island", "Waveform", "Color the waveform from the artwork",
                            "Show the title when the track changes", "Show the title on hover", "Artwork", "Keep a paused player",
-                           "Paused", "Hide while the player is in front", "Show it for", "Peek", "Apps", "Sources", "Browser",
+                           "Paused", "Hide while the player is full screen", "Show it for", "Peek", "Apps", "Sources", "Browser",
                            "Flip the artwork when the track changes", "Album art", "Music", "Media"]
         case .calendar: ["Preview on the notch", "Show upcoming events", "Show a meeting in the notch", "Access", "Calendar access", "Events",
                          "Once it starts", "Leave the notch", "Stay until it ends", "When an event starts",

@@ -11,7 +11,7 @@ struct NowPlayingPane: View {
     @AppStorage(Prefs.artworkFlip) private var artworkFlip = true
     @AppStorage(Prefs.pausedLinger) private var pausedLinger = 5
     @AppStorage(Prefs.peekDuration) private var peekDuration = 3.0
-    @AppStorage(Prefs.hideWhenPlayerFront) private var hideWhenPlayerFront = true
+    @AppStorage(Prefs.hideWhenPlayerFullscreen) private var hideWhenPlayerFullscreen = true
     @AppStorage(Prefs.mediaIgnoredApps) private var ignoredText = ""
     /// Read here so an app that starts playing while Settings is open joins the list.
     @AppStorage(Prefs.mediaSeenApps) private var seenText = ""
@@ -31,8 +31,8 @@ struct NowPlayingPane: View {
                     .menuStyle()
                 }
                 .disabled(!enabled)
-                SettingsToggle("Hide while the player is in front", description: "The closed island leaves out what's playing while its app is in front, as when you watch a video. The open island still shows the player.",
-                               isOn: $hideWhenPlayerFront)
+                SettingsToggle("Hide while the player is full screen", description: "The closed island leaves out what's playing while its app is full screen, as when you watch a video. The open island still shows the player.",
+                               isOn: $hideWhenPlayerFullscreen)
                     .disabled(!enabled)
             }
             SettingsSection("Closed island") {

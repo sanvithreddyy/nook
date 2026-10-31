@@ -34,8 +34,8 @@ extension Prefs {
     static let pausedLinger = "pausedLinger"
     /// Seconds the title shows under the island when the track changes.
     static let peekDuration = "peekDuration"
-    /// The player leaves the island while its own app is in front.
-    static let hideWhenPlayerFront = "hideWhenPlayerFront"
+    /// The player leaves the closed island while its own app is full screen, as when a video plays.
+    static let hideWhenPlayerFullscreen = "hideWhenPlayerFullscreen"
     /// Apps the island leaves out, comma separated bundle identifiers.
     static let mediaIgnoredApps = "mediaIgnoredApps"
     /// Apps that have played something, for Settings to list. Not a setting, so Reset keeps it.
@@ -51,7 +51,7 @@ extension Prefs {
             artworkFlip: true,
             pausedLinger: 5,
             peekDuration: 3.0,
-            hideWhenPlayerFront: true,
+            hideWhenPlayerFullscreen: true,
             mediaIgnoredApps: "",
         ])
     }
