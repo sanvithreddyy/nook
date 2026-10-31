@@ -208,6 +208,8 @@ enum NotchlessStyle: String, CaseIterable, Identifiable {
 
 enum DisplayChoice: Hashable, Identifiable {
     case builtIn, main
+    /// An island on every screen.
+    case all
     /// While it's unplugged the island waits on the built-in display.
     case named(String)
 
@@ -215,6 +217,7 @@ enum DisplayChoice: Hashable, Identifiable {
         switch rawValue {
         case "builtIn": self = .builtIn
         case "main": self = .main
+        case "all": self = .all
         case let raw where raw.hasPrefix("screen:"): self = .named(String(raw.dropFirst(7)))
         default: return nil
         }
@@ -224,6 +227,7 @@ enum DisplayChoice: Hashable, Identifiable {
         switch self {
         case .builtIn: "builtIn"
         case .main: "main"
+        case .all: "all"
         case .named(let name): "screen:\(name)"
         }
     }
@@ -234,6 +238,7 @@ enum DisplayChoice: Hashable, Identifiable {
         switch self {
         case .builtIn: "Built-in display"
         case .main: "Main display"
+        case .all: "All displays"
         case .named(let name): name
         }
     }

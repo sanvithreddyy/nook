@@ -17,4 +17,12 @@ struct PrefsTests {
         let ids = Prefs.areas.map(\.id)
         #expect(Set(ids).count == ids.count)
     }
+
+    /// The display setting keeps every choice, all displays included, across a save.
+    @Test func displayChoicesRoundTrip() {
+        for choice in [DisplayChoice.builtIn, .main, .all, .named("Studio Display")] {
+            #expect(DisplayChoice(rawValue: choice.rawValue) == choice)
+        }
+        #expect(DisplayChoice.choices(keeping: "").contains(.all))
+    }
 }

@@ -3,7 +3,10 @@ import SwiftUI
 
 /// Wires system events into the island: picks the live activity, posts notifications,
 /// keeps the panel on the right screen and out of the way of fullscreen apps.
+/// With "All displays" every screen has its own island: each opens, hovers and hides for full screen
+/// on its own, and everything they show (notices, activities, the home) goes to all of them.
 final class NotchCoordinator {
+    /// The island on the chosen display, or on the built-in one with all displays.
     let model = NotchModel()
     let nowPlaying = NowPlayingModel()
     let calendar = CalendarModel()
@@ -30,6 +33,8 @@ final class NotchCoordinator {
     private let fileDrags = FileDragWatcher()
 
     private var window: NotchWindowController?
+    /// With all displays, the islands on the other screens.
+    private var others: [(model: NotchModel, window: NotchWindowController)] = []
     private var observers: [NSObjectProtocol] = []
     private var defaultsObserver: NSObjectProtocol?
     private var pauseGraceTask: Task<Void, Never>?
@@ -63,12 +68,12 @@ final class NotchCoordinator {
         battery.onReadingChange = { [weak self] reading, lowPower in self?.batteries.updateMac(reading, lowPower: lowPower) }
         battery.onPowerSourceChange = { [weak self] reading in
             guard Prefs.bool(Prefs.battery) else { return }
-            self?.model.post(reading.onAC ? .charging(level: reading.level) : .onBattery(level: reading.level),
-                             for: .seconds(Prefs.double(Prefs.batteryNoticeDuration)))
+            self?.everyIsland { $0.post(reading.onAC ? .charging(level: reading.level) : .onBattery(level: reading.level),
+                                        for: .seconds(Prefs.double(Prefs.batteryNoticeDuration))) }
         }
         battery.onLowBattery = { [weak self] reading in
             guard let self, Prefs.bool(Prefs.battery), Prefs.bool(Prefs.lowBatteryWarning) else { return }
-            if self.model.isSuppressed {
+            if self.islands.allSatisfy(\.model.isSuppressed) {
                 self.pendingLowBattery = reading.level
             } else {
                 self.warnLowBattery(reading.level)
@@ -76,14 +81,14 @@ final class NotchCoordinator {
         }
         battery.onLowPowerModeChange = { [weak self] on in
             guard Prefs.bool(Prefs.battery), Prefs.bool(Prefs.lowPowerNotice) else { return }
-            self?.model.post(.lowPowerMode(on: on), for: .seconds(2.2))
+            self?.everyIsland { $0.post(.lowPowerMode(on: on), for: .seconds(2.2)) }
         }
         battery.start()
 
         bluetooth.onConnect = { [weak self] device, level in
             guard let self, Prefs.bool(Prefs.connectivity) else { return }
-            self.model.post(.device(name: device.name, symbol: device.symbol, battery: level),
-                            for: .seconds(Prefs.double(Prefs.deviceNoticeDuration)))
+            self.everyIsland { $0.post(.device(name: device.name, symbol: device.symbol, battery: level),
+                                       for: .seconds(Prefs.double(Prefs.deviceNoticeDuration))) }
             self.batteries.refresh(force: true)
         }
         volume.onOutputChange = { [weak self] symbol, name in self?.outputChanged(to: symbol, name: name) }
@@ -95,7 +100,8 @@ final class NotchCoordinator {
         keys.handles = { [weak self] key in
             // Nook's panel isn't drawn on the lock screen or while suppressed, and an open card has no
             // room for the level, so the system's own HUD shows instead.
-            guard let self, !self.model.isSuppressed, !self.model.isExpanded, self.lock.state != .locked else { return false }
+            // The island looked at is the one under the pointer.
+            guard let self, !self.activeModel.isSuppressed, !self.activeModel.isExpanded, self.lock.state != .locked else { return false }
             switch key {
             case .volumeUp, .volumeDown: return Prefs.bool(Prefs.volumeHUD) && self.volume.canSetVolume
             case .mute: return Prefs.bool(Prefs.volumeHUD) && self.volume.canMute
@@ -119,11 +125,16 @@ final class NotchCoordinator {
         applyPreferences()
 
         // Dragging a file to the notch opens the shelf as a drop target.
-        fileDrags.onEnterNotch = { [weak self] in
-            guard let self, Prefs.bool(Prefs.shelf), !self.model.isSuppressed else { return }
-            self.model.expand(card: .shelf)
+        fileDrags.isInsideNotch = { [weak self] point in
+            self?.islands.contains { $0.window.catchesDrag(at: point) } ?? false
         }
-        fileDrags.onActiveChange = { [weak self] active in self?.model.setDraggingFile(active) }
+        fileDrags.onEnterNotch = { [weak self] in
+            guard let self, Prefs.bool(Prefs.shelf),
+                  let island = self.islands.first(where: { $0.window.catchesDrag(at: NSEvent.mouseLocation) }),
+                  !island.model.isSuppressed else { return }
+            island.model.expand(card: .shelf)
+        }
+        fileDrags.onActiveChange = { [weak self] active in self?.everyIsland { $0.setDraggingFile(active) } }
         fileDrags.start()
         observeShelf()
         observeModuleData()
@@ -258,8 +269,37 @@ final class NotchCoordinator {
         guard let screen = NSScreen.target(for: choice) else { return }
         if let window {
             window.place(on: screen)
-            return
+        } else {
+            window = makeWindow(on: screen, model: model)
         }
+        // All displays: an island on each other screen, kept as screens come and go.
+        let rest = choice == .all ? NSScreen.screens.filter { $0.displayID != screen.displayID } : []
+        others.removeAll { other in
+            guard !rest.contains(where: { $0.displayID == other.window.screen.displayID }) else { return false }
+            other.window.tearDown()
+            return true
+        }
+        var added = false
+        for screen in rest {
+            if let other = others.first(where: { $0.window.screen.displayID == screen.displayID }) {
+                other.window.place(on: screen)
+            } else {
+                let island = NotchModel()
+                // What the other islands already show; refreshActivity fills in the rest.
+                island.home = model.home
+                island.hudStyle = model.hudStyle
+                island.openTo = model.openTo
+                island.shelfItems = model.shelfItems
+                island.batteryCount = model.batteryCount
+                island.timerShowsHours = model.timerShowsHours
+                others.append((island, makeWindow(on: screen, model: island)))
+                added = true
+            }
+        }
+        if added { refreshActivity() }
+    }
+
+    private func makeWindow(on screen: NSScreen, model: NotchModel) -> NotchWindowController {
         let window = NotchWindowController(screen: screen, model: model) {
             NotchRootView()
                 .environment(model)
@@ -273,10 +313,30 @@ final class NotchCoordinator {
                 .environment(shortcuts)
                 .environment(outputs)
         }
-        fileDrags.isInsideNotch = { [weak window] point in window?.catchesDrag(at: point) ?? false }
         window.isFileDragActive = { [weak self] in self?.fileDrags.isActive ?? false }
-        window.onSwipe = { [weak self] direction in self?.swiped(direction) }
-        self.window = window
+        window.onSwipe = { [weak self, weak model] direction in
+            guard let model else { return }
+            self?.swiped(direction, on: model)
+        }
+        window.panel.sharingType = Prefs.bool(Prefs.hideFromCapture) ? .none : .readOnly
+        return window
+    }
+
+    /// Every island with its window: the chosen display's, then the others.
+    private var islands: [(model: NotchModel, window: NotchWindowController)] {
+        (window.map { [(model, $0)] } ?? []) + others
+    }
+
+    /// What every island shows alike.
+    private func everyIsland(_ change: (NotchModel) -> Void) {
+        change(model)
+        others.forEach { change($0.model) }
+    }
+
+    /// The island on the screen with the pointer, for what one island does: a shortcut, a finished timer.
+    private var activeModel: NotchModel {
+        let pointer = NSEvent.mouseLocation
+        return others.first { $0.window.screen.frame.contains(pointer) }?.model ?? model
     }
 
     private func observeSystem() {
@@ -354,22 +414,24 @@ final class NotchCoordinator {
             keys.stop()
         }
         let style = HUDStyle.current
-        if model.hudStyle != style { model.hudStyle = style }
+        everyIsland { if $0.hudStyle != style { $0.hudStyle = style } }
         let openTo = OpenTo.current
-        if model.openTo != openTo { model.openTo = openTo }
+        everyIsland { if $0.openTo != openTo { $0.openTo = openTo } }
         hotKeys.update()
         let ignored = MediaSources.ignored
         if nowPlaying.ignoredApps != ignored {
             nowPlaying.ignoredApps = ignored
             refreshActivity()
         }
-        window?.panel.sharingType = Prefs.bool(Prefs.hideFromCapture) ? .none : .readOnly
+        for island in islands { island.window.panel.sharingType = Prefs.bool(Prefs.hideFromCapture) ? .none : .readOnly }
         var home = HomeConfig.current
         #if DEBUG
         if CommandLine.arguments.contains(where: { $0.hasPrefix("-home-") }) { home = debugHome }
         #endif
-        if model.home != home {
-            withAnimation(model.isExpanded ? Motion.reshape : nil) { model.home = home }
+        everyIsland { island in
+            if island.home != home {
+                withAnimation(island.isExpanded ? Motion.reshape : nil) { island.home = home }
+            }
         }
         batteries.publish()
         watchPermissions()
@@ -403,20 +465,24 @@ final class NotchCoordinator {
         }
     }
 
+    /// Each island hides for a full-screen app on its own screen.
     private func updateFullscreen() {
-        guard let screen = window?.screen else { return }
-        var hide = false
-        if Prefs.bool(Prefs.hideInFullscreen), let owner = FullscreenDetector.fullscreenApp(on: screen) {
-            // Only the app that's playing, if asked: a video full screen, not a full-screen editor. An app
-            // left out of the island under Apps still counts: its video is still what's playing.
-            hide = !Prefs.bool(Prefs.fullscreenMediaOnly)
-                || (!nowPlaying.title.isEmpty && NSRunningApplication(processIdentifier: owner)?.bundleIdentifier == nowPlaying.bundleIdentifier)
+        var shown = false
+        for island in islands {
+            var hide = false
+            if Prefs.bool(Prefs.hideInFullscreen), let owner = FullscreenDetector.fullscreenApp(on: island.window.screen) {
+                // Only the app that's playing, if asked: a video full screen, not a full-screen editor. An app
+                // left out of the island under Apps still counts: its video is still what's playing.
+                hide = !Prefs.bool(Prefs.fullscreenMediaOnly)
+                    || (!nowPlaying.title.isEmpty && NSRunningApplication(processIdentifier: owner)?.bundleIdentifier == nowPlaying.bundleIdentifier)
+            }
+            guard hide != island.model.isSuppressed else { continue }
+            island.model.isSuppressed = hide
+            if hide { island.model.collapse() }
+            island.window.setSuppressed(hide)
+            if !hide { shown = true }
         }
-        guard hide != model.isSuppressed else { return }
-        model.isSuppressed = hide
-        if hide { model.collapse() }
-        window?.setSuppressed(hide)
-        if !hide, let level = pendingLowBattery {
+        if shown, let level = pendingLowBattery {
             pendingLowBattery = nil
             // Skip it if the Mac was plugged in, or the warning turned off, while the island was hidden.
             if battery.reading?.onAC == false, Prefs.bool(Prefs.battery), Prefs.bool(Prefs.lowBatteryWarning) {
@@ -426,7 +492,7 @@ final class NotchCoordinator {
     }
 
     private func warnLowBattery(_ level: Int) {
-        model.post(.lowBattery(level: level), for: .seconds(4))
+        everyIsland { $0.post(.lowBattery(level: level), for: .seconds(4)) }
         let sound = Prefs.string(Prefs.lowBatterySound)
         if !sound.isEmpty { NSSound(named: sound)?.play() }
     }
@@ -436,7 +502,8 @@ final class NotchCoordinator {
     private func shortcut(_ action: ShortcutAction) {
         switch action {
         case .toggleIsland:
-            if model.isExpanded { model.collapse() } else if !model.isSuppressed { model.expand() }
+            let island = activeModel
+            if island.isExpanded { island.collapse() } else if !island.isSuppressed { island.expand() }
         case .playPause:
             nowPlaying.togglePlayPause()
         case .nextTrack:
@@ -450,7 +517,8 @@ final class NotchCoordinator {
             case .idle, .done: timer.start(minutes: timer.lastMinutes)
             }
         case .shelf:
-            if Prefs.bool(Prefs.shelf), !model.isSuppressed { model.expand(card: .shelf) }
+            let island = activeModel
+            if Prefs.bool(Prefs.shelf), !island.isSuppressed { island.expand(card: .shelf) }
         case .settings:
             SettingsWindowController.shared.show()
         }
@@ -492,8 +560,10 @@ final class NotchCoordinator {
         guard !calendar.isDismissed(event.id) else { return }
         let sound = Prefs.string(Prefs.calendarChime)
         if !sound.isEmpty { NSSound(named: sound)?.play() }
-        if Prefs.bool(Prefs.calendarPeekAtStart), !model.isExpanded, model.notification == nil {
-            model.showPeek(.event(id: event.id))
+        if Prefs.bool(Prefs.calendarPeekAtStart) {
+            everyIsland { island in
+                if !island.isExpanded, island.notification == nil { island.showPeek(.event(id: event.id)) }
+            }
         }
     }
 
@@ -524,11 +594,14 @@ final class NotchCoordinator {
             activity = live.first
         }
         let hours = timer.remaining() >= 3600
-        if model.timerShowsHours != hours { withAnimation(Motion.grow) { model.timerShowsHours = hours } }
-        model.setLiveActivity(activity)
         // The next thing going on gets its own drop beside the island.
-        model.setCompanion(activity == live.first && Prefs.bool(Prefs.showCompanion) ? live.dropFirst().first : nil)
-        if activity != .nowPlaying, model.peek == .track { model.hidePeek() }
+        let companion = activity == live.first && Prefs.bool(Prefs.showCompanion) ? live.dropFirst().first : nil
+        everyIsland { island in
+            if island.timerShowsHours != hours { withAnimation(Motion.grow) { island.timerShowsHours = hours } }
+            island.setLiveActivity(activity)
+            island.setCompanion(companion)
+            if activity != .nowPlaying, island.peek == .track { island.hidePeek() }
+        }
         refreshCards(live: live)
     }
 
@@ -537,10 +610,12 @@ final class NotchCoordinator {
     private func refreshCards(live: [LiveActivity]? = nil) {
         let items = shelf.items.count
         let devices = batteries.devices.count
-        if model.shelfItems != items || model.batteryCount != devices {
-            withAnimation(model.isExpanded ? Motion.reshape : nil) {
-                model.shelfItems = items
-                model.batteryCount = devices
+        everyIsland { island in
+            if island.shelfItems != items || island.batteryCount != devices {
+                withAnimation(island.isExpanded ? Motion.reshape : nil) {
+                    island.shelfItems = items
+                    island.batteryCount = devices
+                }
             }
         }
         let modules = model.home.modules.filter { module in
@@ -553,8 +628,9 @@ final class NotchCoordinator {
             case .weather, .reminders, .clock, .timer: true
             }
         }
-        model.setCards(IslandCard.available(live: live ?? liveActivities(), modules: modules,
-                                            perPage: model.home.perPage, shelf: Prefs.bool(Prefs.shelf)))
+        let cards = IslandCard.available(live: live ?? liveActivities(), modules: modules,
+                                         perPage: model.home.perPage, shelf: Prefs.bool(Prefs.shelf))
+        everyIsland { $0.setCards(cards) }
     }
 
     private func observeShelf() {
@@ -674,7 +750,7 @@ final class NotchCoordinator {
             pauseGraceTask = Task { [weak self] in
                 try? await Task.sleep(for: .seconds(linger))
                 guard !Task.isCancelled, let self else { return }
-                if self.model.isHovering || self.model.isExpanded {
+                if self.islands.contains(where: { $0.model.isHovering || $0.model.isExpanded }) {
                     self.playbackChanged()
                     return
                 }
@@ -693,8 +769,11 @@ final class NotchCoordinator {
         }
         nowPlayingVisible = true
         refreshActivity()
-        if Prefs.bool(Prefs.peekOnTrackChange), model.liveActivity == .nowPlaying, !model.isExpanded, model.notification == nil {
-            model.showPeek(.track, for: .seconds(Prefs.double(Prefs.peekDuration)))
+        guard Prefs.bool(Prefs.peekOnTrackChange) else { return }
+        everyIsland { island in
+            if island.liveActivity == .nowPlaying, !island.isExpanded, island.notification == nil {
+                island.showPeek(.track, for: .seconds(Prefs.double(Prefs.peekDuration)))
+            }
         }
     }
 
@@ -706,7 +785,7 @@ final class NotchCoordinator {
     private func outputChanged(to symbol: String?, name: String) {
         guard Prefs.bool(Prefs.connectivity), let symbol else { return }
         if let last = bluetooth.lastConnection, Date.now.timeIntervalSince(last) < 10 { return }
-        model.post(.audioSwitched(symbol: symbol), for: .seconds(Prefs.double(Prefs.deviceNoticeDuration)))
+        everyIsland { $0.post(.audioSwitched(symbol: symbol), for: .seconds(Prefs.double(Prefs.deviceNoticeDuration))) }
     }
 
     // MARK: Timer
@@ -725,13 +804,14 @@ final class NotchCoordinator {
         let sound = UserDefaults.standard.string(forKey: Prefs.timerSound) ?? ""
         if !previewing, !sound.isEmpty { NSSound(named: sound)?.play() }
         Haptics.tap()
-        // A file drag holding the shelf open keeps it; the notch shows "Done" until it's stopped.
-        if !model.isSuppressed, !model.isDraggingFile { model.expand(card: .timer) }
+        // On the screen in use. A file drag holding the shelf open keeps it; the notch shows "Done" until it's stopped.
+        let island = activeModel
+        if !island.isSuppressed, !island.isDraggingFile { island.expand(card: .timer) }
         doneTask?.cancel()
-        doneTask = Task { [weak self] in
+        doneTask = Task { [weak self, weak island] in
             try? await Task.sleep(for: .seconds(8))
             guard let self, !Task.isCancelled else { return }
-            if self.model.isExpanded, self.model.card == .timer, !self.model.isHovering { self.model.collapse() }
+            if let island, island.isExpanded, island.card == .timer, !island.isHovering { island.collapse() }
             try? await Task.sleep(for: .seconds(10 * 60 - 8))
             guard !Task.isCancelled, self.timer.state == .done else { return }
             self.timer.cancel()
@@ -741,11 +821,11 @@ final class NotchCoordinator {
     // MARK: Input
 
     /// Sideways on the open island turns cards; on the closed island it skips tracks.
-    private func swiped(_ direction: SwipeDirection) {
-        if model.isExpanded {
+    private func swiped(_ direction: SwipeDirection, on island: NotchModel) {
+        if island.isExpanded {
             switch direction {
-            case .left: model.page(1)
-            case .right: model.page(-1)
+            case .left: island.page(1)
+            case .right: island.page(-1)
             default: break
             }
             return
@@ -770,16 +850,16 @@ final class NotchCoordinator {
             let before = volume.volume
             let result = volume.step(up: up, fine: fine)
             bumpIfAtEnd(kind: "volume", before: before, after: result.level, up: up)
-            model.post(.volume(level: result.level, muted: result.muted, output: volume.headphones), for: .seconds(Prefs.double(Prefs.hudDuration)))
+            everyIsland { $0.post(.volume(level: result.level, muted: result.muted, output: volume.headphones), for: .seconds(Prefs.double(Prefs.hudDuration))) }
         case .mute:
             let result = volume.toggleMute()
-            model.post(.volume(level: result.level, muted: result.muted, output: volume.headphones), for: .seconds(Prefs.double(Prefs.hudDuration)))
+            everyIsland { $0.post(.volume(level: result.level, muted: result.muted, output: volume.headphones), for: .seconds(Prefs.double(Prefs.hudDuration))) }
         case .brightnessUp, .brightnessDown:
             let up = key == .brightnessUp
             let before = brightness.level
             let level = brightness.step(up: up, fine: fine)
             bumpIfAtEnd(kind: "brightness", before: before, after: level, up: up)
-            model.post(.brightness(level: level), for: .seconds(Prefs.double(Prefs.hudDuration)))
+            everyIsland { $0.post(.brightness(level: level), for: .seconds(Prefs.double(Prefs.hudDuration))) }
         }
     }
 
@@ -788,8 +868,8 @@ final class NotchCoordinator {
     /// little slack, since a display can read back a hair off 1.
     private func bumpIfAtEnd(kind: String, before: Float, after: Float, up: Bool) {
         let end: Float = up ? 1 : 0
-        guard model.notification?.kind == kind, abs(after - before) < 0.001, abs(after - end) < 0.001 else { return }
-        model.bumpHUD(up: up)
+        guard abs(after - before) < 0.001, abs(after - end) < 0.001 else { return }
+        everyIsland { if $0.notification?.kind == kind { $0.bumpHUD(up: up) } }
     }
 }
 
