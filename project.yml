@@ -17,6 +17,9 @@ targets:
       - path: Nook
       - path: Vendor/MediaRemoteAdapter/mediaremote-adapter.pl
         buildPhase: resources
+      # Its license travels with the app, as the BSD terms ask of binary copies.
+      - path: Vendor/MediaRemoteAdapter/LICENSE
+        buildPhase: resources
     configFiles:
       Debug: Config/Signing.xcconfig
       Release: Config/Signing.xcconfig
