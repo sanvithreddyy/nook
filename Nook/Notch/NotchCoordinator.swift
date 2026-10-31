@@ -952,11 +952,50 @@ final class NotchCoordinator {
 }
 
 enum FullscreenDetector {
-    /// A fullscreen space has no menu bar window on that display (unless the pointer reveals it)
-    /// and another app's window spans the screen's full width from the top of the usable area.
-    /// Both must hold, so an auto-hidden menu bar or a zoomed window alone doesn't hide the island.
-    /// Returns the full-screen app's process, or nil when the screen isn't full screen.
+    /// Returns the full-screen app's process, or nil when the screen isn't full screen. Accessibility answers
+    /// for the front app's window the moment it comes forward; the window list is the fallback without it.
     static func fullscreenApp(on screen: NSScreen) -> pid_t? {
+        switch frontWindow(on: screen) {
+        case .fullscreen(let pid): return pid
+        case .notFullscreen: return nil
+        case .unknown: return fromWindowList(on: screen)
+        }
+    }
+
+    private enum Answer { case fullscreen(pid_t), notFullscreen, unknown }
+
+    /// Whether the front app's focused window is full screen, as Accessibility reports it, when that window is
+    /// on this screen. On a notched display a full-screen space keeps a black band at menu-bar level and the
+    /// app's window starts under it, which the window list alone can't tell from a maximized window.
+    private static func frontWindow(on screen: NSScreen) -> Answer {
+        guard AXIsProcessTrusted(), let primary = NSScreen.screens.first, let front = NSWorkspace.shared.frontmostApplication,
+              front.processIdentifier != ProcessInfo.processInfo.processIdentifier else { return .unknown }
+        let app = AXUIElementCreateApplication(front.processIdentifier)
+        // A busy app mustn't hold the island up.
+        AXUIElementSetMessagingTimeout(app, 0.1)
+        var focused: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(app, kAXFocusedWindowAttribute as CFString, &focused) == .success,
+              let focused, CFGetTypeID(focused) == AXUIElementGetTypeID() else { return .unknown }
+        let window = focused as! AXUIElement
+        var position: CFTypeRef?, size: CFTypeRef?, flag: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(window, kAXPositionAttribute as CFString, &position) == .success,
+              AXUIElementCopyAttributeValue(window, kAXSizeAttribute as CFString, &size) == .success,
+              AXUIElementCopyAttributeValue(window, "AXFullScreen" as CFString, &flag) == .success,
+              let position, let size, CFGetTypeID(position) == AXValueGetTypeID(), CFGetTypeID(size) == AXValueGetTypeID()
+        else { return .unknown }
+        var origin = CGPoint.zero, extent = CGSize.zero
+        AXValueGetValue(position as! AXValue, .cgPoint, &origin)
+        AXValueGetValue(size as! AXValue, .cgSize, &extent)
+        // Accessibility uses the same top-left origin as the window list.
+        let target = CGRect(x: screen.frame.minX, y: primary.frame.maxY - screen.frame.maxY, width: screen.frame.width, height: screen.frame.height)
+        guard target.contains(CGPoint(x: origin.x + extent.width / 2, y: origin.y + extent.height / 2)) else { return .unknown }
+        return (flag as? Bool) == true ? .fullscreen(front.processIdentifier) : .notFullscreen
+    }
+
+    /// Without Accessibility: a fullscreen space has no menu bar window on that display (unless the pointer
+    /// reveals it) and another app's window spans the screen's full width from the top of the usable area.
+    /// Both must hold, so an auto-hidden menu bar or a zoomed window alone doesn't hide the island.
+    private static func fromWindowList(on screen: NSScreen) -> pid_t? {
         guard let primary = NSScreen.screens.first,
               let windows = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]]
         else { return nil }
