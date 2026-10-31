@@ -221,6 +221,28 @@ final class NotchCoordinator {
                         .flatMap { model.cards.indices.contains($0) ? model.cards[$0] : nil }
                     model.expand(card: args.contains("-shelf") ? .shelf : args.contains("-timer-card") ? .timer : page)
                 }
+                // -preview-swipe: fingers across the open island, as a recording can't have a trackpad: a flick
+                // to the next page, a half-hearted drag that settles back, then a pull past the first page.
+                if args.contains("-preview-swipe") {
+                    try? await Task.sleep(for: .seconds(1.2))
+                    @MainActor func drag(from start: CGFloat, to end: CGFloat, over seconds: Double, release velocity: CGFloat) async {
+                        let steps = Int(seconds * 120)
+                        model.beginPageDrag()
+                        for step in 1...steps {
+                            let t = CGFloat(step) / CGFloat(steps)
+                            model.dragPage(to: start + (end - start) * (1 - pow(1 - t, 2)))
+                            try? await Task.sleep(for: .milliseconds(8))
+                        }
+                        model.endPageDrag(velocity: velocity)
+                    }
+                    await drag(from: 0, to: -140, over: 0.18, release: -1400)
+                    try? await Task.sleep(for: .seconds(1.2))
+                    await drag(from: 0, to: 70, over: 0.4, release: 60)
+                    try? await Task.sleep(for: .seconds(1.0))
+                    await drag(from: 0, to: 200, over: 0.35, release: 300)
+                    try? await Task.sleep(for: .seconds(1.0))
+                    await drag(from: 0, to: 200, over: 0.35, release: 300)
+                }
                 // -expand-later: open from the closed island after a pause, then close, for recording the motion.
                 if args.contains("-expand-later") {
                     try? await Task.sleep(for: .seconds(2))

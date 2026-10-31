@@ -28,6 +28,8 @@ extension Prefs {
     static let swipeSideways = "swipeSideways"
     /// Every swipe goes the other way.
     static let swipeReversed = "swipeReversed"
+    /// The open island's page follows the fingers sideways; off, a swipe turns it at once.
+    static let swipePagesFollow = "swipePagesFollow"
     /// How far the fingers travel before a swipe counts: SwipeSensitivity raw value.
     static let swipeSensitivity = "swipeSensitivity"
     /// Apple's status colours (green charging, orange timer…), or white; low battery stays red.
@@ -64,6 +66,7 @@ extension Prefs {
             swipeToClose: true,
             swipeSideways: true,
             swipeReversed: false,
+            swipePagesFollow: true,
             swipeSensitivity: SwipeSensitivity.medium.rawValue,
             statusColors: true,
             showCompanion: true,

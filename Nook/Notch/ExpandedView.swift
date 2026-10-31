@@ -14,21 +14,27 @@ struct ExpandedView: View {
     let direction: PageDirection
 
     var body: some View {
-        ZStack(alignment: .top) {
-            Group {
-                switch card {
-                case .home(let modules): HomePage(modules: modules)
-                case .meeting(let id): MeetingCard(eventID: id)
-                case .timer: TimerCard()
-                case .shelf: ShelfPage()
+        // Mid-swipe the page rides on the fingers with the next one beside it, a page's width away and
+        // coming up from a little faded as it arrives; let go, it's drawn each frame as it settles.
+        TimelineView(.animation(paused: model.pageSettle == nil)) { context in
+            let drag = model.pageSettle?.offset(at: context.date) ?? model.pageDrag
+            let width = model.layout(for: .expanded).size.width
+            let travelled = width > 0 ? min(abs(drag) / width, 1) : 0
+            ZStack(alignment: .top) {
+                if drag != 0, let neighbor = model.neighbor(forDrag: drag) {
+                    page(neighbor)
+                        .opacity(0.6 + 0.4 * travelled)
+                        .offset(x: drag + (drag < 0 ? width : -width))
                 }
+                page(card)
+                    .id(card)
+                    .transition(.cardTurn(direction))
+                    .opacity(1 - 0.4 * travelled)
+                    .offset(x: drag)
+                PageDots(drag: drag)
+                    .padding(.horizontal, NotchModel.cardEar + inset(card))
             }
-            .id(card)
-            .transition(.cardTurn(direction))
-            PageDots()
         }
-        // The body starts inside the ears; content keeps its inset from its edge.
-        .padding(.horizontal, NotchModel.cardEar + inset)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         // Right-click anywhere on the card, not only on what's drawn.
         .contentShape(Rectangle())
@@ -55,8 +61,22 @@ struct ExpandedView: View {
         }
     }
 
+    /// A page, inside the island's ears and its own inset from the edge.
+    private func page(_ card: IslandCard) -> some View {
+        Group {
+            switch card {
+            case .home(let modules): HomePage(modules: modules)
+            case .meeting(let id): MeetingCard(eventID: id)
+            case .timer: TimerCard()
+            case .shelf: ShelfPage()
+            }
+        }
+        .padding(.horizontal, NotchModel.cardEar + inset(card))
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+    }
+
     /// Home pages and the shelf keep 20 pt from the edge; the meeting and timer cards keep 16.
-    private var inset: CGFloat {
+    private func inset(_ card: IslandCard) -> CGFloat {
         switch card {
         case .home: HomeMetrics.inset * model.home.scale
         case .shelf: ShelfMetrics.inset
@@ -76,14 +96,19 @@ enum Card {
 /// Swiping sideways does the same; the dots show there's somewhere to go.
 private struct PageDots: View {
     @Environment(NotchModel.self) private var model
+    /// Where a swipe has the page.
+    var drag: CGFloat = 0
 
     var body: some View {
         if model.cards.count > 1 {
+            // Past halfway through a swipe, the dot moves to the page arriving.
+            let width = model.layout(for: .expanded).size.width
+            let current = abs(drag) > width / 2 ? model.neighbor(forDrag: drag) ?? model.card : model.card
             HStack(spacing: 0) {
                 ForEach(model.cards, id: \.self) { card in
                     Button { model.show(card) } label: {
                         Circle()
-                            .fill(.white.opacity(card == model.card ? 0.9 : 0.28))
+                            .fill(.white.opacity(card == current ? 0.9 : 0.28))
                             .frame(width: 5, height: 5)
                             .frame(width: 13, height: 20)
                             .contentShape(Rectangle())

@@ -1,4 +1,5 @@
 import CoreGraphics
+import Foundation
 import Testing
 
 /// Pages run left to right as arranged; the island opens on what the closed island shows.
@@ -113,7 +114,8 @@ struct HomeConfigTests {
 
     @Test func aPageIsAsWideAsItsModules() {
         let two = HomeMetrics.pageSize([.music, .calendar], batteries: 0, scale: 1)
-        #expect(two.width == CGFloat(20 + 300 + 24 + 320 + 20))
+        let width: CGFloat = 20 + 300 + 24 + 320 + 20
+        #expect(two.width == width)
         #expect(two.height == CGFloat(180))
         let large = HomeMetrics.pageSize([.music], batteries: 0, scale: 1.14)
         #expect(abs(large.width - 340 * 1.14) < 0.001)
@@ -164,5 +166,29 @@ struct CardPagingTests {
         let model = NotchModel()
         model.expand()
         #expect(!model.isExpanded)
+    }
+}
+
+/// A page let go of mid-swipe: the spring starts where the fingers left it, at their speed, and ends on
+/// its mark; past the ends the page gives less the further it's pulled.
+struct PageSwipeTests {
+    @Test func theSettleStartsUnderTheFingersAndLandsOnItsMark() {
+        let start = Date(timeIntervalSince1970: 0)
+        let settle = PageSettle(start: start, from: -150, to: -700, velocity: -1400)
+        #expect(abs(settle.offset(at: start) - -150) < 0.001)
+        // Still heading the way the fingers went, at about their speed.
+        let early = settle.offset(at: start.addingTimeInterval(0.0005))
+        #expect(early < -150)
+        #expect(abs((early - -150) / 0.0005 - -1400) < 120)
+        #expect(settle.duration > 0.2 && settle.duration < 1)
+        #expect(abs(settle.offset(at: start.addingTimeInterval(settle.duration)) - -700) <= 0.5)
+    }
+
+    @Test func pastTheEndsThePageGivesLessAndLess() {
+        let near = NotchModel.rubberBand(40, width: 700)
+        let far = NotchModel.rubberBand(400, width: 700)
+        #expect(near < 40 && far < 400 * 0.6)
+        #expect(far > near)
+        #expect(NotchModel.rubberBand(-40, width: 700) == -near)
     }
 }

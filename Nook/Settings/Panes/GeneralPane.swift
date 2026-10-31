@@ -17,6 +17,7 @@ struct GeneralPane: View {
     @AppStorage(Prefs.swipeToClose) private var swipeToClose = true
     @AppStorage(Prefs.swipeSideways) private var swipeSideways = true
     @AppStorage(Prefs.swipeReversed) private var swipeReversed = false
+    @AppStorage(Prefs.swipePagesFollow) private var pagesFollow = true
     @AppStorage(Prefs.swipeSensitivity) private var swipeSensitivity = SwipeSensitivity.medium
     @AppStorage(Prefs.enableHaptics) private var haptics = true
     @AppStorage(Prefs.hapticStrength) private var hapticStrength = HapticStrength.medium
@@ -91,6 +92,14 @@ struct GeneralPane: View {
                     SettingsToggle(swipeReversed ? "Swipe up to open" : "Swipe down to open", isOn: $swipeToOpen)
                     SettingsToggle(swipeReversed ? "Swipe down to close" : "Swipe up to close", isOn: $swipeToClose)
                     SettingsToggle("Sideways to skip tracks or turn pages", isOn: $swipeSideways)
+                    SettingsRow("Pages", description: pagesFollow ? "The open page moves with your fingers and settles where they were heading." : "A swipe turns to the next page.") {
+                        Picker("Pages", selection: $pagesFollow) {
+                            Text("Follow fingers").tag(true)
+                            Text("Turn at once").tag(false)
+                        }
+                        .segmentedStyle()
+                    }
+                    .disabled(!swipeSideways)
                     SettingsToggle("Reverse direction", isOn: $swipeReversed)
                     SettingsRow("Sensitivity") {
                         Picker("Sensitivity", selection: $swipeSensitivity) {

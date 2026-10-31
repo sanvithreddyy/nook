@@ -178,6 +178,10 @@ final class NotchWindowController {
         }) { monitors.append(localUp) }
         // A click anywhere else closes the expanded island.
         if let outside = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown], handler: { [weak self] _ in
+            #if DEBUG
+            // A recorded swipe runs on its own while the Mac is in use.
+            if CommandLine.arguments.contains("-preview-swipe") { return }
+            #endif
             // Clicking another app also ends Settings' preview, which would otherwise hold the island open.
             IslandPreview.shared.isOn = false
             // The page the preview showed isn't one you left open, so "Last page" doesn't keep it.
@@ -275,15 +279,68 @@ final class NotchWindowController {
     // MARK: Swipe
 
     private func handleScroll(_ event: NSEvent) {
-        guard Prefs.bool(Prefs.swipeGestures), let direction = swipe.consume(event) else { return }
+        guard Prefs.bool(Prefs.swipeGestures) else { return }
+        if pageScroll(event) { return }
+        guard let direction = swipe.consume(event) else { return }
         switch direction {
         case .down:
             if Prefs.bool(Prefs.swipeToOpen), !model.isExpanded { model.expand() }
         case .up:
             if Prefs.bool(Prefs.swipeToClose), model.isExpanded { model.collapse() }
         case .left, .right:
-            guard Prefs.bool(Prefs.swipeSideways) else { return }
+            // Open, pages follow the fingers (pageScroll) unless Settings turns them at once; closed, it skips tracks.
+            guard Prefs.bool(Prefs.swipeSideways), !model.isExpanded || !Prefs.bool(Prefs.swipePagesFollow) else { return }
             onSwipe?(direction)
         }
+    }
+
+    // MARK: Paging
+
+    private enum Axis { case horizontal, vertical }
+    /// Decided once per gesture, from its first few points of travel.
+    private var pageAxis: Axis?
+    private var pageX: CGFloat = 0
+    private var pageY: CGFloat = 0
+    /// The last tenth of a second of travel, for the speed at release.
+    private var pageSamples: [(time: CFTimeInterval, x: CGFloat)] = []
+
+    /// Two fingers sideways on the open island carry its page with them. Returns whether the event was
+    /// the page's; up and down stay with the open and close swipes.
+    private func pageScroll(_ event: NSEvent) -> Bool {
+        guard event.hasPreciseScrollingDeltas else { return false }
+        if event.phase == .began || event.phase == .mayBegin {
+            pageAxis = nil
+            pageX = 0
+            pageY = 0
+            pageSamples = []
+            if model.isExpanded { model.beginPageDrag() }
+            return false
+        }
+        // The trackpad's momentum after the fingers lift belongs to the settle already under way.
+        if event.momentumPhase != [] { return pageAxis == .horizontal }
+        guard model.isExpanded, Prefs.bool(Prefs.swipeSideways), Prefs.bool(Prefs.swipePagesFollow) else { return false }
+        if event.phase == .ended || event.phase == .cancelled {
+            guard pageAxis == .horizontal else { return false }
+            pageAxis = nil
+            model.endPageDrag(velocity: pageVelocity)
+            return true
+        }
+        guard event.phase == .changed else { return false }
+        // Finger direction, as the swipes read it (reversed if Settings says so).
+        let sign: CGFloat = (event.isDirectionInvertedFromDevice ? 1 : -1) * (Prefs.bool(Prefs.swipeReversed) ? -1 : 1)
+        pageX += event.scrollingDeltaX * sign
+        pageY += event.scrollingDeltaY * sign
+        if pageAxis == nil, hypot(pageX, pageY) > 6 { pageAxis = abs(pageX) > abs(pageY) ? .horizontal : .vertical }
+        guard pageAxis == .horizontal else { return false }
+        let now = CACurrentMediaTime()
+        pageSamples.append((now, pageX))
+        pageSamples.removeAll { now - $0.time > 0.1 }
+        model.dragPage(to: pageX)
+        return true
+    }
+
+    private var pageVelocity: CGFloat {
+        guard let first = pageSamples.first, let last = pageSamples.last, last.time > first.time else { return 0 }
+        return (last.x - first.x) / CGFloat(last.time - first.time)
     }
 }

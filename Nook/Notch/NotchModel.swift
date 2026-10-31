@@ -514,6 +514,7 @@ final class NotchModel {
     }
 
     func show(_ target: IslandCard) {
+        if pageSettle != nil || pageDrag != 0 { land() }
         guard target != card else { return }
         if let from = cards.firstIndex(of: card), let to = cards.firstIndex(of: target) {
             pageDirection.forward = to > from
@@ -521,6 +522,101 @@ final class NotchModel {
             pageDirection.forward = true
         }
         withAnimation(Motion.reshape) { card = target }
+    }
+
+    // MARK: Paging with two fingers
+
+    /// How far the open page follows two fingers sideways, in points; positive to the right.
+    private(set) var pageDrag: CGFloat = 0
+    /// After the fingers let go: the spring carrying the page from there, drawn frame by frame.
+    private(set) var pageSettle: PageSettle?
+    /// The page a settling turn lands on; nil while a page settles back into place.
+    @ObservationIgnored private var settlingTo: IslandCard?
+    @ObservationIgnored private var settleTask: Task<Void, Never>?
+    /// Where a new swipe picks the page up, if it caught one settling back.
+    @ObservationIgnored private var dragBase: CGFloat = 0
+
+    /// The page beside this one that a drag brings in: the next one from the right as the fingers go left.
+    func neighbor(forDrag drag: CGFloat) -> IslandCard? {
+        guard let index = cards.firstIndex(of: card) else { return nil }
+        let next = index + (drag < 0 ? 1 : -1)
+        return cards.indices.contains(next) ? cards[next] : nil
+    }
+
+    /// Fingers on the trackpad: a turn still settling lands at once; a page settling back is caught
+    /// where it is.
+    func beginPageDrag() {
+        if settlingTo != nil {
+            land()
+        } else if let settle = pageSettle {
+            dragBase = settle.offset(at: .now)
+            settleTask?.cancel()
+            pageSettle = nil
+        } else {
+            dragBase = 0
+        }
+    }
+
+    /// The page under the fingers, one to one; past either end it gives less and less, as iOS does.
+    func dragPage(to offset: CGFloat) {
+        guard isExpanded, pageSettle == nil else { return }
+        let x = dragBase + offset
+        let free = neighbor(forDrag: x) != nil
+        var instant = Transaction()
+        instant.disablesAnimations = true
+        withTransaction(instant) { pageDrag = free ? x : Self.rubberBand(x, width: layout(for: .expanded).size.width) }
+    }
+
+    /// Let go: where the fingers were heading decides, the next page or back, and the spring carries on
+    /// at their speed.
+    func endPageDrag(velocity: CGFloat) {
+        guard pageDrag != 0, pageSettle == nil else { return }
+        let width = layout(for: .expanded).size.width
+        let projected = pageDrag + velocity * 0.15
+        if abs(projected) > width * 0.3, (projected < 0) == (pageDrag < 0), let next = neighbor(forDrag: pageDrag) {
+            pageDirection.forward = pageDrag < 0
+            settle(to: pageDrag < 0 ? -width : width, velocity: velocity, landing: next)
+        } else {
+            settle(to: 0, velocity: velocity, landing: nil)
+        }
+    }
+
+    private func settle(to target: CGFloat, velocity: CGFloat, landing next: IslandCard?) {
+        settlingTo = next
+        // Reduce Motion: no momentum, the page is just there.
+        guard !Motion.isDisabled, !Motion.reduceMotion else {
+            land()
+            return
+        }
+        let settle = PageSettle(start: .now, from: pageDrag, to: target, velocity: velocity)
+        pageSettle = settle
+        settleTask?.cancel()
+        settleTask = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(settle.duration))
+            guard !Task.isCancelled else { return }
+            self?.land()
+        }
+    }
+
+    /// The settle ends: a turned page shows where it already was, or the page is back in place.
+    private func land() {
+        settleTask?.cancel()
+        settleTask = nil
+        var instant = Transaction()
+        instant.disablesAnimations = true
+        withTransaction(instant) {
+            if let next = settlingTo { card = next }
+            settlingTo = nil
+            pageSettle = nil
+            pageDrag = 0
+        }
+        dragBase = 0
+    }
+
+    /// Apple's rubber band: the further past the end, the less the page follows.
+    static func rubberBand(_ offset: CGFloat, width: CGFloat) -> CGFloat {
+        let c: CGFloat = 0.55
+        return offset * width * c / (width + c * abs(offset))
     }
 
     /// A sideways swipe or a page dot: the next or previous card, stopping at either end.
@@ -550,6 +646,7 @@ final class NotchModel {
     /// `remembering`: off for Settings' preview, so "Last page" is what you left open, not what it showed.
     func collapse(remembering: Bool = true) {
         guard isExpanded else { return }
+        if pageSettle != nil || pageDrag != 0 { land() }
         if remembering { lastCard = card }
         withAnimation(Motion.collapse) { isExpanded = false }
     }
@@ -559,5 +656,35 @@ final class NotchModel {
     func setHovering(_ hovering: Bool) {
         guard hovering != isHovering else { return }
         isHovering = hovering
+    }
+}
+
+/// A page let go of mid-swipe: a damped spring (stiffness 322, damping 32, about 0.35 s and barely past
+/// its mark) from where the fingers left it, at their speed, solved for any moment so it's drawn in step
+/// with the display.
+struct PageSettle: Equatable {
+    let start: Date
+    let from: CGFloat
+    let to: CGFloat
+    let velocity: CGFloat
+
+    private static let stiffness = 322.0
+    private static let damping = 32.0
+    private static var omega: Double { stiffness.squareRoot() }
+    private static var zeta: Double { damping / (2 * omega) }
+    private static var omegaD: Double { omega * (1 - zeta * zeta).squareRoot() }
+
+    private var a: Double { Double(from - to) }
+    private var b: Double { (Double(velocity) + Self.zeta * Self.omega * a) / Self.omegaD }
+
+    func offset(at date: Date) -> CGFloat {
+        let t = max(date.timeIntervalSince(start), 0)
+        return to + CGFloat(exp(-Self.zeta * Self.omega * t) * (a * cos(Self.omegaD * t) + b * sin(Self.omegaD * t)))
+    }
+
+    /// When it's within half a point for good.
+    var duration: TimeInterval {
+        let reach = (a * a + b * b).squareRoot()
+        return reach <= 0.5 ? 0 : log(reach / 0.5) / (Self.zeta * Self.omega)
     }
 }
