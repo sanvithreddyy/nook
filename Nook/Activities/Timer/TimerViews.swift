@@ -83,9 +83,7 @@ struct TimerDropContent: View {
     }
 }
 
-/// The open timer, as Clock's timer Live Activity lays it out: pause and cancel as round buttons on the
-/// left, and on the right "Timer" over the time left, large in orange. Two-finger scrolling over the
-/// time adds or takes off minutes, one detent per minute. Finished, the buttons become Repeat and Stop.
+/// The open timer's page: the timer's glyph beside the notch, then the Timer module's face, larger.
 struct TimerCard: View {
     @Environment(TimerModel.self) private var timer
     @Environment(NotchModel.self) private var model
@@ -93,33 +91,12 @@ struct TimerCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             CardGlyph(symbol: "timer", tint: .orange)
-            HStack(alignment: .center, spacing: 12) {
-                if timer.state == .done {
-                    RoundButton(symbol: "arrow.counterclockwise", label: "Repeat", tint: .white) { timer.repeatLast() }
-                    RoundButton(symbol: "xmark", label: "Stop", tint: .orange) {
-                        timer.cancel()
-                        model.collapse()
-                    }
-                } else {
-                    RoundButton(symbol: timer.isRunning ? "pause.fill" : "play.fill",
-                                label: timer.isRunning ? "Pause" : "Resume", tint: .orange) { timer.toggle() }
-                    RoundButton(symbol: "xmark", label: "Cancel", tint: .white) {
-                        timer.cancel()
-                        model.collapse()
-                    }
-                }
-                Spacer(minLength: 0)
-                VStack(alignment: .trailing, spacing: -2) {
-                    Text("Timer")
-                        .font(.system(size: 15, weight: .semibold))
-                        .foregroundStyle(.orange)
-                    TimerText(size: 46, weight: .medium)
-                        .overlay { ScrollDial { step in timer.adjust(minutes: step) } }
-                        .help("Scroll to add or take off minutes")
+            GeometryReader { geometry in
+                // Only open while a timer is going, so there's no length to set here.
+                TimerFace(length: timer.lastMinutes, size: geometry.size, button: 62, setLength: { _ in false }) {
+                    model.collapse()
                 }
             }
-            // In the middle of the room under the notch line.
-            .frame(maxHeight: .infinity)
             .padding(.bottom, Card.inset)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
@@ -128,27 +105,6 @@ struct TimerCard: View {
             Divider()
             SettingsMenuItem(pane: .timer)
         }
-    }
-}
-
-/// A round control tinted like the iPhone's timer buttons: the glyph in the tint on a dim disc of it.
-private struct RoundButton: View {
-    let symbol: String
-    let label: String
-    let tint: Color
-    let action: () -> Void
-
-    var body: some View {
-        Button(action: action) {
-            Image(systemName: symbol)
-                .font(.system(size: 19, weight: .bold))
-                .contentTransition(.symbolEffect(.replace))
-                .foregroundStyle(tint)
-                .frame(width: 50, height: 50)
-                .background(Circle().fill(tint.opacity(tint == .white ? 0.14 : 0.24)))
-        }
-        .buttonStyle(IslandButtonStyle())
-        .accessibilityLabel(label)
     }
 }
 

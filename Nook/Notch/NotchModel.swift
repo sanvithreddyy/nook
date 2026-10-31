@@ -310,7 +310,8 @@ final class NotchModel {
         switch card {
         case .home(let modules): HomeMetrics.pageSize(modules, batteries: batteryCount, scale: home.scale)
         case .meeting: CGSize(width: Self.cardWidth, height: 104)
-        case .timer: CGSize(width: Self.cardWidth, height: 76)
+        // Room for the ring with the round buttons either side.
+        case .timer: CGSize(width: Self.cardWidth, height: 132)
         case .shelf: ShelfMetrics.size(items: shelfItems, dragging: isDraggingFile)
         }
     }
@@ -330,7 +331,7 @@ final class NotchModel {
     /// screen with a different notch, never as the island changes.
     var maximumSize: CGSize {
         let home = HomeMetrics.widestPage(HomeConfig(layout: .sideBySide, columns: 3, size: .large))
-        let body = CGSize(width: max(home.width, ShelfMetrics.maxWidth, Self.cardWidth), height: max(home.height, ShelfMetrics.height, 104))
+        let body = CGSize(width: max(home.width, ShelfMetrics.maxWidth, Self.cardWidth), height: max(home.height, ShelfMetrics.height, 132))
         let widest = max(body.width + Self.cardEar * 2, notch.size.width + (notch.slot + 84) * 2)
         return CGSize(width: widest + 120, height: notch.topInset + notch.size.height + body.height + 40)
     }
