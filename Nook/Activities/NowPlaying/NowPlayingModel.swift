@@ -123,8 +123,8 @@ final class NowPlayingModel {
         client.onUpdate = nil
         // -preview-sample: the sample track even when something is playing; its title is long enough to scroll.
         if title.isEmpty || CommandLine.arguments.contains("-preview-sample") {
-            title = "Emagination (B-Side) [Extended Mix]"
-            artist = "Miami Horror"
+            title = "Golden Hour (B-Side) [Extended Mix]"
+            artist = "Night Swim"
             duration = 241
             trackID = "preview"
             // A system wallpaper stands in for cover art.

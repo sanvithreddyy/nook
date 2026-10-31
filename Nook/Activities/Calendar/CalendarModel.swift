@@ -189,12 +189,14 @@ final class CalendarModel {
             cal.date(byAdding: .minute, value: day * 1440 + hour * 60 + minute, to: today)!
         }
         let now = Date()
+        // On the quarter hour, as real events are; a meeting about to start keeps its exact minute.
+        func quarter(_ date: Date) -> Date { Date(timeIntervalSinceReferenceDate: (date.timeIntervalSinceReferenceDate / 900).rounded() * 900) }
         let soon = startsIn.map { now.addingTimeInterval($0) }
-            ?? cal.date(bySetting: .second, value: 0, of: now.addingTimeInterval((meetingSoon ? 4 : 20) * 60)) ?? now
+            ?? (meetingSoon ? cal.date(bySetting: .second, value: 0, of: now.addingTimeInterval(4 * 60)) ?? now : quarter(now.addingTimeInterval(20 * 60)))
         events = [
             CalendarEvent(id: "a", title: "Ops sync", start: now.addingTimeInterval(-40 * 60), end: now.addingTimeInterval(-10 * 60), color: .orange, isAllDay: false, joinURL: nil),
             CalendarEvent(id: "b", title: "Design review", start: soon, end: soon.addingTimeInterval(45 * 60), color: .blue, isAllDay: false, joinURL: URL(string: "https://meet.google.com/abc")),
-            CalendarEvent(id: "c", title: "Dinner", start: now.addingTimeInterval(3 * 3600), end: now.addingTimeInterval(4.5 * 3600), color: .green, isAllDay: false, joinURL: nil),
+            CalendarEvent(id: "c", title: "Dinner", start: quarter(now.addingTimeInterval(3 * 3600)), end: quarter(now.addingTimeInterval(4.5 * 3600)), color: .green, isAllDay: false, joinURL: nil),
             CalendarEvent(id: "d", title: "Inventory audit", start: at(1, 10), end: at(1, 11), color: .orange, isAllDay: false, joinURL: nil),
             CalendarEvent(id: "e", title: "Vendor call", start: at(1, 13, 30), end: at(1, 14), color: .blue, isAllDay: false, joinURL: URL(string: "https://zoom.us/j/1")),
             CalendarEvent(id: "f", title: "Gym", start: at(1, 16), end: at(1, 17), color: .green, isAllDay: false, joinURL: nil),
