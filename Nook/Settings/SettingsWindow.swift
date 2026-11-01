@@ -136,6 +136,37 @@ final class SettingsWindowController {
         }
     }
 
+    /// -settings-sidebar: Settings without focus, then every way its sidebar could collapse (the divider
+    /// dragged to the edge, Hide Sidebar), printing the sidebar's width after each.
+    func runSidebarProbe() {
+        show(activate: false)
+        Task { @MainActor in
+            try? await Task.sleep(for: .seconds(2))
+            @MainActor func report(_ step: String) {
+                let item = splitController()?.splitViewItems.first
+                print("SIDEBAR \(step): width \(item?.viewController.view.frame.width ?? -1) min \(item?.minimumThickness ?? -1) max \(item?.maximumThickness ?? -1) collapsed \(item?.isCollapsed ?? false)")
+                fflush(stdout)
+            }
+            print("TOOLBAR " + (window?.toolbar?.items.map(\.itemIdentifier.rawValue).joined(separator: ", ") ?? "none"))
+            report("start")
+            for pane in [SettingsPane.home, .huds, .about, .general] {
+                SettingsNavigation.shared.pane = pane
+                try? await Task.sleep(for: .seconds(0.6))
+                report("on \(pane.rawValue)")
+            }
+            Updates.shared.previewFound()
+            try? await Task.sleep(for: .seconds(0.6))
+            report("with the update row")
+            (splitController()?.splitView).map { $0.setPosition(0, ofDividerAt: 0) }
+            try? await Task.sleep(for: .seconds(1))
+            report("after the divider is dragged to the edge")
+            splitController()?.toggleSidebar(nil)
+            try? await Task.sleep(for: .seconds(1))
+            report("after Hide Sidebar")
+            NSApp.terminate(nil)
+        }
+    }
+
     /// The page's scroll view: the rightmost one, the sidebar's being on the left.
     private func pageScroller() -> NSScrollView? {
         func all(in view: NSView) -> [NSScrollView] {
@@ -324,8 +355,24 @@ struct SettingsView: View {
         }
         // Otherwise a solid bar sits behind the toolbar once the sidebar is toggled or the window is inactive.
         .toolbarBackgroundVisibility(.hidden, for: .windowToolbar)
+        #if DEBUG
+        .modifier(StillAppearance())
+        #endif
     }
 }
+
+#if DEBUG
+/// A still is taken without focus; draw the controls as the front window has them.
+private struct StillAppearance: ViewModifier {
+    func body(content: Content) -> some View {
+        if CommandLine.arguments.contains("-settings-still") {
+            content.environment(\.controlActiveState, .key)
+        } else {
+            content
+        }
+    }
+}
+#endif
 
 /// Keeps a split view's sidebar item open at one width, and puts that back the moment anything changes it.
 private final class SidebarLock {

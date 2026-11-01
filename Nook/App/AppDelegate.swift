@@ -26,6 +26,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if Updates.shared.takeReopenRequest() { SettingsWindowController.shared.show(pane: .about) }
         #if DEBUG
         if CommandLine.arguments.contains("-settings-capture") { SettingsWindowController.shared.runCapture() }
+        if CommandLine.arguments.contains("-settings-sidebar") { SettingsWindowController.shared.runSidebarProbe() }
+        // -settings-show <pane>: Settings on that page without focus, left open, for recordings.
+        if let i = CommandLine.arguments.firstIndex(of: "-settings-show"), i + 1 < CommandLine.arguments.count,
+           let pane = SettingsPane(rawValue: CommandLine.arguments[i + 1]) {
+            SettingsWindowController.shared.show(activate: false, pane: pane)
+        }
+        // -settings-still <pane>: Settings on that page without focus, its window number printed, for a still.
+        if let i = CommandLine.arguments.firstIndex(of: "-settings-still"), i + 1 < CommandLine.arguments.count,
+           let pane = SettingsPane(rawValue: CommandLine.arguments[i + 1]) {
+            SettingsWindowController.shared.show(activate: false, pane: pane)
+            Task { @MainActor in
+                try? await Task.sleep(for: .seconds(1.5))
+                print("STILL \(NSApp.windows.first { $0.title == "Nook" }?.windowNumber ?? 0)")
+                fflush(stdout)
+                try? await Task.sleep(for: .seconds(3))
+                NSApp.terminate(nil)
+            }
+        }
         // -settings-preview <pane>: Settings on that page with "Preview on the notch" on, for captures.
         let args = CommandLine.arguments
         // -settings-open: Settings in front as a click on Settings… opens it, then the menu bar's menus
