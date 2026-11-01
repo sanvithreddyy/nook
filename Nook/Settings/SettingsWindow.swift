@@ -65,14 +65,15 @@ final class SettingsWindowController {
 
     /// The sidebar stays at one width, as in System Settings. SwiftUI's hide and show slid it in empty,
     /// then its contents popped in and the page jumped; dragging the divider to the edge hid it the same
-    /// way. Without the toggle there's no toolbar, and SwiftUI then draws the sidebar narrower than it's
-    /// asked to, so the width is held on the split view underneath.
+    /// way. Without the toggle there's no toolbar, and SwiftUI then sizes the sidebar narrower than it's
+    /// asked to and makes it collapsible again on every update, so the split view item underneath is
+    /// held, and put back whenever SwiftUI changes it.
     private func lockSidebar() {
-        guard let item = splitController()?.splitViewItems.first else { return }
-        item.canCollapse = false
-        item.minimumThickness = SettingsView.sidebarWidth
-        item.maximumThickness = SettingsView.sidebarWidth
+        guard let item = splitController()?.splitViewItems.first, item !== sidebarLock?.item else { return }
+        sidebarLock = SidebarLock(item: item, width: SettingsView.sidebarWidth)
     }
+
+    private var sidebarLock: SidebarLock?
 
     private func splitController() -> NSSplitViewController? {
         func find(_ view: NSView) -> NSSplitViewController? {
@@ -314,5 +315,29 @@ struct SettingsView: View {
         .onChange(of: navigation.pane, initial: true) { _, pane in IslandPreview.shared.pane = pane }
         // Otherwise a solid bar sits behind the toolbar once the sidebar is toggled or the window is inactive.
         .toolbarBackgroundVisibility(.hidden, for: .windowToolbar)
+    }
+}
+
+/// Keeps a split view's sidebar item open at one width, and puts that back the moment anything changes it.
+private final class SidebarLock {
+    let item: NSSplitViewItem
+    private var observations: [NSKeyValueObservation] = []
+
+    init(item: NSSplitViewItem, width: CGFloat) {
+        self.item = item
+        let hold = { (item: NSSplitViewItem) in
+            if item.canCollapse { item.canCollapse = false }
+            if item.minimumThickness != width { item.minimumThickness = width }
+            if item.maximumThickness != width { item.maximumThickness = width }
+            if item.isCollapsed { item.isCollapsed = false }
+        }
+        hold(item)
+        let reapply: (NSSplitViewItem, Any) -> Void = { item, _ in MainActor.assumeIsolated { hold(item) } }
+        observations = [
+            item.observe(\.canCollapse, changeHandler: reapply),
+            item.observe(\.minimumThickness, changeHandler: reapply),
+            item.observe(\.maximumThickness, changeHandler: reapply),
+            item.observe(\.isCollapsed, changeHandler: reapply),
+        ]
     }
 }
