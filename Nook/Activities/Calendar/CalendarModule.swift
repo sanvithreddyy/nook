@@ -2,7 +2,7 @@ import AppKit
 import SwiftUI
 
 /// Apple's Calendar widget on the notch: the day on the left (red weekday, large date, that day's
-/// events), the month on the right. Click a date to see that day; click the large date to come back
+/// events, scrolling when there are more than fit), the month on the right. Click a date to see that day; click the large date to come back
 /// to today. Next month is a click away on the chevrons that show when the pointer is over the month.
 struct CalendarModule: View {
     @Environment(\.homeScale) private var k
@@ -82,17 +82,58 @@ private struct DayColumn: View {
                         .foregroundStyle(.white.opacity(0.6))
                         .padding(.top, 8 * k)
                 } else {
-                    ForEach(events.prefix(2)) { EventBlock(event: $0) }
-                    if events.count > 2 {
-                        Text(events.count == 3 ? "1 more event" : "\(events.count - 2) more events")
-                            .font(.system(size: 11.5 * k))
-                            .foregroundStyle(.white.opacity(0.6))
-                            .padding(.top, 5 * k)
-                    }
+                    EventList(events: events)
                 }
             } else {
                 AccessButton()
                     .padding(.top, 10 * k)
+            }
+        }
+    }
+}
+
+/// The day's events as the Calendar widget lists them, the ones that don't fit counted underneath; with
+/// more than fit, the list scrolls, and the count says how many are still below. Clicking the count
+/// brings the next ones up.
+private struct EventList: View {
+    @Environment(\.homeScale) private var k
+    let events: [CalendarEvent]
+    /// The events at least mostly in view; before the list has laid out, the first two.
+    @State private var inView: Set<String>?
+
+    var body: some View {
+        let lastInView = events.lastIndex { (inView ?? Set(events.prefix(2).map(\.id))).contains($0.id) } ?? 1
+        let below = events.count - 1 - lastInView
+        ScrollViewReader { list in
+            VStack(alignment: .leading, spacing: 0) {
+                ScrollView(.vertical) {
+                    VStack(alignment: .leading, spacing: 0) {
+                        ForEach(events) { EventBlock(event: $0).id($0.id) }
+                    }
+                    .scrollTargetLayout()
+                }
+                .scrollBounceBehavior(.basedOnSize)
+                .onScrollTargetVisibilityChange(idType: String.self, threshold: 0.8) { ids in inView = Set(ids) }
+                .softTopEdge()
+                // Under the list, in its own room: the line stays while the list is longer than its space,
+                // so nothing moves as the count runs out.
+                if events.count > 2 {
+                    Button {
+                        guard events.indices.contains(lastInView + 1) else { return }
+                        withAnimation(Motion.content) { list.scrollTo(events[lastInView + 1].id, anchor: .bottom) }
+                    } label: {
+                        Text(below == 1 ? "1 more event" : "\(below) more events")
+                            .font(.system(size: 11.5 * k))
+                            .foregroundStyle(.white.opacity(0.6))
+                            .contentTransition(.numericText(value: Double(below)))
+                            .opacity(below > 0 ? 1 : 0)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.top, 5 * k)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(below == 0)
+                }
             }
         }
     }

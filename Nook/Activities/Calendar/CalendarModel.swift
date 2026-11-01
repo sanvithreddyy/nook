@@ -205,6 +205,15 @@ final class CalendarModel {
             CalendarEvent(id: "i", title: "Product demo", start: at(5, 14), end: at(5, 15), color: .blue, isAllDay: false, joinURL: URL(string: "https://zoom.us/j/1")),
             CalendarEvent(id: "j", title: "Quarterly planning", start: at(9, 10), end: at(9, 12), color: .purple, isAllDay: false, joinURL: nil),
         ]
+        // -preview-busy-day: tomorrow holds seven events, more than the module shows at once.
+        if CommandLine.arguments.contains("-preview-busy-day") {
+            events += [
+                CalendarEvent(id: "k", title: "Daylight Saving Time ends", start: at(1, 0), end: at(2, 0), color: .green, isAllDay: true, joinURL: nil),
+                CalendarEvent(id: "l", title: "Standup", start: at(1, 9), end: at(1, 9, 15), color: .blue, isAllDay: false, joinURL: URL(string: "https://zoom.us/j/1")),
+                CalendarEvent(id: "m", title: "Team lunch", start: at(1, 12), end: at(1, 13), color: .purple, isAllDay: false, joinURL: nil),
+                CalendarEvent(id: "n", title: "Dentist", start: at(1, 18, 30), end: at(1, 19, 15), color: .red, isAllDay: false, joinURL: nil),
+            ]
+        }
         access = .granted
         onChange?()
     }

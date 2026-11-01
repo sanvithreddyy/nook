@@ -33,6 +33,9 @@ final class NotchWindowController {
         panel.orderFrontRegardless()
         installMonitors()
         observeLayout()
+        #if DEBUG
+        if CommandLine.arguments.contains("-scroll-probe") { runScrollProbe() }
+        #endif
     }
 
     /// Hidden while a fullscreen app owns the screen: ordered out so nothing composites over it.
@@ -176,6 +179,10 @@ final class NotchWindowController {
             release(event)
             return event
         }) { monitors.append(localUp) }
+        // Seen before the views: over a list that scrolls, a sideways gesture is still the page turn.
+        if let scrolls = NSEvent.addLocalMonitorForEvents(matching: .scrollWheel, handler: { [weak self] event in
+            self?.routeOverList(event) ?? event
+        }) { monitors.append(scrolls) }
         // A click anywhere else closes the expanded island.
         if let outside = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown], handler: { [weak self] _ in
             #if DEBUG
@@ -301,6 +308,51 @@ final class NotchWindowController {
         }
     }
 
+    // MARK: Lists that scroll
+
+    private enum ListUnder { case none, scrolls, still }
+    /// What the gesture under way began over: a list that scrolls (a busy day's events), one whose
+    /// content fits, or neither.
+    private var gestureList = ListUnder.none
+
+    /// A list that scrolls keeps up and down for itself, but its scroll view would also keep sideways
+    /// gestures from the page turn. So over one, the page turn reads the gesture first, and once it has
+    /// it sideways the list gets no more of it. A scroll view with nothing to scroll gets none of the
+    /// gesture, so swiping over it opens, closes and turns pages as anywhere else.
+    private func routeOverList(_ event: NSEvent) -> NSEvent? {
+        guard event.window === panel else { return event }
+        return routeOverList(event, at: event.locationInWindow)
+    }
+
+    private func routeOverList(_ event: NSEvent, at point: NSPoint) -> NSEvent? {
+        guard event.hasPreciseScrollingDeltas else { return event }
+        if event.phase == .began || event.phase == .mayBegin {
+            gestureList = model.isExpanded ? list(at: point) : .none
+        }
+        guard Prefs.bool(Prefs.swipeGestures) else { return event }
+        switch gestureList {
+        case .none:
+            return event
+        case .still:
+            handleScroll(event)
+            return nil
+        case .scrolls:
+            return pageScroll(event) ? nil : event
+        }
+    }
+
+    /// The scroll view under a point, and whether its content is taller than it.
+    private func list(at point: NSPoint) -> ListUnder {
+        guard let content = panel.contentView, var view = content.hitTest(content.convert(point, from: nil)) else { return .none }
+        while true {
+            if let scroller = view as? NSScrollView {
+                return (scroller.documentView?.frame.height ?? 0) > scroller.contentView.bounds.height + 1 ? .scrolls : .still
+            }
+            guard let parent = view.superview else { return .none }
+            view = parent
+        }
+    }
+
     // MARK: Paging
 
     private enum Axis { case horizontal, vertical }
@@ -351,6 +403,102 @@ final class NotchWindowController {
 
     #if DEBUG
     private static let ignoresPointer = CommandLine.arguments.contains("-ignore-pointer")
+
+    /// -scroll-probe: two-finger gestures through the app's own event path, as a trackpad sends them:
+    /// over the day's events (up, down, sideways) and elsewhere on the island (sideways, then up). Prints
+    /// what each moved (SCROLL lines).
+    private func runScrollProbe() {
+        Task { @MainActor in
+            try? await Task.sleep(for: .seconds(3.5))
+            @MainActor func scrollers(_ view: NSView) -> [NSScrollView] {
+                ((view as? NSScrollView).map { [$0] } ?? []) + view.subviews.flatMap(scrollers)
+            }
+            // -scroll-probe-short: the day's events fit, so the list doesn't scroll; only a swipe up over it.
+            let short = CommandLine.arguments.contains("-scroll-probe-short")
+            guard let host = panel.contentView,
+                  let list = short
+                      ? scrollers(host).first(where: { $0.convert($0.bounds, to: nil).midX > host.bounds.width * 0.4 && $0.convert($0.bounds, to: nil).midX < host.bounds.width * 0.6 })
+                      : scrollers(host).first(where: { ($0.documentView?.frame.height ?? 0) > $0.contentView.bounds.height + 1 }) else {
+                print("SCROLL no list"); fflush(stdout); return
+            }
+            // Screen points (top-left origin, as CGEvent wants): the list's middle, and the island's left
+            // part, over the music.
+            @MainActor func global(_ view: NSView, _ x: CGFloat, _ y: CGFloat) -> CGPoint {
+                let inWindow = view.convert(NSPoint(x: view.bounds.width * x, y: view.bounds.height * y), to: nil)
+                let onScreen = panel.convertPoint(toScreen: inWindow)
+                return CGPoint(x: onScreen.x, y: (NSScreen.screens.first?.frame.height ?? 0) - onScreen.y)
+            }
+            let overList = global(list, 0.5, 0.5)
+            let elsewhere = CGPoint(x: panel.frame.minX + panel.frame.width * 0.3, y: overList.y)
+            @MainActor func state(_ step: String) {
+                print("SCROLL \(step): list at \(Int(list.contentView.bounds.origin.y)) of \(Int((list.documentView?.frame.height ?? 0) - list.contentView.bounds.height)), page \(model.card.name), open \(model.isExpanded)")
+                fflush(stdout)
+            }
+            @MainActor func gesture(dx: Int32, dy: Int32, at point: CGPoint) async {
+                // began, changed ×12, ended: phases as CGEvent numbers them.
+                for (phase, count) in [(Int64(1), 1), (2, 12), (4, 1)] {
+                    for _ in 0..<count {
+                        guard let cg = CGEvent(scrollWheelEvent2Source: nil, units: .pixel, wheelCount: 2,
+                                               wheel1: phase == 2 ? dy : 0, wheel2: phase == 2 ? dx : 0, wheel3: 0) else { continue }
+                        cg.setIntegerValueField(.scrollWheelEventIsContinuous, value: 1)
+                        cg.setIntegerValueField(.scrollWheelEventScrollPhase, value: phase)
+                        cg.location = point
+                        cg.setIntegerValueField(.mouseEventWindowUnderMousePointer, value: Int64(panel.windowNumber))
+                        cg.setIntegerValueField(.mouseEventWindowUnderMousePointerThatCanHandleThisEvent, value: Int64(panel.windowNumber))
+                        // Made this way an event has no window, so AppKit won't deliver it: do what it does,
+                        // the monitor's routing, then the view under the point.
+                        let screenY = (NSScreen.screens.first?.frame.height ?? 0) - point.y
+                        let inWindow = panel.convertPoint(fromScreen: NSPoint(x: point.x, y: screenY))
+                        if let event = NSEvent(cgEvent: cg), let routed = routeOverList(event, at: inWindow),
+                           let target = host.hitTest(host.convert(inWindow, from: nil)) {
+                            target.scrollWheel(with: routed)
+                        }
+                        try? await Task.sleep(for: .milliseconds(12))
+                    }
+                }
+                try? await Task.sleep(for: .seconds(0.9))
+            }
+            state("start")
+            // -scroll-demo: slow scrolls down the list in two steps and back, for a recording.
+            if CommandLine.arguments.contains("-scroll-demo") {
+                @MainActor func slow(_ dy: Int32, steps: Int) async {
+                    for (phase, count) in [(Int64(1), 1), (2, steps), (4, 1)] {
+                        for _ in 0..<count {
+                            guard let cg = CGEvent(scrollWheelEvent2Source: nil, units: .pixel, wheelCount: 2,
+                                                   wheel1: phase == 2 ? dy : 0, wheel2: 0, wheel3: 0) else { continue }
+                            cg.setIntegerValueField(.scrollWheelEventIsContinuous, value: 1)
+                            cg.setIntegerValueField(.scrollWheelEventScrollPhase, value: phase)
+                            if let event = NSEvent(cgEvent: cg) { list.scrollWheel(with: event) }
+                            try? await Task.sleep(for: .milliseconds(16))
+                        }
+                    }
+                    try? await Task.sleep(for: .seconds(1.2))
+                }
+                await slow(-3, steps: 40)
+                await slow(-3, steps: 40)
+                await slow(-3, steps: 40)
+                state("at the end")
+                await slow(3, steps: 120)
+                state("after the demo")
+                return
+            }
+            if short {
+                await gesture(dx: 0, dy: 12, at: overList)
+                state("after a swipe up over the events")
+                return
+            }
+            await gesture(dx: 0, dy: -10, at: overList)
+            state("after up-down over the list")
+            await gesture(dx: 0, dy: 10, at: overList)
+            state("after back over the list")
+            await gesture(dx: -14, dy: 0, at: overList)
+            state("after sideways over the list")
+            await gesture(dx: 14, dy: 0, at: elsewhere)
+            state("after sideways back, elsewhere")
+            await gesture(dx: 0, dy: 12, at: elsewhere)
+            state("after a swipe up elsewhere")
+        }
+    }
     #endif
 
     private var pageVelocity: CGFloat {
