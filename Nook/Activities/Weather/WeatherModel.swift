@@ -79,6 +79,11 @@ final class WeatherModel: NSObject {
         selected = (selected + 1) % reports.count
     }
 
+    func show(_ index: Int) {
+        guard reports.indices.contains(index) else { return }
+        selected = index
+    }
+
     private func read() {
         guard !reading else { return }
         var targets: [(name: String?, latitude: Double, longitude: Double)] = []
@@ -232,6 +237,12 @@ final class WeatherModel: NSObject {
             .map { WeatherReport.Hour(time: hour.addingTimeInterval(Double($0.offset) * 3600), symbol: $0.element.1, temperature: $0.element.0) }
         reports = [WeatherReport(city: "Cupertino", isCurrentLocation: true, temperature: 72, symbol: "sun.max.fill", condition: "Sunny",
                                  high: 75, low: 58, hours: hours)]
+        // -preview-weather-two: a second place, for designing how places are switched.
+        if CommandLine.arguments.contains("-preview-weather-two") {
+            reports.append(WeatherReport(city: "Bengaluru", isCurrentLocation: false, temperature: 68, symbol: "cloud.moon.fill",
+                                         condition: "Partly Cloudy", high: 81, low: 66, hours: hours))
+            if CommandLine.arguments.contains("-preview-weather-second") { selected = 1 }
+        }
         lastRead = .distantFuture
     }
     #endif
