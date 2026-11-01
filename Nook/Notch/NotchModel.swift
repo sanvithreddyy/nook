@@ -523,7 +523,7 @@ final class NotchModel {
     /// The page a settling turn lands on; nil while a page settles back into place.
     @ObservationIgnored private var settlingTo: IslandCard?
     @ObservationIgnored private var settleTask: Task<Void, Never>?
-    /// Where a new swipe picks the page up, if it caught one settling back.
+    /// Where a new swipe picks the page up: where it is, caught settling back or left part-way.
     @ObservationIgnored private var dragBase: CGFloat = 0
 
     /// The page beside this one that a drag brings in: the next one from the right as the fingers go left.
@@ -533,18 +533,26 @@ final class NotchModel {
         return cards.indices.contains(next) ? cards[next] : nil
     }
 
-    /// Fingers on the trackpad: a turn still settling lands at once; a page settling back is caught
-    /// where it is.
+    /// Fingers going sideways: a turn still settling lands at once; any other page is picked up where it is.
     func beginPageDrag() {
         if settlingTo != nil {
             land()
         } else if let settle = pageSettle {
-            dragBase = settle.offset(at: .now)
+            dragBase = fingerTravel(drawnAt: settle.offset(at: .now))
             settleTask?.cancel()
             pageSettle = nil
         } else {
-            dragBase = 0
+            dragBase = fingerTravel(drawnAt: pageDrag)
         }
+    }
+
+    /// How far the fingers would have pulled a page to draw it here: past either end that's further than
+    /// it shows, so picking it up there doesn't snap it inward.
+    private func fingerTravel(drawnAt offset: CGFloat) -> CGFloat {
+        guard offset != 0, neighbor(forDrag: offset) == nil else { return offset }
+        let width = layout(for: .expanded).size.width
+        let drawn = min(abs(offset), width * 0.99)
+        return (offset < 0 ? -1 : 1) * drawn * width / (Self.rubberBandStiffness * (width - drawn))
     }
 
     /// The page under the fingers, one to one; past either end it gives less and less, as iOS does.
@@ -607,9 +615,11 @@ final class NotchModel {
 
     /// Apple's rubber band: the further past the end, the less the page follows.
     static func rubberBand(_ offset: CGFloat, width: CGFloat) -> CGFloat {
-        let c: CGFloat = 0.55
+        let c = rubberBandStiffness
         return offset * width * c / (width + c * abs(offset))
     }
+
+    private static let rubberBandStiffness: CGFloat = 0.55
 
     /// A sideways swipe or a page dot: the next or previous card, stopping at either end.
     func page(_ step: Int) {

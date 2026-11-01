@@ -6,6 +6,7 @@ final class NotchWindowController {
     let panel: NotchPanel
     private let model: NotchModel
     private let swipe = SwipeTracker()
+    private let pages = PageTracker()
     private var monitors: [Any] = []
     private var collapseTask: Task<Void, Never>?
     private var hoverIntentTask: Task<Void, Never>?
@@ -295,7 +296,7 @@ final class NotchWindowController {
 
     private func handleScroll(_ event: NSEvent) {
         guard Prefs.bool(Prefs.swipeGestures) else { return }
-        if pageScroll(event) { return }
+        if pages.consume(event, model: model) { return }
         guard let direction = swipe.consume(event) else { return }
         switch direction {
         case .down:
@@ -303,7 +304,7 @@ final class NotchWindowController {
         case .up:
             if Prefs.bool(Prefs.swipeToClose), model.isExpanded { model.collapse() }
         case .left, .right:
-            // Open, pages follow the fingers (pageScroll) unless Settings turns them at once; closed, it skips tracks.
+            // Open, pages follow the fingers (PageTracker) unless Settings turns them at once; closed, it skips tracks.
             guard Prefs.bool(Prefs.swipeSideways), !model.isExpanded || !Prefs.bool(Prefs.swipePagesFollow) else { return }
             onSwipe?(direction)
         }
@@ -338,7 +339,7 @@ final class NotchWindowController {
             handleScroll(event)
             return nil
         case .scrolls:
-            return pageScroll(event) ? nil : event
+            return pages.consume(event, model: model) ? nil : event
         }
     }
 
@@ -353,54 +354,6 @@ final class NotchWindowController {
             view = parent
         }
     }
-
-    // MARK: Paging
-
-    private enum Axis { case horizontal, vertical }
-    /// Decided once per gesture, from its first few points of travel.
-    private var pageAxis: Axis?
-    private var pageX: CGFloat = 0
-    private var pageY: CGFloat = 0
-    /// The last tenth of a second of travel, for the speed at release.
-    private var pageSamples: [(time: CFTimeInterval, x: CGFloat)] = []
-
-    /// Two fingers sideways on the open island carry its page with them. Returns whether the event was
-    /// the page's; up and down stay with the open and close swipes.
-    private func pageScroll(_ event: NSEvent) -> Bool {
-        guard event.hasPreciseScrollingDeltas else { return false }
-        if event.phase == .began || event.phase == .mayBegin {
-            pageAxis = nil
-            pageX = 0
-            pageY = 0
-            pageSamples = []
-            if model.isExpanded { model.beginPageDrag() }
-            return false
-        }
-        // The trackpad's momentum after the fingers lift belongs to the settle already under way.
-        if event.momentumPhase != [] { return pageAxis == .horizontal }
-        guard model.isExpanded, Prefs.bool(Prefs.swipeSideways), Prefs.bool(Prefs.swipePagesFollow) else { return false }
-        if event.phase == .ended || event.phase == .cancelled {
-            guard pageAxis == .horizontal else { return false }
-            pageAxis = nil
-            model.endPageDrag(velocity: pageVelocity)
-            return true
-        }
-        guard event.phase == .changed else { return false }
-        // Finger direction, as the swipes read it (reversed if Settings says so).
-        let sign: CGFloat = (event.isDirectionInvertedFromDevice ? 1 : -1) * (Prefs.bool(Prefs.swipeReversed) ? -1 : 1)
-        // The page goes half again as far as the fingers, so a short swipe carries it.
-        pageX += event.scrollingDeltaX * sign * Self.pageGain
-        pageY += event.scrollingDeltaY * sign * Self.pageGain
-        if pageAxis == nil, hypot(pageX, pageY) > 6 { pageAxis = abs(pageX) > abs(pageY) ? .horizontal : .vertical }
-        guard pageAxis == .horizontal else { return false }
-        let now = CACurrentMediaTime()
-        pageSamples.append((now, pageX))
-        pageSamples.removeAll { now - $0.time > 0.1 }
-        model.dragPage(to: pageX)
-        return true
-    }
-
-    private static let pageGain: CGFloat = 1.5
 
     #if DEBUG
     private static let ignoresPointer = CommandLine.arguments.contains("-ignore-pointer")
@@ -520,9 +473,4 @@ final class NotchWindowController {
         }
     }
     #endif
-
-    private var pageVelocity: CGFloat {
-        guard let first = pageSamples.first, let last = pageSamples.last, last.time > first.time else { return 0 }
-        return (last.x - first.x) / CGFloat(last.time - first.time)
-    }
 }
