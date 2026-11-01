@@ -216,7 +216,19 @@ final class NotchCoordinator {
                     let files = args.contains("-preview-shelf-full")
                         ? ["project.yml", "scripts/build.sh", "Nook/Info.plist", "scripts/tour.sh", "scripts/capture.sh", "scripts/cpu.sh", "scripts/test.sh", "scripts/snapshots.sh"]
                         : ["project.yml", "scripts/build.sh", "Nook/Info.plist"]
-                    shelf.debugPreview(files.map { root.appendingPathComponent($0) })
+                    // -preview-shelf-dir <folder>: that folder's files instead, by name, for a shelf as people fill it.
+                    if let i = args.firstIndex(of: "-preview-shelf-dir"), args.indices.contains(i + 1) {
+                        let folder = URL(fileURLWithPath: args[i + 1])
+                        let found = (try? FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: nil)) ?? []
+                        shelf.debugPreview(found.filter { !$0.lastPathComponent.hasPrefix(".") }
+                            .sorted { $0.lastPathComponent < $1.lastPathComponent })
+                    } else {
+                        shelf.debugPreview(files.map { root.appendingPathComponent($0) })
+                    }
+                    // -shelf-dragging: a file held over the screen, so the landing place shows; -shelf-targeted:
+                    // held over the island, so it lights up.
+                    if args.contains("-shelf-dragging") { model.setDraggingFile(true) }
+                    if args.contains("-shelf-targeted") { shelf.isTargeted = true }
                 }
                 if args.contains("-expand") {
                     // -page <n>: the nth page, to capture each page.
