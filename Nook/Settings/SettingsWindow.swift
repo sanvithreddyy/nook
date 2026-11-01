@@ -60,6 +60,25 @@ final class SettingsWindowController {
         } else {
             window?.orderFrontRegardless()
         }
+        lockSidebar()
+    }
+
+    /// The sidebar stays at one width, as in System Settings. SwiftUI's hide and show slid it in empty,
+    /// then its contents popped in and the page jumped; dragging the divider to the edge hid it the same
+    /// way. Without the toggle there's no toolbar, and SwiftUI then draws the sidebar narrower than it's
+    /// asked to, so the width is held on the split view underneath.
+    private func lockSidebar() {
+        guard let item = splitController()?.splitViewItems.first else { return }
+        item.canCollapse = false
+        item.minimumThickness = SettingsView.sidebarWidth
+        item.maximumThickness = SettingsView.sidebarWidth
+    }
+
+    private func splitController() -> NSSplitViewController? {
+        func find(_ view: NSView) -> NSSplitViewController? {
+            ((view as? NSSplitView)?.delegate as? NSSplitViewController) ?? view.subviews.lazy.compactMap(find).first
+        }
+        return window?.contentView.flatMap(find)
     }
 
     /// Settings closed: back to a menu bar app, and the app that was in front before it gets the front again,
@@ -230,6 +249,7 @@ final class IslandPreview {
 }
 
 struct SettingsView: View {
+    static let sidebarWidth: CGFloat = 190
     @Bindable private var navigation = SettingsNavigation.shared
     @State private var query = ""
     private var pane: SettingsPane { navigation.pane }
@@ -268,7 +288,9 @@ struct SettingsView: View {
                     navigation.pane = first
                 }
             }
-            .navigationSplitViewColumnWidth(min: 170, ideal: 190, max: 230)
+            .navigationSplitViewColumnWidth(Self.sidebarWidth)
+            // The sidebar stays (see lockSidebar).
+            .toolbar(removing: .sidebarToggle)
         } detail: {
             Group {
                 switch pane {
