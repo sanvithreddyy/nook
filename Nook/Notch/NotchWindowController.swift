@@ -316,11 +316,16 @@ final class NotchWindowController {
     /// What the gesture under way began over: a list that scrolls (a busy day's events), one whose
     /// content fits, or neither.
     private var gestureList = ListUnder.none
+    /// The view under the fingers when the gesture under way began. AppKit hands each event to whatever
+    /// is under the pointer at that moment, and a page following the fingers slides its list there; the
+    /// list would keep the rest of the gesture, the lift too, and the page would stop part-way.
+    private weak var gestureView: NSView?
 
     /// A list that scrolls keeps up and down for itself, but its scroll view would also keep sideways
     /// gestures from the page turn. So over one, the page turn reads the gesture first, and once it has
     /// it sideways the list gets no more of it. A scroll view with nothing to scroll gets none of the
-    /// gesture, so swiping over it opens, closes and turns pages as anywhere else.
+    /// gesture, so swiping over it opens, closes and turns pages as anywhere else. Anywhere else, the
+    /// whole gesture goes to the view it began over.
     private func routeOverList(_ event: NSEvent) -> NSEvent? {
         guard event.window === panel else { return event }
         return routeOverList(event, at: event.locationInWindow)
@@ -329,12 +334,15 @@ final class NotchWindowController {
     private func routeOverList(_ event: NSEvent, at point: NSPoint) -> NSEvent? {
         guard event.hasPreciseScrollingDeltas else { return event }
         if event.phase == .began || event.phase == .mayBegin {
+            gestureView = view(at: point)
             gestureList = model.isExpanded ? list(at: point) : .none
         }
         guard Prefs.bool(Prefs.swipeGestures) else { return event }
         switch gestureList {
         case .none:
-            return event
+            guard let gestureView, gestureView.window === panel else { return event }
+            gestureView.scrollWheel(with: event)
+            return nil
         case .still:
             handleScroll(event)
             return nil
@@ -343,9 +351,13 @@ final class NotchWindowController {
         }
     }
 
+    private func view(at point: NSPoint) -> NSView? {
+        panel.contentView.flatMap { $0.hitTest($0.convert(point, from: nil)) }
+    }
+
     /// The scroll view under a point, and whether its content is taller than it.
     private func list(at point: NSPoint) -> ListUnder {
-        guard let content = panel.contentView, var view = content.hitTest(content.convert(point, from: nil)) else { return .none }
+        guard var view = view(at: point) else { return .none }
         while true {
             if let scroller = view as? NSScrollView {
                 return (scroller.documentView?.frame.height ?? 0) > scroller.contentView.bounds.height + 1 ? .scrolls : .still
