@@ -152,13 +152,13 @@ extension SettingsPane {
     var hasPreview: Bool {
         switch self {
         case .home, .nowPlaying, .calendar, .timer, .shelf, .huds, .battery, .connectivity: true
-        case .general, .lock, .shortcuts, .advanced, .about: false
+        case .general, .lock, .shortcuts, .advanced, .about, .update: false
         }
     }
 }
 
 enum SettingsPane: String, CaseIterable, Identifiable {
-    case general, home, nowPlaying, calendar, timer, shelf, huds, battery, connectivity, lock, shortcuts, advanced, about
+    case general, home, nowPlaying, calendar, timer, shelf, huds, battery, connectivity, lock, shortcuts, advanced, about, update
     var id: String { rawValue }
 
     var title: String {
@@ -176,6 +176,7 @@ enum SettingsPane: String, CaseIterable, Identifiable {
         case .shortcuts: "Keyboard Shortcuts"
         case .advanced: "Advanced"
         case .about: "About"
+        case .update: "Software Update"
         }
     }
 
@@ -220,6 +221,7 @@ enum SettingsPane: String, CaseIterable, Identifiable {
         case .shortcuts: ["Shortcut", "Keyboard", "Hotkey", "Record Shortcut"] + ShortcutAction.allCases.map(\.title)
         case .advanced: ["Export Settings", "Import Settings", "Reset All Settings", "Backup"]
         case .about: ["Version", "Acknowledgements"]
+        case .update: ["Update", "Update Now", "New version"]
         }
     }
 
@@ -253,6 +255,7 @@ struct SettingsView: View {
     static let sidebarWidth: CGFloat = 190
     @Bindable private var navigation = SettingsNavigation.shared
     @State private var query = ""
+    private let updates = Updates.shared
     private var pane: SettingsPane { navigation.pane }
 
     var body: some View {
@@ -260,6 +263,7 @@ struct SettingsView: View {
             // Plain names in groups; while searching, the pages that match, each with what matched.
             List(selection: $navigation.pane) {
                 if query.trimmingCharacters(in: .whitespaces).isEmpty {
+                    if updates.release != nil { UpdateSidebarRow().tag(SettingsPane.update) }
                     Text(SettingsPane.general.title).tag(SettingsPane.general)
                     Section("Island") {
                         ForEach([SettingsPane.home, .nowPlaying, .calendar, .timer, .shelf]) { Text($0.title).tag($0) }
@@ -271,7 +275,7 @@ struct SettingsView: View {
                         ForEach([SettingsPane.shortcuts, .advanced, .about]) { Text($0.title).tag($0) }
                     }
                 } else {
-                    ForEach(SettingsPane.allCases.filter { $0.match(query) != nil }) { pane in
+                    ForEach(SettingsPane.allCases.filter { $0.match(query) != nil && (updates.release != nil || $0 != .update) }) { pane in
                         VStack(alignment: .leading, spacing: 1) {
                             Text(pane.title)
                             if let hit = pane.match(query), hit != pane.title {
@@ -308,11 +312,16 @@ struct SettingsView: View {
                 case .shortcuts: ShortcutsPane()
                 case .advanced: AdvancedPane()
                 case .about: AboutPane()
+                case .update: UpdatePane()
                 }
             }
         }
         .frame(minWidth: 760, minHeight: 520)
         .onChange(of: navigation.pane, initial: true) { _, pane in IslandPreview.shared.pane = pane }
+        // Installed or gone: the update's page goes, About shows the version.
+        .onChange(of: updates.release == nil) { _, gone in
+            if gone, navigation.pane == .update { navigation.pane = .about }
+        }
         // Otherwise a solid bar sits behind the toolbar once the sidebar is toggled or the window is inactive.
         .toolbarBackgroundVisibility(.hidden, for: .windowToolbar)
     }

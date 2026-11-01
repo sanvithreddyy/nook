@@ -7,10 +7,13 @@ struct AboutPane: View {
                 SettingsRow("Version", value: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "")
             }
             SettingsSection("Acknowledgements") {
-                Text("Now playing uses mediaremote-adapter by Jonas van den Berg, BSD 3-Clause License.")
-                    .foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.vertical, 11)
+                ForEach(["Now playing uses mediaremote-adapter by Jonas van den Berg, BSD 3-Clause License.",
+                         "Updates use Sparkle, MIT License."], id: \.self) { credit in
+                    Text(credit)
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.vertical, 11)
+                }
             }
         }
     }

@@ -62,8 +62,10 @@ brew install --cask sanvithreddyy/nook/nook
 ```
 
 Use the full name: a plain `brew install nook` installs a different app. Homebrew
-installs the same release, opens it without the Open Anyway step, and `brew upgrade`
-keeps it current.
+installs the same release and opens it without the Open Anyway step.
+
+From 0.1.2 on, Nook updates itself: a new version shows as **Update Available** at the
+top of Settings, with what changed and an Update Now button. It checks once a day.
 
 ### From the download
 
@@ -71,7 +73,8 @@ keeps it current.
    [Releases](https://github.com/sanvithreddyy/nook/releases/latest) and drag Nook to
    Applications.
 2. Open Nook. The first launch is blocked because the app isn't notarized: choose
-   **Open Anyway** in System Settings → Privacy & Security. Each new version asks once.
+   **Open Anyway** in System Settings → Privacy & Security. Versions installed from
+   Settings open without asking.
 
 Nook lives in the menu bar. Its icon there opens Settings; if you hide the icon, open
 Nook again from Applications.
@@ -141,11 +144,23 @@ Set `DEVELOPMENT_TEAM` in `Config/Signing.local.xcconfig` (or `NOOK_TEAM_ID`).
 to `nook`. Each release also updates `version` and `sha256` in the
 [Homebrew cask](https://github.com/sanvithreddyy/homebrew-nook).
 
+Nook finds new versions in `appcast.xml` on the latest release, through
+[Sparkle](https://sparkle-project.org). Write it after `release.sh`, with one change per
+line starting with `- ` in the notes, and upload it with the DMG:
+
+```sh
+scripts/appcast.sh notes.txt > build/release/appcast.xml
+```
+
+It's signed with the update key in the release Mac's keychain, made once with Sparkle's
+`generate_keys`; its public half is `SPARKLE_PUBLIC_KEY` in `project.yml`, and Nook
+installs only updates signed with that key. `release.sh` won't build without it.
+
 ### Layout
 
 ```
 Nook/
-  App/              Launch, menu-bar icon, app menus
+  App/              Launch, menu-bar icon, app menus, updates
   Notch/            The island: window, shape, state, open pages, gestures
   Activities/       One folder for each thing it shows: now playing, volume, battery, shelf…
   Motion/           Every spring the island uses
@@ -153,7 +168,7 @@ Nook/
   Support/          Preferences, haptics, keyboard shortcuts, places
   Assets.xcassets/  App icon and menu-bar glyph
 NookTests/          Unit tests
-Vendor/             mediaremote-adapter, for what's playing
+Vendor/             mediaremote-adapter, for what's playing; Sparkle's license
 Config/             Signing configuration
 scripts/            Build, test, snapshot, capture and release scripts
 docs/images/        README images
@@ -163,7 +178,9 @@ docs/images/        README images
 
 What's playing comes through
 [mediaremote-adapter](https://github.com/ungive/mediaremote-adapter) by Jonas van den
-Berg, under the [BSD 3-Clause License](Vendor/MediaRemoteAdapter/LICENSE).
+Berg, under the [BSD 3-Clause License](Vendor/MediaRemoteAdapter/LICENSE). Updates come
+through [Sparkle](https://sparkle-project.org), under the
+[MIT License](Vendor/Sparkle/Sparkle-LICENSE).
 
 ## License
 

@@ -4,6 +4,11 @@ options:
   deploymentTarget:
     macOS: "15.0"
   createIntermediateGroups: true
+packages:
+  # Updates: finds, downloads, checks and installs new versions; Nook draws its own UI for it.
+  Sparkle:
+    url: https://github.com/sparkle-project/Sparkle
+    exactVersion: 2.10.1
 settings:
   base:
     SWIFT_VERSION: "6.0"
@@ -20,6 +25,9 @@ targets:
       # Its license travels with the app, as the BSD terms ask of binary copies.
       - path: Vendor/MediaRemoteAdapter/LICENSE
         buildPhase: resources
+      # Sparkle's too, as its MIT terms ask of copies.
+      - path: Vendor/Sparkle/Sparkle-LICENSE
+        buildPhase: resources
     configFiles:
       Debug: Config/Signing.xcconfig
       Release: Config/Signing.xcconfig
@@ -30,6 +38,7 @@ targets:
         embed: true
         link: false
         codeSign: true
+      - package: Sparkle
     info:
       path: Nook/Info.plist
       properties:
@@ -38,6 +47,11 @@ targets:
         CFBundleVersion: "2"
         LSUIElement: true
         LSMinimumSystemVersion: "15.0"
+        SUFeedURL: https://github.com/sanvithreddyy/nook/releases/latest/download/appcast.xml
+        # Updates install only when signed with the private half, kept in the release machine's keychain.
+        SUPublicEDKey: $(SPARKLE_PUBLIC_KEY)
+        # Checks once a day without asking first; Settings shows what it finds.
+        SUEnableAutomaticChecks: true
         NSCalendarsFullAccessUsageDescription: Nook shows your next event in the notch.
         NSBluetoothAlwaysUsageDescription: Nook shows a notice in the notch when headphones and other devices connect.
         NSRemindersFullAccessUsageDescription: Nook shows a list of your reminders in the notch, where you can tick them off and add new ones.
@@ -52,6 +66,7 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.sanvith.nook
         MARKETING_VERSION: "0.1.1"
+        SPARKLE_PUBLIC_KEY: lOZ0G9u0J5hhENfhxFNGbDLnq9nQKxo/aC15wKJMfDI=
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         ENABLE_HARDENED_RUNTIME: YES
   NookTests:
@@ -62,6 +77,8 @@ targets:
       - NookTests
       - path: Nook
         excludes: [App/NookApp.swift, Info.plist, Nook.entitlements]
+    dependencies:
+      - package: Sparkle
     configFiles:
       Debug: Config/Signing.xcconfig
       Release: Config/Signing.xcconfig

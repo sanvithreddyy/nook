@@ -76,6 +76,20 @@ xcodebuild build -project Nook.xcodeproj -scheme Nook -configuration Release \
     ENABLE_HARDENED_RUNTIME=YES CODE_SIGN_INJECT_BASE_ENTITLEMENTS=NO \
     OTHER_CODE_SIGN_FLAGS=--timestamp
 
+key=$(/usr/libexec/PlistBuddy -c 'Print :SUPublicEDKey' "$app/Contents/Info.plist" 2>/dev/null || true)
+[ -n "$key" ] || fail "Set SPARKLE_PUBLIC_KEY in project.yml: without it Nook can't install updates."
+
+# Sparkle's helpers come signed ad hoc. Sign them as Nook, innermost first, then the framework and the
+# app again, since re-signing what's inside breaks the seal around it.
+sparkle="$app/Contents/Frameworks/Sparkle.framework"
+for item in "$sparkle"/Versions/B/XPCServices/*.xpc "$sparkle/Versions/B/Autoupdate" "$sparkle/Versions/B/Updater.app" "$sparkle"; do
+    codesign --force --sign "$sign_hash" --options runtime --timestamp --preserve-metadata=entitlements "$item"
+done
+codesign --force --sign "$sign_hash" --options runtime --timestamp --preserve-metadata=entitlements,requirements "$app"
+for item in "$sparkle/Versions/B/Autoupdate" "$sparkle/Versions/B/Updater.app"; do
+    codesign -d --verbose=2 "$item" 2>&1 | grep -Fxq "Authority=$sign_name" || fail "$item isn't signed as Nook."
+done
+
 archs=$(lipo -archs "$app/Contents/MacOS/Nook")
 case "$archs" in
     *arm64*x86_64*|*x86_64*arm64*) ;;

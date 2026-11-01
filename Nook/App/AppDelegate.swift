@@ -22,6 +22,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         source.resume()
         terminationSource = source
         installStatusItem()
+        Updates.shared.start()
+        if Updates.shared.takeReopenRequest() { SettingsWindowController.shared.show(pane: .about) }
         #if DEBUG
         if CommandLine.arguments.contains("-settings-capture") { SettingsWindowController.shared.runCapture() }
         // -settings-preview <pane>: Settings on that page with "Preview on the notch" on, for captures.

@@ -34,5 +34,11 @@
 	<string>Nook shows the weather where you are in the notch.</string>
 	<key>NSRemindersFullAccessUsageDescription</key>
 	<string>Nook shows a list of your reminders in the notch, where you can tick them off and add new ones.</string>
+	<key>SUEnableAutomaticChecks</key>
+	<true/>
+	<key>SUFeedURL</key>
+	<string>https://github.com/sanvithreddyy/nook/releases/latest/download/appcast.xml</string>
+	<key>SUPublicEDKey</key>
+	<string>$(SPARKLE_PUBLIC_KEY)</string>
 </dict>
 </plist>
