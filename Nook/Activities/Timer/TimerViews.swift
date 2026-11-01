@@ -103,7 +103,7 @@ struct TimerCard: View {
         .contextMenu {
             TimerMenu()
             Divider()
-            SettingsMenuItem(pane: .timer)
+            AppMenuItems(pane: .timer)
         }
     }
 }

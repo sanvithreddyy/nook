@@ -66,7 +66,7 @@ struct ShelfPage: View {
                 Button("Clear Shelf") { withAnimation(Motion.peekOut) { shelf.clear() } }
                 Divider()
             }
-            SettingsMenuItem(pane: .shelf)
+            AppMenuItems(pane: .shelf)
         }
     }
 }

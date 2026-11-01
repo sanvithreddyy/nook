@@ -37,7 +37,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
            let pane = SettingsPane(rawValue: CommandLine.arguments[i + 1]) {
             SettingsWindowController.shared.show(activate: false, pane: pane)
             Task { @MainActor in
-                try? await Task.sleep(for: .seconds(1.5))
+                try? await Task.sleep(for: .seconds(1.0))
+                // -still-end: the page scrolled to its end.
+                if CommandLine.arguments.contains("-still-end") { SettingsWindowController.shared.scrollPageToEnd() }
+                try? await Task.sleep(for: .seconds(0.5))
                 print("STILL \(NSApp.windows.first { $0.title == "Nook" }?.windowNumber ?? 0)")
                 fflush(stdout)
                 try? await Task.sleep(for: .seconds(3))

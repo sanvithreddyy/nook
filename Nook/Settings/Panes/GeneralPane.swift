@@ -139,6 +139,10 @@ struct GeneralPane: View {
                 SettingsToggle("Hide the menu bar icon",
                                description: hideMenuBarIcon ? "Open Nook again from Finder or Spotlight to get back here." : nil,
                                isOn: $hideMenuBarIcon)
+                // With the menu bar icon hidden, this and the island's right-click menu are the ways out.
+                SettingsRow("Quit Nook") {
+                    Button("Quit") { NSApp.terminate(nil) }
+                }
             }
         }
     }

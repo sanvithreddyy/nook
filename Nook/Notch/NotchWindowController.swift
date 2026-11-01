@@ -35,6 +35,7 @@ final class NotchWindowController {
         observeLayout()
         #if DEBUG
         if CommandLine.arguments.contains("-scroll-probe") { runScrollProbe() }
+        if CommandLine.arguments.contains("-island-menu") { runMenuStill() }
         #endif
     }
 
@@ -403,6 +404,25 @@ final class NotchWindowController {
 
     #if DEBUG
     private static let ignoresPointer = CommandLine.arguments.contains("-ignore-pointer")
+
+    /// -island-menu: the open island's right-click menu, open for a few seconds, for a still.
+    private func runMenuStill() {
+        Task { @MainActor in
+            try? await Task.sleep(for: .seconds(3))
+            guard let host = panel.contentView else { return }
+            let point = NSPoint(x: host.bounds.midX - 120, y: host.bounds.maxY - 120)
+            guard let click = NSEvent.mouseEvent(with: .rightMouseDown, location: host.convert(point, to: nil), modifierFlags: [],
+                                                 timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: panel.windowNumber,
+                                                 context: nil, eventNumber: 0, clickCount: 1, pressure: 1),
+                  let menu = host.menu(for: click) else {
+                print("MENU none"); fflush(stdout); return
+            }
+            print("MENU " + menu.items.map { $0.isSeparatorItem ? "—" : $0.title }.joined(separator: " | "))
+            fflush(stdout)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 4) { menu.cancelTracking() }
+            NSMenu.popUpContextMenu(menu, with: click, for: host)
+        }
+    }
 
     /// -scroll-probe: two-finger gestures through the app's own event path, as a trackpad sends them:
     /// over the day's events (up, down, sideways) and elsewhere on the island (sideways, then up). Prints

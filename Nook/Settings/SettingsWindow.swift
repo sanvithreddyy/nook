@@ -167,6 +167,14 @@ final class SettingsWindowController {
         }
     }
 
+    /// The page scrolled to its end, for stills of what's at the bottom.
+    func scrollPageToEnd() {
+        guard let page = pageScroller(), let doc = page.documentView else { return }
+        let bottom = doc.frame.height - page.contentView.bounds.height
+        page.contentView.scroll(to: NSPoint(x: 0, y: doc.isFlipped ? max(bottom, 0) : 0))
+        page.reflectScrolledClipView(page.contentView)
+    }
+
     /// The page's scroll view: the rightmost one, the sidebar's being on the left.
     private func pageScroller() -> NSScrollView? {
         func all(in view: NSView) -> [NSScrollView] {
@@ -225,7 +233,7 @@ enum SettingsPane: String, CaseIterable, Identifiable {
                         "Haptic feedback", "Strength", "Medium", "Strong", "Hide when an app is full screen", "Appearance", "Theme", "Dark", "Light",
                         "Status colors", "Second activity beside the island", "Shadow under the open island", "Shadow",
                         "Hairline outline", "Outline", "Border", "Hide from screenshots and recordings", "Screen recording",
-                        "Screenshot", "App", "Open at login", "Hide the menu bar icon"]
+                        "Screenshot", "App", "Open at login", "Hide the menu bar icon", "Quit Nook", "Quit"]
         case .home: ["Preview on the notch", "Layout", "Side by Side", "One at a Time", "Modules side by side", "Size",
                      "Modules", "Order", "Pages", "Page", "New Page", "Group", "Home page", "Shelf", "AirDrop", "Music", "Left button", "Right button", "Favorite", "Output", "Shuffle", "Repeat",
                      "Back 15 seconds", "Forward 15 seconds", "Time after the bar", "Time left", "Length", "Remaining", "Calendar", "Week starts on",

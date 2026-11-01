@@ -150,7 +150,7 @@ struct MusicModule: View {
                 Text("One").tag(2)
             }
             Divider()
-            SettingsMenuItem(pane: .nowPlaying)
+            AppMenuItems(pane: .nowPlaying)
         }
     }
 }

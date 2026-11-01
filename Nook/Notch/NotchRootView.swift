@@ -76,7 +76,7 @@ private struct IslandView: View {
         .contextMenu {
             TimerMenu()
             Divider()
-            SettingsMenuItem(pane: model.settingsPane)
+            AppMenuItems(pane: model.settingsPane)
         }
         // The whole island takes drops for the shelf (the AirDrop tile inside takes its own),
         // so letting go right at the notch works too.

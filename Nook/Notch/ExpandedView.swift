@@ -48,7 +48,7 @@ struct ExpandedView: View {
                     IslandPreview.shared.isOn = true
                 }
             }
-            SettingsMenuItem(pane: card.settingsPane)
+            AppMenuItems(pane: card.settingsPane)
         }
         .onAppear {
             // Calendar access granted in System Settings shows up the next time the island opens,
@@ -128,11 +128,15 @@ private struct PageDots: View {
 }
 
 /// Opens Settings on the page for what was right-clicked.
-struct SettingsMenuItem: View {
+/// The end of every right-click menu on the island: Settings… for the page clicked, then Quit Nook,
+/// which is the way out when the menu bar icon is hidden.
+struct AppMenuItems: View {
     var pane: SettingsPane?
 
     var body: some View {
         Button("Settings…") { SettingsWindowController.shared.show(pane: pane) }
+        Divider()
+        Button("Quit Nook") { NSApp.terminate(nil) }
     }
 }
 
