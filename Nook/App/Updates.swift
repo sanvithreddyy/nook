@@ -24,6 +24,14 @@ final class Updates {
     private(set) var release: Release?
     private(set) var phase = Phase.ready
 
+    /// The daily check, on unless turned off on About. Sparkle keeps the choice.
+    var checksAutomatically = true {
+        didSet {
+            guard let updater, updater.automaticallyChecksForUpdates != checksAutomatically else { return }
+            updater.automaticallyChecksForUpdates = checksAutomatically
+        }
+    }
+
     @ObservationIgnored private var updater: SPUUpdater?
     @ObservationIgnored private let driver = UpdateDriver()
     @ObservationIgnored private let delegate = UpdaterDelegate()
@@ -51,6 +59,7 @@ final class Updates {
             return
         }
         self.updater = updater
+        checksAutomatically = updater.automaticallyChecksForUpdates
         #if DEBUG
         if CommandLine.arguments.contains("-update-check-now") { updater.checkForUpdatesInBackground() }
         #endif
