@@ -37,6 +37,7 @@ final class NotchWindowController {
         #if DEBUG
         if CommandLine.arguments.contains("-scroll-probe") { runScrollProbe() }
         if CommandLine.arguments.contains("-island-menu") { runMenuStill() }
+        if CommandLine.arguments.contains("-gesture-fuzz") { runGestureFuzz() }
         #endif
     }
 
@@ -369,6 +370,186 @@ final class NotchWindowController {
 
     #if DEBUG
     private static let ignoresPointer = CommandLine.arguments.contains("-ignore-pointer")
+
+    // -gesture-fuzz [seed]: two-finger gestures as a trackpad sends them (rests, flicks with
+    // momentum, drags that settle back, pulls past the end, small up-down moves), at random moments, through
+    // the app's own event path. After each burst and a pause, the page must be at rest: FUZZ lines, STUCK
+    // for a page left mid-turn. -gesture-fuzz-x <fraction>: where across the island the fingers are.
+    // -gesture-script adds "swipe" (a steady swipe on the trackpad's 120 Hz clock) and "dot" (a page dot
+    // clicked); with -probe-swipes, each swipe's missed frames print as GESTURE lines. scripts/gestures.sh runs it.
+    private func runGestureFuzz() {
+        Task { @MainActor in
+            try? await Task.sleep(for: .seconds(3.5))
+            guard let host = panel.contentView else { return }
+            let args = CommandLine.arguments
+            func value(_ flag: String) -> String? { args.firstIndex(of: flag).flatMap { args.indices.contains($0 + 1) ? args[$0 + 1] : nil } }
+            var rng = FuzzRandom(state: value("-gesture-fuzz").flatMap { UInt64($0) } ?? 1)
+            let bursts = value("-gesture-fuzz-bursts").flatMap { Int($0) } ?? 60
+            let size = model.layout(for: .expanded).size
+            let across = value("-gesture-fuzz-x").flatMap { Double($0) } ?? 0.25
+            @MainActor func scrollers(_ view: NSView) -> [NSScrollView] {
+                ((view as? NSScrollView).map { [$0] } ?? []) + view.subviews.flatMap(scrollers)
+            }
+            // -gesture-fuzz-list: over the middle of a list that scrolls (a busy day's events).
+            let scrolling = args.contains("-gesture-fuzz-list")
+                ? scrollers(host).first { ($0.documentView?.frame.height ?? 0) > $0.contentView.bounds.height + 1 } : nil
+            // -gesture-fuzz-beside-list <points>: level with the first list, this far from its left edge
+            // (negative: left of it), where a page moving sideways slides the list under the fingers.
+            let besideList = value("-gesture-fuzz-beside-list").flatMap(Double.init).flatMap { dx in
+                scrollers(host).first.map { list in
+                    let frame = list.convert(list.bounds, to: nil)
+                    return NSPoint(x: frame.minX + dx, y: frame.midY)
+                }
+            }
+            let inWindow = besideList ?? scrolling.map { $0.convert(NSPoint(x: $0.bounds.midX, y: $0.bounds.midY), to: nil) }
+                ?? NSPoint(x: host.bounds.midX - size.width / 2 + size.width * across, y: host.bounds.maxY - model.notch.size.height - 50)
+            let onScreen = panel.convertPoint(toScreen: host.convert(inWindow, to: nil))
+            let screenPoint = CGPoint(x: onScreen.x, y: (NSScreen.screens.first?.frame.height ?? 0) - onScreen.y)
+            let target = host.hitTest(host.convert(inWindow, from: nil))
+            print("FUZZ start seed=\(rng.state) cards=\(model.cards.count) page=\(model.card.name) target=\(target.map { String(describing: type(of: $0)) } ?? "none") list=\(list(at: inWindow)) at=\(Int(inWindow.x)),\(Int(inWindow.y)) lists=\(scrollers(host).map { "\($0.convert($0.bounds, to: nil).integral)" })")
+            fflush(stdout)
+            // CGEvent's phases: began 1, changed 2, ended 4, cancelled 8, may begin 128; momentum 1 2 3.
+            @MainActor func send(_ phase: Int64, momentum: Int64 = 0, dx: Int32 = 0, dy: Int32 = 0) {
+                guard let cg = CGEvent(scrollWheelEvent2Source: nil, units: .pixel, wheelCount: 2, wheel1: dy, wheel2: dx, wheel3: 0) else { return }
+                cg.setIntegerValueField(.scrollWheelEventIsContinuous, value: 1)
+                cg.setIntegerValueField(.scrollWheelEventScrollPhase, value: phase)
+                cg.setIntegerValueField(.scrollWheelEventMomentumPhase, value: momentum)
+                cg.location = screenPoint
+                if let event = NSEvent(cgEvent: cg), let routed = routeOverList(event, at: inWindow),
+                   let view = host.hitTest(host.convert(inWindow, from: nil)) {
+                    view.scrollWheel(with: routed)
+                }
+            }
+            @MainActor func pause(_ seconds: Double) async { try? await Task.sleep(for: .seconds(seconds)) }
+            @MainActor func r(_ range: ClosedRange<Double>) -> Double { Double.random(in: range, using: &rng) }
+            @MainActor func ri(_ range: ClosedRange<Int>) -> Int { Int.random(in: range, using: &rng) }
+            @MainActor func coin() -> Bool { ri(0...1) == 1 }
+            let kinds = ["rest", "flick", "nudge", "pull", "updown", "tap", "swipe", "dot"]
+            /// One gesture; returns its name for the log. `touch`: the fingers rest a moment first (^ in a script).
+            @MainActor func gesture(_ kind: Int, dir: Int32, touch: Bool) async -> String {
+                if touch { send(128); await pause(r(0.0...0.06)) }
+                switch kind {
+                case 0:
+                    // Fingers rest and lift without moving.
+                    if !touch { send(128) }
+                    await pause(r(0.03...0.4))
+                    send(8)
+                    return "rest"
+                case 1:
+                    send(1)
+                    for _ in 0..<ri(4...8) { send(2, dx: dir * Int32(ri(15...35))); await pause(0.008) }
+                    send(4)
+                    // Momentum after the fingers lift, unless they come down again first.
+                    var speed = 30
+                    send(0, momentum: 1, dx: dir * Int32(speed))
+                    for _ in 0..<ri(0...14) { speed = max(speed * 4 / 5, 1); send(0, momentum: 2, dx: dir * Int32(speed)); await pause(0.008) }
+                    send(0, momentum: 3)
+                    return "flick\(dir > 0 ? "+" : "-")"
+                case 2:
+                    send(1)
+                    for _ in 0..<ri(5...12) { send(2, dx: dir * Int32(ri(1...4))); await pause(0.016) }
+                    send(4)
+                    return "nudge\(dir > 0 ? "+" : "-")"
+                case 3:
+                    send(1)
+                    for _ in 0..<ri(20...40) { send(2, dx: dir * Int32(ri(3...8))); await pause(0.01) }
+                    send(coin() ? 4 : 8)
+                    return "pull\(dir > 0 ? "+" : "-")"
+                case 4:
+                    send(1)
+                    for _ in 0..<ri(2...4) { send(2, dx: Int32(ri(-1...1)), dy: Int32(ri(-4...4))); await pause(0.016) }
+                    send(4)
+                    return "updown"
+                case 6:
+                    // A steady swipe as the trackpad reports one, on its 120 Hz clock whatever the main
+                    // thread is doing: touch, 0.3 s of travel that speeds up and eases off (about 190 pt),
+                    // the lift, then 0.4 s of momentum.
+                    let clock = ContinuousClock()
+                    let start = clock.now
+                    var tick = 0
+                    func at(_ n: Int) async { try? await Task.sleep(until: start + .microseconds(8333 * n), clock: clock) }
+                    send(128); tick += 1; await at(tick)
+                    send(1); tick += 1; await at(tick)
+                    for i in 0..<36 {
+                        let speed = sin(Double(i + 1) / 37 * .pi) * 5.5
+                        send(2, dx: dir * Int32(speed.rounded(.up))); tick += 1; await at(tick)
+                    }
+                    send(4); tick += 1; await at(tick)
+                    var speed = 6.0
+                    send(0, momentum: 1, dx: dir * Int32(speed)); tick += 1; await at(tick)
+                    for _ in 0..<48 { speed *= 0.93; send(0, momentum: 2, dx: dir * Int32(speed.rounded())); tick += 1; await at(tick) }
+                    send(0, momentum: 3)
+                    return "swipe\(dir > 0 ? "+" : "-")"
+                case 7:
+                    // The next or previous page's dot clicked.
+                    model.page(dir > 0 ? 1 : -1)
+                    return "dot\(dir > 0 ? "+" : "-")"
+                default:
+                    // A quick touch that moves a little sideways.
+                    send(1)
+                    send(2, dx: dir * 6)
+                    send(4)
+                    return "tap\(dir > 0 ? "+" : "-")"
+                }
+            }
+            // -gesture-script "nudge+ 0.1 rest": the same gestures and pauses every burst instead of random ones.
+            let script = value("-gesture-script")?.split(separator: " ").map(String.init)
+            var stuck = 0
+            // Each burst starts on the page the run opened on.
+            let firstPage = model.card
+            for burst in 1...bursts {
+                var names: [String] = []
+                if let script {
+                    for token in script {
+                        if let gap = Double(token) {
+                            names.append(token)
+                            await pause(gap)
+                            continue
+                        }
+                        let touch = token.hasPrefix("^")
+                        let word = token.drop { $0 == "^" }
+                        let dir: Int32 = word.hasSuffix("-") ? -1 : 1
+                        guard let kind = kinds.firstIndex(of: String(word.filter(\.isLetter))) else { continue }
+                        names.append((touch ? "^" : "") + (await gesture(kind, dir: dir, touch: touch)))
+                        names.append("[drag=\(Int(model.pageDrag)) settling=\(model.pageSettle != nil) page=\(model.cards.firstIndex(of: model.card) ?? -1)]")
+                    }
+                } else {
+                    for _ in 0..<ri(1...4) {
+                        let dir: Int32 = coin() ? 1 : -1
+                        let touch = coin()
+                        names.append((touch ? "^" : "") + (await gesture(ri(0...5), dir: dir, touch: touch)))
+                        let gap = r(0.0...0.5)
+                        names.append(String(format: "%.2fs", gap))
+                        await pause(gap)
+                    }
+                }
+                await pause(1.0)
+                let atRest = model.pageDrag == 0 && model.pageSettle == nil
+                if !atRest { stuck += 1 }
+                print("FUZZ \(burst) \(atRest ? "ok" : "STUCK drag=\(Int(model.pageDrag)) settling=\(model.pageSettle != nil)") open=\(model.isExpanded) page=\(model.cards.firstIndex(of: model.card) ?? -1) \(names.joined(separator: " "))")
+                fflush(stdout)
+                // Put it back for the next burst: open, at rest.
+                if !atRest { model.collapse(); await pause(0.6) }
+                if !model.isExpanded { model.expand(); await pause(1.0) }
+                if model.card != firstPage, model.cards.contains(firstPage) { model.show(firstPage); await pause(0.6) }
+            }
+            print("FUZZ done stuck=\(stuck) of \(bursts)")
+            fflush(stdout)
+            NSApp.terminate(nil)
+        }
+    }
+
+    /// A seeded generator, so a fuzz run can be repeated.
+    private struct FuzzRandom: RandomNumberGenerator {
+        var state: UInt64
+        mutating func next() -> UInt64 {
+            state &+= 0x9E37_79B9_7F4A_7C15
+            var z = state
+            z = (z ^ (z >> 30)) &* 0xBF58_476D_1CE4_E5B9
+            z = (z ^ (z >> 27)) &* 0x94D0_49BB_1331_11EB
+            return z ^ (z >> 31)
+        }
+    }
 
     /// -island-menu: the open island's right-click menu, open for a few seconds, for a still.
     private func runMenuStill() {

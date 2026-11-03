@@ -544,6 +544,9 @@ final class NotchModel {
 
     /// Fingers going sideways: a turn still settling lands at once; any other page is picked up where it is.
     func beginPageDrag() {
+        #if DEBUG
+        GestureProbe.mark("drag")
+        #endif
         if settlingTo != nil {
             land()
         } else if let settle = pageSettle {
@@ -582,6 +585,9 @@ final class NotchModel {
     func endPageDrag(velocity: CGFloat) {
         if isDraggingPage { isDraggingPage = false }
         guard pageDrag != 0, pageSettle == nil else { return }
+        #if DEBUG
+        GestureProbe.mark("end")
+        #endif
         let width = layout(for: .expanded).size.width
         // A short swipe is enough: an eighth of the way across, less for a quick flick, scaled by Settings' sensitivity.
         let projected = pageDrag + velocity * 0.2
@@ -613,6 +619,9 @@ final class NotchModel {
 
     /// The settle ends: a turned page shows where it already was, or the page is back in place.
     private func land() {
+        #if DEBUG
+        GestureProbe.mark("land")
+        #endif
         settleTask?.cancel()
         settleTask = nil
         var instant = Transaction()

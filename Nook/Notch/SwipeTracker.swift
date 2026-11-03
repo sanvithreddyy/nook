@@ -66,6 +66,9 @@ final class PageTracker {
             x = 0
             y = 0
             samples = []
+            #if DEBUG
+            if model.isExpanded { GestureProbe.began() }
+            #endif
             return false
         }
         // The trackpad's momentum after the fingers lift belongs to the settle already under way.
@@ -75,6 +78,9 @@ final class PageTracker {
             guard axis == .horizontal else { return false }
             axis = nil
             model.endPageDrag(velocity: velocity)
+            #if DEBUG
+            GestureProbe.ended()
+            #endif
             return true
         }
         guard event.phase == .changed else { return false }
