@@ -70,4 +70,38 @@ struct PageTrackerTests {
         #expect(model.pageDrag == 0)
         #expect(model.pageSettle == nil)
     }
+
+    /// The open island keeps its pages built through a swipe and builds them afresh for a turn by the dots
+    /// (`pageTurns`); it draws each frame from the fingers only while they have the page.
+    @Test func aSwipeKeepsThePagesBuiltAndTheDotsTurnThem() async throws {
+        let model = NotchModel()
+        model.setCards([.home([.weather]), .home([.music]), .shelf])
+        model.expand()
+        let turns = model.pageTurns
+        let pages = PageTracker()
+        _ = pages.consume(scroll(1), model: model)
+        for _ in 0..<20 {
+            _ = pages.consume(scroll(2, dx: 12), model: model)
+            try await Task.sleep(for: .milliseconds(8))
+        }
+        #expect(model.isDraggingPage)
+        _ = pages.consume(scroll(4), model: model)
+        #expect(!model.isDraggingPage)
+        try await Task.sleep(for: .seconds(1))
+        #expect(model.card == .home([.music]), "the swipe turned to the next page")
+        #expect(model.pageTurns == turns, "a swipe landing keeps the pages it has")
+        model.page(1)
+        #expect(model.card == .shelf)
+        #expect(model.pageTurns == turns + 1, "a turn by the dots builds them afresh")
+
+        // A drag whose lift never arrives ends when the island closes, even with the fingers back where
+        // they started.
+        _ = pages.consume(scroll(1), model: model)
+        for dx: Int32 in [-12, -12, -12, 12, 12, 12] { _ = pages.consume(scroll(2, dx: dx), model: model) }
+        #expect(model.isDraggingPage)
+        #expect(model.pageDrag == 0)
+        model.collapse()
+        #expect(!model.isDraggingPage)
+        #expect(model.pageDrag == 0)
+    }
 }

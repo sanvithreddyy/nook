@@ -12,31 +12,52 @@ struct ExpandedView: View {
     @Environment(NotchModel.self) private var model
     let card: IslandCard
     let direction: PageDirection
+    /// The other pages, built once the island has opened and kept while it's open, so a swipe only moves
+    /// pages that are already there: building one as the fingers start, or again as it lands, cost the
+    /// main thread 17-48 ms each time, a visible catch. A turn by the dots builds them afresh, so the
+    /// pages arrive and leave as `cardTurn`.
+    @State private var kept: Set<PageKey> = []
 
     var body: some View {
         // Mid-swipe the page rides on the fingers with the next one beside it, a page's width away and
-        // coming up from a little faded as it arrives; let go, it's drawn each frame as it settles.
-        TimelineView(.animation(paused: model.pageSettle == nil)) { context in
+        // coming up from a little faded as it arrives; let go, it settles. Drawn each frame meanwhile.
+        TimelineView(.animation(paused: model.pageSettle == nil && !model.isDraggingPage)) { context in
             let drag = model.pageSettle?.offset(at: context.date) ?? model.pageDrag
             let width = model.layout(for: .expanded).size.width
             let travelled = width > 0 ? min(abs(drag) / width, 1) : 0
+            let neighbor = drag != 0 ? model.neighbor(forDrag: drag) : nil
+            let turn = model.pageTurns
             ZStack(alignment: .top) {
-                if drag != 0, let neighbor = model.neighbor(forDrag: drag) {
-                    page(neighbor)
-                        .opacity(0.6 + 0.4 * travelled)
-                        .offset(x: drag + (drag < 0 ? width : -width))
+                ForEach(model.cards.map { PageKey(card: $0, turn: turn) }.filter { $0.card == card || $0.card == neighbor || kept.contains($0) }, id: \.self) { key in
+                    page(key.card)
+                        // Set as a page lands, while nothing moves: it reaches every view on the page.
+                        .environment(\.isPageShowing, key.card == card)
+                        .modifier(key.card == card ? PageSlot.current(drag: drag, travelled: travelled)
+                            : key.card == neighbor ? .arriving(at: drag + (drag < 0 ? width : -width), travelled: travelled)
+                            : .waiting)
+                        .transition(.cardTurn(direction))
                 }
-                page(card)
-                    .id(card)
-                    .transition(.cardTurn(direction))
-                    .opacity(1 - 0.4 * travelled)
-                    .offset(x: drag)
                 // One place on every page, so they hold still as the pages turn under them.
                 PageDots(drag: drag)
                     .padding(.horizontal, NotchModel.cardEar + HomeMetrics.inset * model.home.scale)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        // Built while nothing moves: after the island has opened, and after a page turns, comes or goes;
+        // not under a swipe or a drag (the scrubber).
+        .task(id: PageKeep(cards: model.cards, turn: model.pageTurns)) {
+            try? await Task.sleep(for: .seconds(0.9))
+            let turn = model.pageTurns
+            if kept.contains(where: { $0.turn != turn }) { kept = kept.filter { $0.turn == turn } }
+            for page in model.cards.map({ PageKey(card: $0, turn: turn) }) where !kept.contains(page) {
+                while !Task.isCancelled, model.pageDrag != 0 || model.pageSettle != nil || NSEvent.pressedMouseButtons != 0 {
+                    try? await Task.sleep(for: .milliseconds(100))
+                }
+                guard !Task.isCancelled else { return }
+                kept.insert(page)
+                try? await Task.sleep(for: .milliseconds(50))
+            }
+        }
         // Right-click anywhere on the card, not only on what's drawn.
         .contentShape(Rectangle())
         .contextMenu {
@@ -82,6 +103,55 @@ struct ExpandedView: View {
         case .home: HomeMetrics.inset * model.home.scale
         case .shelf: ShelfMetrics.inset
         case .meeting, .timer: Card.inset
+        }
+    }
+}
+
+/// A page as built for one turn of the island's pages.
+private struct PageKey: Hashable {
+    let card: IslandCard
+    let turn: Int
+}
+
+/// What the kept pages are built for; when it changes, they're built again.
+private struct PageKeep: Equatable {
+    let cards: [IslandCard]
+    let turn: Int
+}
+
+/// Where a page is drawn: the one showing, riding on the fingers mid-swipe; the one a swipe brings in
+/// beside it; or one kept out of sight. One chain of modifiers for all three, so a page keeps its views as
+/// it moves between them.
+private enum PageSlot: ViewModifier {
+    case current(drag: CGFloat, travelled: CGFloat)
+    case arriving(at: CGFloat, travelled: CGFloat)
+    case waiting
+
+    func body(content: Content) -> some View {
+        content
+            .offset(x: offset)
+            .opacity(opacity)
+            .allowsHitTesting(isCurrent)
+            .accessibilityHidden(!isCurrent)
+    }
+
+    private var isCurrent: Bool {
+        if case .current = self { true } else { false }
+    }
+
+    private var offset: CGFloat {
+        switch self {
+        case .current(let drag, _): drag
+        case .arriving(let x, _): x
+        case .waiting: 0
+        }
+    }
+
+    private var opacity: Double {
+        switch self {
+        case .current(_, let travelled): 1 - 0.4 * travelled
+        case .arriving(_, let travelled): 0.6 + 0.4 * travelled
+        case .waiting: 0
         }
     }
 }

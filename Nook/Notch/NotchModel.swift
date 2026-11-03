@@ -504,20 +504,29 @@ final class NotchModel {
     }
 
     func show(_ target: IslandCard) {
-        if pageSettle != nil || pageDrag != 0 { land() }
+        if pageSettle != nil || pageDrag != 0 || isDraggingPage { land() }
         guard target != card else { return }
         if let from = cards.firstIndex(of: card), let to = cards.firstIndex(of: target) {
             pageDirection.forward = to > from
         } else {
             pageDirection.forward = true
         }
-        withAnimation(Motion.reshape) { card = target }
+        withAnimation(Motion.reshape) {
+            card = target
+            pageTurns &+= 1
+        }
     }
 
     // MARK: Paging with two fingers
 
-    /// How far the open page follows two fingers sideways, in points; positive to the right.
-    private(set) var pageDrag: CGFloat = 0
+    /// Counts the open page changing other than by a swipe landing: the dots, or its card going. The open
+    /// island builds its pages afresh for each, so they turn as `cardTurn`; a swipe keeps the ones it has.
+    private(set) var pageTurns = 0
+    /// How far the open page follows two fingers sideways, in points; positive to the right. Drawn once a
+    /// frame while `isDraggingPage`, so a trackpad's events, at times two in a frame, don't each redraw.
+    @ObservationIgnored private(set) var pageDrag: CGFloat = 0
+    /// Two fingers have the open page.
+    private(set) var isDraggingPage = false
     /// After the fingers let go: the spring carrying the page from there, drawn frame by frame.
     private(set) var pageSettle: PageSettle?
     /// The page a settling turn lands on; nil while a page settles back into place.
@@ -562,12 +571,16 @@ final class NotchModel {
         let free = neighbor(forDrag: x) != nil
         var instant = Transaction()
         instant.disablesAnimations = true
-        withTransaction(instant) { pageDrag = free ? x : Self.rubberBand(x, width: layout(for: .expanded).size.width) }
+        withTransaction(instant) {
+            pageDrag = free ? x : Self.rubberBand(x, width: layout(for: .expanded).size.width)
+            if !isDraggingPage { isDraggingPage = true }
+        }
     }
 
     /// Let go: where the fingers were heading decides, the next page or back, and the spring carries on
     /// at their speed.
     func endPageDrag(velocity: CGFloat) {
+        if isDraggingPage { isDraggingPage = false }
         guard pageDrag != 0, pageSettle == nil else { return }
         let width = layout(for: .expanded).size.width
         // A short swipe is enough: an eighth of the way across, less for a quick flick, scaled by Settings' sensitivity.
@@ -609,6 +622,7 @@ final class NotchModel {
             settlingTo = nil
             pageSettle = nil
             pageDrag = 0
+            isDraggingPage = false
         }
         dragBase = 0
     }
@@ -641,6 +655,7 @@ final class NotchModel {
             cards = available
             guard isExpanded, !available.contains(card) else { return }
             pageDirection.forward = true
+            pageTurns &+= 1
             if let next = opening.flatMap({ available.contains($0) ? $0 : nil }) ?? available.first { card = next } else { isExpanded = false }
         }
     }
@@ -648,7 +663,7 @@ final class NotchModel {
     /// `remembering`: off for Settings' preview, so "Last page" is what you left open, not what it showed.
     func collapse(remembering: Bool = true) {
         guard isExpanded else { return }
-        if pageSettle != nil || pageDrag != 0 { land() }
+        if pageSettle != nil || pageDrag != 0 || isDraggingPage { land() }
         if remembering { lastCard = card }
         withAnimation(Motion.collapse) { isExpanded = false }
     }

@@ -12,6 +12,7 @@ struct MarqueeText<Label: View>: View {
 
     @State private var labelSize: CGSize = .zero
     @State private var containerWidth: CGFloat = 0
+    @Environment(\.isPageShowing) private var isShowing
 
     private var overflows: Bool { labelSize.width > containerWidth + 0.5 && containerWidth > 0 }
 
@@ -32,7 +33,8 @@ struct MarqueeText<Label: View>: View {
                         }),
                         distance: labelSize.width + gap,
                         speed: speed,
-                        key: id
+                        key: id,
+                        running: isShowing
                     )
                 } else {
                     label().fixedSize()
@@ -48,12 +50,19 @@ private struct MarqueeScroller: NSViewRepresentable {
     let distance: CGFloat
     let speed: Double
     let key: String
+    let running: Bool
 
     func makeNSView(context: Context) -> MarqueeScrollView { MarqueeScrollView() }
 
     func updateNSView(_ view: MarqueeScrollView, context: Context) {
-        view.update(content: content, distance: distance, speed: speed, key: key)
+        view.update(content: content, distance: distance, speed: speed, key: key, running: running)
     }
+}
+
+extension EnvironmentValues {
+    /// Off for an open page other than the one showing, kept built for a swipe: its lines wait at the
+    /// start, and set off afresh, after their pause, once it's the page showing.
+    @Entry var isPageShowing = true
 }
 
 final class MarqueeScrollView: NSView {
@@ -61,6 +70,9 @@ final class MarqueeScrollView: NSView {
     private var runningKey: String?
     /// The scroll waiting for a width to time its fade against.
     private var pending: (distance: CGFloat, speed: Double)?
+    /// The scroll for the text hosted now, kept to start again when its page comes back into sight.
+    private var pass: (distance: CGFloat, speed: Double)?
+    private var isRunning = true
     /// SwiftUI's mask doesn't reach an AppKit layer, so the edges fade here. The right edge always
     /// fades, where the text runs out of room; the left only while the text is moving, so the first
     /// letter is whole while it rests.
@@ -101,18 +113,32 @@ final class MarqueeScrollView: NSView {
         }
     }
 
-    func update(content: AnyView, distance: CGFloat, speed: Double, key: String) {
+    func update(content: AnyView, distance: CGFloat, speed: Double, key: String, running: Bool) {
         // Re-host only when the text changes; re-assigning on every SwiftUI pass would loop
         // through hosting-view layout and back into SwiftUI.
         let runKey = "\(key)|\(Int(distance))"
-        guard runKey != runningKey else { return }
-        runningKey = runKey
-        host.rootView = content
+        if runKey != runningKey {
+            runningKey = runKey
+            host.rootView = content
+            pass = (distance, speed)
+            isRunning = running
+            stop()
+            // The fade's timing needs the width, which the next layout pass knows.
+            if running { pending = pass }
+            needsLayout = true
+        } else if running != isRunning {
+            isRunning = running
+            stop()
+            guard running, let pass else { return }
+            if bounds.width > 0 { start(distance: pass.distance, speed: pass.speed) } else { pending = pass; needsLayout = true }
+        }
+    }
+
+    /// Back at the start, still.
+    private func stop() {
+        pending = nil
         host.layer?.removeAnimation(forKey: "marquee")
         fade.removeAnimation(forKey: "fade")
-        // The fade's timing needs the width, which the next layout pass knows.
-        pending = (distance, speed)
-        needsLayout = true
     }
 
     /// The scroll and the left edge's fade, started together so they stay in step.
