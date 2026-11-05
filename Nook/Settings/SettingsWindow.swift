@@ -253,7 +253,8 @@ enum SettingsPane: String, CaseIterable, Identifiable {
                       "Tight", "Wide", "Remove files that are gone", "Share"]
         case .converter: ["Preview on the notch", "Convert on the shelf", "Convert", "Convert To", "Format", "JPEG", "PNG", "HEIC", "PDF",
                           "MP4", "GIF", "M4A", "Save converted files", "Next to the original", "In Downloads", "Keep the original",
-                          "Quality", "Photos", "Audio", "Smaller files"]
+                          "Quality", "Photos", "Audio", "Smaller files", "More Formats", "Download", "MP3", "WebP", "WebM", "MKV",
+                          "Opus", "FFmpeg"]
         case .huds: ["Preview on the notch", "Replace the volume HUD", "Replace the brightness HUD", "Accessibility access", "Style",
                      "Ledge", "Slider", "Steps", "Outline", "Show the level as a number", "Percentage", "Stays for",
                      "Duration"]

@@ -187,6 +187,14 @@ struct ConvertEngineTests {
         #expect(try await asset.loadTracks(withMediaType: .audio).count == 1)
     }
 
+    /// Spoken-word recordings are often mono at 22 kHz, where AAC can't reach 256 kbps.
+    @Test func slowMonoSoundBecomesM4A() async throws {
+        let wav = try Fixtures.wav(in: folder, name: "Voice.wav", rate: 22050, channels: 1)
+        let made = try await run([wav], to: .m4a)
+        let seconds = try await AVURLAsset(url: made[0]).load(.duration).seconds
+        #expect(abs(seconds - 1) < 0.1, "\(seconds) s")
+    }
+
     // MARK: Documents
 
     @Test(arguments: [ConvertTarget.pdf, .docx, .rtf, .text, .html, .odt])
@@ -266,28 +274,28 @@ enum Fixtures {
         return url
     }
 
-    /// One second of a 440 Hz tone, stereo, 44.1 kHz, 16-bit.
-    static func wav(in folder: URL, name: String) throws -> URL {
+    /// One second of a 440 Hz tone, 16-bit; stereo at 44.1 kHz unless asked otherwise.
+    static func wav(in folder: URL, name: String, rate: Double = 44100, channels: UInt32 = 2) throws -> URL {
         let url = folder.appendingPathComponent(name)
         let aiff = url.pathExtension == "aiff"
-        var format = AudioStreamBasicDescription(mSampleRate: 44100, mFormatID: kAudioFormatLinearPCM,
+        var format = AudioStreamBasicDescription(mSampleRate: rate, mFormatID: kAudioFormatLinearPCM,
                                                  mFormatFlags: kAudioFormatFlagIsSignedInteger | kAudioFormatFlagIsPacked | (aiff ? kAudioFormatFlagIsBigEndian : 0),
-                                                 mBytesPerPacket: 4, mFramesPerPacket: 1, mBytesPerFrame: 4, mChannelsPerFrame: 2, mBitsPerChannel: 16, mReserved: 0)
+                                                 mBytesPerPacket: 2 * channels, mFramesPerPacket: 1, mBytesPerFrame: 2 * channels, mChannelsPerFrame: channels, mBitsPerChannel: 16, mReserved: 0)
         var file: ExtAudioFileRef?
         guard ExtAudioFileCreateWithURL(url as CFURL, aiff ? kAudioFileAIFFType : kAudioFileWAVEType, &format, nil, AudioFileFlags.eraseFile.rawValue, &file) == noErr,
               let file else { throw ConvertError.failed("fixture") }
-        var client = AudioStreamBasicDescription(mSampleRate: 44100, mFormatID: kAudioFormatLinearPCM, mFormatFlags: kAudioFormatFlagIsFloat | kAudioFormatFlagIsPacked,
-                                                 mBytesPerPacket: 8, mFramesPerPacket: 1, mBytesPerFrame: 8, mChannelsPerFrame: 2, mBitsPerChannel: 32, mReserved: 0)
+        var client = AudioStreamBasicDescription(mSampleRate: rate, mFormatID: kAudioFormatLinearPCM, mFormatFlags: kAudioFormatFlagIsFloat | kAudioFormatFlagIsPacked,
+                                                 mBytesPerPacket: 4 * channels, mFramesPerPacket: 1, mBytesPerFrame: 4 * channels, mChannelsPerFrame: channels, mBitsPerChannel: 32, mReserved: 0)
         ExtAudioFileSetProperty(file, kExtAudioFileProperty_ClientDataFormat, UInt32(MemoryLayout.size(ofValue: client)), &client)
-        var samples = [Float](repeating: 0, count: 44100 * 2)
-        for i in 0..<44100 {
-            let value = Float(sin(Double(i) * 2 * .pi * 440 / 44100)) * 0.3
-            samples[2 * i] = value
-            samples[2 * i + 1] = value
+        let frames = Int(rate)
+        var samples = [Float](repeating: 0, count: frames * Int(channels))
+        for i in 0..<frames {
+            let value = Float(sin(Double(i) * 2 * .pi * 440 / rate)) * 0.3
+            for c in 0..<Int(channels) { samples[Int(channels) * i + c] = value }
         }
         let status = samples.withUnsafeMutableBytes { raw in
-            var list = AudioBufferList(mNumberBuffers: 1, mBuffers: AudioBuffer(mNumberChannels: 2, mDataByteSize: UInt32(raw.count), mData: raw.baseAddress))
-            return ExtAudioFileWrite(file, 44100, &list)
+            var list = AudioBufferList(mNumberBuffers: 1, mBuffers: AudioBuffer(mNumberChannels: channels, mDataByteSize: UInt32(raw.count), mData: raw.baseAddress))
+            return ExtAudioFileWrite(file, UInt32(frames), &list)
         }
         ExtAudioFileDispose(file)
         guard status == noErr else { throw ConvertError.failed("fixture") }
@@ -414,5 +422,106 @@ struct ConvertModelTests {
         let open = ShelfMetrics.size(items: 3, dragging: true, convert: .open(places: 5))
         #expect(open.width <= ShelfMetrics.maxWidth)
         #expect(open.width == ShelfMetrics.inset * 2 + 5 * ShelfMetrics.tile + ShelfMetrics.separator + 2 * ShelfMetrics.tile)
+    }
+}
+
+/// More Formats: only the exact pack Nook expects is unpacked, and it comes out again cleanly.
+@MainActor
+struct FormatPackTests {
+    let folder: URL
+
+    init() throws {
+        folder = FileManager.default.temporaryDirectory.appendingPathComponent("pack-tests-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+    }
+
+    /// A pack-shaped zip whose ffmpeg is a tiny script.
+    private func zip() throws -> URL {
+        let staging = folder.appendingPathComponent("NookFormats", isDirectory: true)
+        try FileManager.default.createDirectory(at: staging, withIntermediateDirectories: true)
+        let tool = staging.appendingPathComponent("ffmpeg")
+        try "#!/bin/sh\necho ffmpeg\n".write(to: tool, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: tool.path)
+        let zip = folder.appendingPathComponent("NookFormats-test.zip")
+        let ditto = Process()
+        ditto.executableURL = URL(fileURLWithPath: "/usr/bin/ditto")
+        ditto.arguments = ["-c", "-k", "--keepParent", staging.path, zip.path]
+        try ditto.run()
+        ditto.waitUntilExit()
+        try FileManager.default.removeItem(at: staging)
+        return zip
+    }
+
+    @Test func aDownloadThatIsntTheExpectedOneIsThrownAway() async throws {
+        let pack = FormatPack(folder: folder.appendingPathComponent("Formats"), source: try zip())
+        #expect(await pack.install(expecting: String(repeating: "0", count: 64)) == false)
+        #expect(!pack.isInstalled)
+        #expect(!FileManager.default.fileExists(atPath: pack.executable.path))
+        if case .failed = pack.state {} else { Issue.record("should say it failed") }
+    }
+
+    @Test func theExpectedDownloadInstallsAndRemoves() async throws {
+        let zip = try zip()
+        let pack = FormatPack(folder: folder.appendingPathComponent("Formats"), source: zip)
+        #expect(await pack.install(expecting: try FormatPack.digest(of: zip)))
+        #expect(pack.isInstalled)
+        #expect(FileManager.default.isExecutableFile(atPath: pack.executable.path))
+        pack.remove()
+        #expect(!pack.isInstalled)
+        #expect(!FileManager.default.fileExists(atPath: pack.folder.path))
+    }
+}
+
+/// Conversions through a built pack (scripts/formats-pack.sh); skipped when it hasn't been built.
+@MainActor
+struct PackConversionTests {
+    let folder: URL
+    let ffmpeg = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+        .appendingPathComponent("build/formats/NookFormats/ffmpeg")
+
+    init() throws {
+        folder = FileManager.default.temporaryDirectory.appendingPathComponent("pack-convert-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+    }
+
+    private var built: Bool { FileManager.default.isExecutableFile(atPath: ffmpeg.path) }
+
+    private func run(_ urls: [URL], to target: ConvertTarget) async throws -> [URL] {
+        var options = ConvertOptions()
+        options.ffmpeg = ffmpeg
+        return try await ConvertEngine.run(urls, to: target, options: options, progress: { _ in })
+    }
+
+    @Test func soundBecomesMP3AndOpus() async throws {
+        guard built else { return }
+        let wav = try Fixtures.wav(in: folder, name: "Tone.wav")
+        let mp3 = try await run([wav], to: .mp3)
+        let seconds = try await AVURLAsset(url: mp3[0]).load(.duration).seconds
+        #expect(abs(seconds - 1) < 0.15, "MP3 \(seconds) s")
+        let opus = try await run([wav], to: .opus)
+        #expect((try FileManager.default.attributesOfItem(atPath: opus[0].path)[.size] as? Int ?? 0) > 1000)
+    }
+
+    @Test func aPictureBecomesWebP() async throws {
+        guard built else { return }
+        let png = try Fixtures.png(in: folder, name: "Shot")
+        let webp = try await run([png], to: .webp)
+        let file = try #require(CGImageSourceCreateWithURL(webp[0] as CFURL, nil))
+        #expect((CGImageSourceGetType(file) as String?) == "org.webmproject.webp")
+    }
+
+    @Test func aVideoBecomesWebMAndMKVAndMKVComesBack() async throws {
+        guard built else { return }
+        let movie = try await Fixtures.movie(in: folder)
+        let webm = try await run([movie], to: .webm)
+        #expect((try FileManager.default.attributesOfItem(atPath: webm[0].path)[.size] as? Int ?? 0) > 1000)
+        let mkv = try await run([movie], to: .mkv)
+        // macOS can't open MKV, so this one goes through ffmpeg too, onto the Mac's own H.264 encoder.
+        #expect(!ConvertCatalog.opensNatively(mkv[0]))
+        #expect(ConvertCatalog.targets(for: [mkv[0]], withPack: false).isEmpty, "nothing without More Formats")
+        let back = try await run([mkv[0]], to: .mp4)
+        #expect(try await Fixtures.codec(back[0]) == kCMVideoCodecType_H264)
+        let seconds = try await AVURLAsset(url: back[0]).load(.duration).seconds
+        #expect(abs(seconds - 1) < 0.2, "MP4 from MKV \(seconds) s")
     }
 }

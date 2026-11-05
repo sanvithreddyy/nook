@@ -56,6 +56,8 @@ struct ConvertFormatsRow: View {
     @Environment(ConvertModel.self) private var convert
 
     var body: some View {
+        // The row and More keep their identity as the page turns; only the formats change. Rebuilding
+        // the place a drag rests on (More, as it turns the page) left drops on the next page unanswered.
         HStack(alignment: .top, spacing: 0) {
             ForEach(Array(convert.shownTargets.enumerated()), id: \.element) { index, target in
                 FormatPlace(target: target)
@@ -66,7 +68,6 @@ struct ConvertFormatsRow: View {
             }
             if convert.hasMore { MoreFormatsPlace() }
         }
-        .id(convert.page)
     }
 }
 
@@ -79,10 +80,22 @@ private struct FormatPlace: View {
     @State private var hovering = false
 
     var body: some View {
+        let download = convert.downloads(target, for: convert.sources)
         ShelfPlace(name: target.name, highlight: targeted ? 0.1 : hovering ? 0.08 : 0, ring: targeted) {
-            Image(nsImage: NSWorkspace.shared.icon(for: target.type))
+            Image(nsImage: NSWorkspace.shared.icon(for: target.iconType))
                 .resizable()
                 .aspectRatio(contentMode: .fit)
+                // From More Formats, which downloads the first time it's picked.
+                .overlay(alignment: .bottomTrailing) {
+                    if download {
+                        Image(systemName: "arrow.down.circle.fill")
+                            .font(.system(size: 17))
+                            .symbolRenderingMode(.palette)
+                            .foregroundStyle(.white, Color(white: 0.3))
+                            .background(Circle().fill(.black).padding(-1.5))
+                            .offset(x: 2, y: 2)
+                    }
+                }
         }
         .scaleEffect(targeted ? 1.03 : 1)
         .animation(Motion.press, value: targeted)
@@ -97,7 +110,7 @@ private struct FormatPlace: View {
             return true
         }
         .onTapGesture { choose(convert.sources) }
-        .help("Convert to \(target.name)")
+        .help(download ? "Convert to \(target.name) (downloads More Formats first)" : "Convert to \(target.name)")
         .accessibilityAddTraits(.isButton)
     }
 

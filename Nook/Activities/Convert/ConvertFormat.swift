@@ -1,4 +1,6 @@
+import AppKit
 import AudioToolbox
+import AVFoundation
 import Foundation
 import ImageIO
 import UniformTypeIdentifiers
@@ -9,7 +11,11 @@ nonisolated enum ConvertSource: String, Sendable, CaseIterable {
 
     /// Reads only the file's type, and for a GIF how many frames it has.
     static func of(_ url: URL) -> ConvertSource? {
-        guard let type = UTType(filenameExtension: url.pathExtension.lowercased()) else { return nil }
+        let ext = url.pathExtension.lowercased()
+        // Formats macOS may not declare a type for, which More Formats opens.
+        if ["mkv", "webm", "flv", "wmv", "ogv", "avi", "mts", "m2ts", "ts", "vob"].contains(ext) { return .video }
+        if ["ogg", "oga", "opus", "wma", "ape"].contains(ext) { return .audio }
+        guard let type = UTType(filenameExtension: ext) else { return nil }
         if type.conforms(to: .svg) { return .svg }
         if type.conforms(to: .pdf) { return .pdf }
         if type.conforms(to: .gif) {
@@ -42,7 +48,7 @@ nonisolated enum ConvertTarget: String, Sendable, CaseIterable, Codable {
     // Text
     case text, docx, rtf, html, odt
     // From the More Formats download
-    case webp, jpegXL, webm, mkv, mp3, opus
+    case webp, webm, mkv, mp3, opus
 
     var name: String {
         switch self {
@@ -73,7 +79,6 @@ nonisolated enum ConvertTarget: String, Sendable, CaseIterable, Codable {
         case .html: "HTML"
         case .odt: "OpenDocument"
         case .webp: "WebP"
-        case .jpegXL: "JPEG XL"
         case .webm: "WebM"
         case .mkv: "MKV"
         case .mp3: "MP3"
@@ -105,7 +110,6 @@ nonisolated enum ConvertTarget: String, Sendable, CaseIterable, Codable {
         case .html: "html"
         case .odt: "odt"
         case .webp: "webp"
-        case .jpegXL: "jxl"
         case .webm: "webm"
         case .mkv: "mkv"
         case .mp3: "mp3"
@@ -116,10 +120,22 @@ nonisolated enum ConvertTarget: String, Sendable, CaseIterable, Codable {
     /// The file type it makes, for the document icon the system draws for it.
     var type: UTType { UTType(filenameExtension: fileExtension) ?? .data }
 
+    /// The type whose document icon stands for it: its own, unless another app (a browser that claims
+    /// Opus, say) supplies that icon, when it's the system's plain picture, movie or sound document.
+    var iconType: UTType {
+        let own = type
+        let app = NSWorkspace.shared.urlForApplication(toOpen: own)?.path ?? "/System"
+        if app.hasPrefix("/System") { return own }
+        if own.conforms(to: .audio) { return .audio }
+        if own.conforms(to: .movie) { return .movie }
+        if own.conforms(to: .image) { return .image }
+        return own
+    }
+
     /// Made by the More Formats download rather than by macOS.
     var needsPack: Bool {
         switch self {
-        case .webp, .jpegXL, .webm, .mkv, .mp3, .opus: true
+        case .webp, .webm, .mkv, .mp3, .opus: true
         default: false
         }
     }
@@ -160,7 +176,7 @@ nonisolated enum ConvertCatalog {
     /// The first four show as tiles; the rest are under More, then the download's.
     static func targets(for source: ConvertSource) -> [ConvertTarget] {
         switch source {
-        case .image: [.jpeg, .png, .pdf, .heic, .tiff, .avif, .gif, .bmp, .ico, .icns, .webp, .jpegXL]
+        case .image: [.jpeg, .png, .pdf, .heic, .tiff, .avif, .gif, .bmp, .ico, .icns, .webp]
         case .svg: [.png, .jpeg, .pdf, .heic, .tiff, .ico, .icns, .webp]
         case .animatedGIF: [.mp4, .mov, .png, .jpeg, .heic, .webp, .webm]
         case .video: [.mp4, .mp4HEVC, .mov, .animatedGIF, .m4a, .wav, .prores, .webm, .mkv, .mp3]
@@ -182,7 +198,7 @@ nonisolated enum ConvertCatalog {
             list = list.filter(theirs.contains)
         }
         list = list.filter { target in
-            !urls.contains(where: target.matches) && (withPack || !target.needsPack) && Capabilities.canWrite(target)
+            !urls.contains(where: target.matches) && (withPack || !needsPack(target, for: urls)) && Capabilities.canWrite(target)
         }
         // Several pictures can also become one PDF, offered first.
         if urls.count > 1, sources.allSatisfy({ $0 == .image || $0 == .svg }) { list.insert(.onePDF, at: 0) }
@@ -191,6 +207,25 @@ nonisolated enum ConvertCatalog {
             list.insert(lastUsed, at: list.first == .onePDF ? 1 : 0)
         }
         return list
+    }
+}
+
+nonisolated extension ConvertCatalog {
+    /// Movie and sound files AVFoundation opens, asked once.
+    static let nativeMedia: Set<String> = Set(AVURLAsset.audiovisualTypes().map(\.rawValue))
+
+    /// Pictures, PDFs and documents always open; video and sound only in formats AVFoundation reads
+    /// (not WebM, MKV or Ogg Opus, for one).
+    static func opensNatively(_ url: URL) -> Bool {
+        guard let source = ConvertSource.of(url), source == .video || source == .audio else { return true }
+        guard let type = UTType(filenameExtension: url.pathExtension.lowercased()), type.isDeclared else { return false }
+        return nativeMedia.contains(type.identifier)
+    }
+
+    /// Whether this conversion takes More Formats: the format is one of its own, or a file is one
+    /// only it can open.
+    static func needsPack(_ target: ConvertTarget, for urls: [URL]) -> Bool {
+        target.needsPack || urls.contains { !opensNatively($0) }
     }
 }
 

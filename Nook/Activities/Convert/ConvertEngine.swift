@@ -8,6 +8,8 @@ nonisolated struct ConvertOptions: Sendable {
     var audioBitRate: Int = 256_000
     /// Save results in Downloads instead of next to the original.
     var toDownloads = false
+    /// More Formats' ffmpeg, when it's installed.
+    var ffmpeg: URL?
 }
 
 nonisolated enum ConvertError: LocalizedError {
@@ -92,6 +94,13 @@ nonisolated enum ConvertEngine {
         let folder = ConvertOutput.folder(for: url, toDownloads: options.toDownloads)
         let name = ConvertOutput.baseName(url)
         let dest = { ConvertOutput.unique(in: folder, name: name, ext: target.fileExtension) }
+
+        if ConvertCatalog.needsPack(target, for: [url]) {
+            guard let ffmpeg = options.ffmpeg else { throw ConvertError.failed("\(target.name) needs More Formats, from Settings → Converter.") }
+            let out = dest()
+            try await PackConversion.run(url, source: source, to: target, ffmpeg: ffmpeg, options: options, into: out, progress: progress)
+            return [out]
+        }
 
         switch (source, target) {
         case (.pdf, .text):

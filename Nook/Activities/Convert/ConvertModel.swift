@@ -70,7 +70,8 @@ final class ConvertModel {
     @discardableResult
     func open(with urls: [URL], awaitingClick: Bool = false) -> Bool {
         let kind = urls.first.flatMap(ConvertSource.of)
-        let list = ConvertCatalog.targets(for: urls, withPack: false, lastUsed: kind.flatMap(Prefs.convertLastUsed))
+        // More Formats' own formats are offered too, marked to download; picking one gets it first.
+        let list = ConvertCatalog.targets(for: urls, withPack: true, lastUsed: kind.flatMap(Prefs.convertLastUsed))
         guard !list.isEmpty else { return false }
         withAnimation(Motion.reshape) {
             sources = urls
@@ -114,18 +115,40 @@ final class ConvertModel {
     // MARK: Converting
 
     func convert(_ urls: [URL], to target: ConvertTarget) {
+        #if DEBUG
+        print("CONVERT start \(urls.map(\.lastPathComponent)) → \(target.rawValue)"); fflush(stdout)
+        #endif
         guard !urls.isEmpty else { return }
         if let kind = ConvertSource.of(urls[0]) { Prefs.setConvertLastUsed(target, for: kind) }
         let job = ConvertJob(sources: urls, target: target)
         withAnimation(Motion.peekIn) { jobs.append(job) }
         onChange?()
         let id = job.id
-        let options = ConvertOptions(photoQuality: Self.photoQuality, audioBitRate: max(64, Prefs.int(Prefs.convertAudioKbps)) * 1000,
+        var options = ConvertOptions(photoQuality: Self.photoQuality, audioBitRate: max(64, Prefs.int(Prefs.convertAudioKbps)) * 1000,
                                      toDownloads: Prefs.bool(Prefs.convertToDownloads))
         let keepOriginal = Prefs.bool(Prefs.convertKeepOriginal)
+        let needsPack = ConvertCatalog.needsPack(target, for: urls)
+        let pack = self.pack
         showActivitySoon(for: id)
         Task {
             do {
+                if needsPack {
+                    // The first time: More Formats downloads, its share shown on the same ring.
+                    let watch = Task { [weak self] in
+                        while !Task.isCancelled {
+                            if case .downloading(let share) = pack.state { self?.update(id, progress: share * 0.98) }
+                            try? await Task.sleep(for: .milliseconds(150))
+                        }
+                    }
+                    let ready = await pack.install()
+                    watch.cancel()
+                    guard ready else {
+                        let reason = if case .failed(let why) = pack.state { why } else { "More Formats couldn't be downloaded." }
+                        throw ConvertError.failed(reason)
+                    }
+                    resetProgress(id)
+                    options.ffmpeg = pack.executable
+                }
                 let made = try await ConvertEngine.run(urls, to: target, options: options) { [weak self] share in
                     Task { @MainActor in self?.update(id, progress: share) }
                 }
@@ -144,6 +167,20 @@ final class ConvertModel {
         }
     }
 
+    /// More Formats, downloaded the first time one of its formats is picked.
+    @ObservationIgnored var pack = FormatPack.shared
+
+    /// Whether picking this format for these files downloads More Formats first.
+    func downloads(_ target: ConvertTarget, for urls: [URL]) -> Bool {
+        !pack.isInstalled && ConvertCatalog.needsPack(target, for: urls)
+    }
+
+    private func resetProgress(_ id: UUID) {
+        guard let index = jobs.firstIndex(where: { $0.id == id }) else { return }
+        jobs[index].progress = 0
+        if activity?.id == id { activity?.progress = 0 }
+    }
+
     private func update(_ id: UUID, progress: Double) {
         guard let index = jobs.firstIndex(where: { $0.id == id }), jobs[index].state == .running,
               progress - jobs[index].progress >= 0.01 || progress >= 1 else { return }
@@ -152,6 +189,9 @@ final class ConvertModel {
     }
 
     private func finish(_ id: UUID, made: [URL], removing originals: [URL]) {
+        #if DEBUG
+        print("CONVERT done \(made.map(\.lastPathComponent))"); fflush(stdout)
+        #endif
         withAnimation(Motion.peekOut) { jobs.removeAll { $0.id == id } }
         onMade?(made)
         // Only once there's something to show for it does the original go, and to the Trash.
@@ -161,6 +201,9 @@ final class ConvertModel {
     }
 
     private func fail(_ id: UUID, _ reason: String) {
+        #if DEBUG
+        print("CONVERT failed \(reason)"); fflush(stdout)
+        #endif
         guard let index = jobs.firstIndex(where: { $0.id == id }) else { return }
         jobs[index].state = .failed(reason)
         settleActivity(id, as: .failed(reason))

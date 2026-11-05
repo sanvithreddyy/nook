@@ -381,13 +381,23 @@ private struct ShelfTile: View {
             Button("AirDrop") { AirDrop.send([item.url]) }
             ShareLink(item: item.url) { Text("Share") }
             Button("Copy") { shelf.copy(item) }
-            let formats = item.isMissing ? [] : ConvertCatalog.targets(for: [item.url], withPack: false,
+            let formats = item.isMissing ? [] : ConvertCatalog.targets(for: [item.url], withPack: true,
                                                                        lastUsed: ConvertSource.of(item.url).flatMap(Prefs.convertLastUsed))
             if !formats.isEmpty {
                 Divider()
                 Menu("Convert To") {
-                    ForEach(formats, id: \.self) { target in
+                    let ready = formats.filter { !convert.downloads($0, for: [item.url]) }
+                    let later = formats.filter { convert.downloads($0, for: [item.url]) }
+                    ForEach(ready, id: \.self) { target in
                         Button(target.name) { convert.convert([item.url], to: target) }
+                    }
+                    // Picking one of these downloads More Formats first.
+                    if !later.isEmpty {
+                        Section("More Formats (downloads first)") {
+                            ForEach(later, id: \.self) { target in
+                                Button(target.name) { convert.convert([item.url], to: target) }
+                            }
+                        }
                     }
                 }
             }

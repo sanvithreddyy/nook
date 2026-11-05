@@ -264,13 +264,19 @@ nonisolated enum MediaConversion {
         description.mBytesPerPacket = description.mBytesPerFrame
     }
 
-    /// Asks the AAC encoder for this bit rate; if the sample rate and channels don't allow it, the
-    /// encoder's own choice stands.
+    /// Asks the AAC encoder for this bit rate, or the nearest below it that the sample rate and channels
+    /// allow (mono at 22 kHz tops out far under 256 kbps, and a rate it can't do fails every write).
     private static func setBitRate(_ bitRate: Int, on file: ExtAudioFileRef) {
         var converter: AudioConverterRef?
         var size = UInt32(MemoryLayout<AudioConverterRef?>.size)
         guard ExtAudioFileGetProperty(file, kExtAudioFileProperty_AudioConverter, &size, &converter) == noErr, let converter else { return }
-        var value = UInt32(bitRate)
+        var rangesSize: UInt32 = 0
+        guard AudioConverterGetPropertyInfo(converter, kAudioConverterApplicableEncodeBitRates, &rangesSize, nil) == noErr, rangesSize > 0 else { return }
+        var ranges = [AudioValueRange](repeating: AudioValueRange(), count: Int(rangesSize) / MemoryLayout<AudioValueRange>.size)
+        guard AudioConverterGetProperty(converter, kAudioConverterApplicableEncodeBitRates, &rangesSize, &ranges) == noErr else { return }
+        let allowed = ranges.flatMap { [$0.mMinimum, $0.mMaximum] }.filter { $0 > 0 }.sorted()
+        guard let chosen = allowed.last(where: { $0 <= Double(bitRate) }) ?? allowed.first else { return }
+        var value = UInt32(chosen)
         guard AudioConverterSetProperty(converter, kAudioConverterEncodeBitRate, UInt32(MemoryLayout<UInt32>.size), &value) == noErr else { return }
         var config: CFArray?
         ExtAudioFileSetProperty(file, kExtAudioFileProperty_ConverterConfig, UInt32(MemoryLayout<CFArray?>.size), &config)
