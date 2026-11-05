@@ -34,16 +34,29 @@ let shelfDropTypes: [UTType] = [.fileURL, .url, .image, .plainText]
 struct ShelfPage: View {
     @Environment(ShelfModel.self) private var shelf
     @Environment(NotchModel.self) private var model
+    @Environment(ConvertModel.self) private var convert
 
     var body: some View {
         HStack(alignment: .top, spacing: 0) {
-            FilesRow(dragging: model.isDraggingFile)
-                .frame(maxWidth: .infinity, alignment: .leading)
+            // Sprung open, Convert's formats take the files' places.
+            Group {
+                if convert.isOpen {
+                    ConvertFormatsRow()
+                } else {
+                    FilesRow(dragging: model.isDraggingFile)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
             Rectangle()
                 .fill(.white.opacity(0.14))
                 .frame(width: 1, height: ShelfMetrics.thumb)
                 .padding(.top, ShelfMetrics.pad)
                 .padding(.horizontal, (ShelfMetrics.separator - 1) / 2)
+            // Convert comes in beside AirDrop, so AirDrop keeps its place at the end.
+            if model.shelfConvert != .hidden {
+                ConvertPlace()
+                    .transition(.scale(scale: 0.6, anchor: .trailing).combined(with: .opacity))
+            }
             AirDropTarget()
         }
         // In the middle of the space under the notch.
@@ -51,14 +64,21 @@ struct ShelfPage: View {
         .padding(.top, model.notch.size.height)
         // Across the notch from the page dots, as Notification Center puts Clear All over a stack.
         .overlay(alignment: .topLeading) {
-            if !shelf.isEmpty {
+            if convert.isOpen {
+                ConvertTitle()
+                    .frame(height: model.notch.size.height)
+                    .transition(.opacity)
+            } else if !shelf.isEmpty {
                 ClearAllButton()
                     .frame(height: model.notch.size.height)
                     .transition(.opacity)
             }
         }
         .animation(Motion.reshape, value: model.isDraggingFile)
+        .animation(Motion.reshape, value: model.shelfConvert)
         .onAppear { shelf.refresh() }
+        // The island closing or turning the page puts the shelf back.
+        .onDisappear { convert.close() }
         .contextMenu {
             Button("Add Files…") { shelf.chooseFiles() }
             if !shelf.isEmpty {
@@ -91,17 +111,22 @@ enum ShelfMetrics {
     /// Places in the row; past this the last one counts the rest.
     static let places = 6
 
-    /// As wide as its places (the landing place among them while dragging), between the two limits.
-    static func size(items: Int, dragging: Bool) -> CGSize {
-        let slots = CGFloat(min(items + (dragging ? 1 : 0), places))
-        let files = items == 0 && !dragging ? tile * 2 : slots * tile
-        let width = inset * 2 + files + separator + tile
+    /// As wide as its places (the landing place among them while dragging, Convert beside AirDrop when
+    /// it's offered, and its formats when it's open), between the two limits.
+    static func size(items: Int, dragging: Bool, convert: ShelfConvert = .hidden) -> CGSize {
+        let files: CGFloat
+        if case .open(let formats) = convert {
+            files = CGFloat(formats) * tile
+        } else {
+            files = items == 0 && !dragging ? tile * 2 : CGFloat(min(items + (dragging ? 1 : 0), places)) * tile
+        }
+        let width = inset * 2 + files + separator + tile + (convert == .hidden ? 0 : tile)
         return CGSize(width: min(max(width, minWidth), maxWidth), height: height)
     }
 }
 
 /// A place in the row: a picture, its name under it on up to two lines, a highlight behind both.
-private struct ShelfPlace<Picture: View>: View {
+struct ShelfPlace<Picture: View>: View {
     let name: String
     var nameOpacity = 0.92
     var highlight = 0.0
@@ -196,10 +221,11 @@ nonisolated private func loadFileURL(_ provider: NSItemProvider) async -> URL? {
 /// The files kept on the shelf, then the landing place while a file is dragged.
 private struct FilesRow: View {
     @Environment(ShelfModel.self) private var shelf
+    @Environment(ConvertModel.self) private var convert
     let dragging: Bool
 
     var body: some View {
-        if shelf.isEmpty, !dragging {
+        if shelf.isEmpty, !dragging, convert.jobs.isEmpty {
             Button { shelf.chooseFiles() } label: {
                 VStack(spacing: 9) {
                     Image(systemName: "tray.and.arrow.down")
@@ -217,9 +243,10 @@ private struct FilesRow: View {
             .help("Click to choose files")
             .transition(.opacity)
         } else {
-            // The landing place takes a place while dragging; the count of the rest takes the last when
-            // files overflow.
-            let room = ShelfMetrics.places - (dragging ? 1 : 0)
+            // The landing place takes a place while dragging, and each file being converted takes one;
+            // the count of the rest takes the last when files overflow.
+            let pending = Array(convert.jobs.prefix(ShelfMetrics.places - 2))
+            let room = ShelfMetrics.places - (dragging ? 1 : 0) - pending.count
             let overflows = shelf.items.count > room
             let shown = overflows ? Array(shelf.items.prefix(room - 1)) : shelf.items
             HStack(alignment: .top, spacing: 0) {
@@ -231,12 +258,17 @@ private struct FilesRow: View {
                     MoreTile(hidden: shelf.items.count - shown.count)
                         .transition(.opacity)
                 }
+                ForEach(pending) { job in
+                    ConvertingPlace(job: job)
+                        .transition(.scale(scale: 0.8).combined(with: .opacity))
+                }
                 if dragging {
                     LandingSlot()
                         .transition(.scale(scale: 0.6, anchor: .leading).combined(with: .opacity))
                 }
             }
             .animation(Motion.peekIn, value: shelf.items.map(\.id))
+            .animation(Motion.peekIn, value: convert.jobs.map(\.id))
         }
     }
 }
@@ -321,6 +353,7 @@ private struct LandingSlot: View {
 
 private struct ShelfTile: View {
     @Environment(ShelfModel.self) private var shelf
+    @Environment(ConvertModel.self) private var convert
     let item: ShelfItem
     @State private var hovering = false
 
@@ -348,6 +381,16 @@ private struct ShelfTile: View {
             Button("AirDrop") { AirDrop.send([item.url]) }
             ShareLink(item: item.url) { Text("Share") }
             Button("Copy") { shelf.copy(item) }
+            let formats = item.isMissing ? [] : ConvertCatalog.targets(for: [item.url], withPack: false,
+                                                                       lastUsed: ConvertSource.of(item.url).flatMap(Prefs.convertLastUsed))
+            if !formats.isEmpty {
+                Divider()
+                Menu("Convert To") {
+                    ForEach(formats, id: \.self) { target in
+                        Button(target.name) { convert.convert([item.url], to: target) }
+                    }
+                }
+            }
             Divider()
             Button("Remove from Shelf") { shelf.remove(item) }
         }
@@ -404,7 +447,7 @@ private struct ClearAllButton: View {
 
 /// A file's picture: Quick Look's, with rounded corners and a hairline edge, for photos, videos and
 /// documents; its Finder icon, as Finder draws it, for everything else.
-private struct Thumbnail: View {
+struct Thumbnail: View {
     let url: URL
     @State private var image: NSImage?
 

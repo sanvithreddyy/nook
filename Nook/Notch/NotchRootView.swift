@@ -191,6 +191,8 @@ private struct ActivitySide: View {
             CalendarActivitySide(eventID: id, edge: edge)
         case .timer:
             TimerActivitySide(edge: edge)
+        case .converting:
+            ConvertActivitySide(edge: edge, height: height)
         }
     }
 }

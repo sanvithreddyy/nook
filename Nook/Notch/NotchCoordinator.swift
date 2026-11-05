@@ -11,6 +11,7 @@ final class NotchCoordinator {
     let nowPlaying = NowPlayingModel()
     let calendar = CalendarModel()
     let shelf = ShelfModel()
+    let convert = ConvertModel()
     let batteries = DeviceBatteries()
     let weather = WeatherModel()
     let reminders = RemindersModel()
@@ -141,7 +142,15 @@ final class NotchCoordinator {
                   !island.model.isSuppressed else { return }
             island.model.expand(card: .shelf)
         }
-        fileDrags.onActiveChange = { [weak self] active in self?.everyIsland { $0.setDraggingFile(active) } }
+        fileDrags.onActiveChange = { [weak self] active in
+            guard let self else { return }
+            convert.dragCarriesFiles = active && fileDrags.carriesFiles
+            everyIsland { $0.setDraggingFile(active) }
+            if !active { convert.dragEnded() }
+            convertChanged()
+        }
+        convert.onMade = { [weak self] urls in self?.shelf.add(urls) }
+        convert.onChange = { [weak self] in self?.convertChanged() }
         fileDrags.start()
         observeShelf()
         observeModuleData()
@@ -241,6 +250,21 @@ final class NotchCoordinator {
                     // -shelf-dragging: a file held over the screen, so the landing place shows; -shelf-targeted:
                     // held over the island, so it lights up.
                     if args.contains("-shelf-dragging") { model.setDraggingFile(true) }
+                    // -convert-offered: Convert beside AirDrop, as while files are dragged; -convert-open <file>: open
+                    // on that file; -convert-job <file> <format> <share>: a conversion part-way, on the shelf and
+                    // beside the notch.
+                    if args.contains("-convert-offered") {
+                        convert.dragCarriesFiles = true
+                        model.setDraggingFile(true)
+                    }
+                    if let i = args.firstIndex(of: "-convert-open"), args.indices.contains(i + 1) {
+                        convert.debugOpen([URL(fileURLWithPath: args[i + 1])])
+                    }
+                    if let i = args.firstIndex(of: "-convert-job"), args.indices.contains(i + 3),
+                       let target = ConvertTarget(rawValue: args[i + 2]), let share = Double(args[i + 3]) {
+                        convert.debugJob([URL(fileURLWithPath: args[i + 1])], to: target, progress: share, beside: !args.contains("-expand"))
+                    }
+                    convertChanged()
                     if args.contains("-shelf-targeted") { shelf.isTargeted = true }
                 }
                 if args.contains("-expand") {
@@ -401,6 +425,7 @@ final class NotchCoordinator {
                 .environment(nowPlaying)
                 .environment(calendar)
                 .environment(shelf)
+                .environment(convert)
                 .environment(timer)
                 .environment(batteries)
                 .environment(weather)
@@ -669,6 +694,17 @@ final class NotchCoordinator {
         }
     }
 
+    /// Convert's place on the shelf follows the drag and whether it's open, and the shelf's width follows
+    /// both; a conversion that's taking a while shows beside the notch.
+    private func convertChanged() {
+        everyIsland { island in
+            let state = convert.shelfState(dragging: island.isDraggingFile)
+            guard island.shelfConvert != state else { return }
+            withAnimation(island.isExpanded ? Motion.reshape : nil) { island.shelfConvert = state }
+        }
+        refreshActivity()
+    }
+
     private func warnLowBattery(_ level: Int) {
         everyIsland { $0.post(.lowBattery(level: level), for: .seconds(4)) }
         let sound = Prefs.string(Prefs.lowBatterySound)
@@ -751,6 +787,8 @@ final class NotchCoordinator {
     /// to start. The first is the island's own activity; the next becomes the drop beside it.
     private func liveActivities() -> [LiveActivity] {
         var live: [LiveActivity] = []
+        // A conversion you just started, and that's taking a while, comes first while it lasts.
+        if convert.activity != nil { live.append(.converting) }
         if Prefs.bool(Prefs.nowPlaying), nowPlaying.hasTrack, nowPlayingVisible, !playerFullscreen { live.append(.nowPlaying) }
         var timed: [(activity: LiveActivity, due: Date)] = []
         if timer.isActive { timed.append((.timer, .now.addingTimeInterval(timer.remaining()))) }
@@ -786,7 +824,8 @@ final class NotchCoordinator {
     /// Runs on every calendar change and on the 30 s tick too, so a meeting that starts changes what
     /// the island opens to. The home shows the modules that are on and have something to show.
     private func refreshCards(live: [LiveActivity]? = nil) {
-        let items = shelf.items.count
+        // Files being converted take places on the shelf too.
+        let items = shelf.items.count + convert.jobs.count
         let devices = batteries.devices.count
         everyIsland { island in
             if island.shelfItems != items || island.batteryCount != devices {
@@ -889,7 +928,7 @@ final class NotchCoordinator {
             open(page(with: .calendar) ?? cards.first(where: { $0.settingsPane == .calendar }))
         case .timer:
             open(cards.contains(.timer) ? .timer : nil)
-        case .shelf:
+        case .shelf, .converter:
             open(cards.contains(.shelf) ? .shelf : nil)
         case .huds:
             notice(.volume(level: volume.volume, muted: volume.isMuted, output: volume.headphones))

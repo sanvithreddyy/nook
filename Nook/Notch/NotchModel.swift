@@ -8,6 +8,8 @@ enum LiveActivity: Equatable {
     case unlocked
     case calendar(id: String)
     case timer
+    /// A conversion from the shelf that's taking a while.
+    case converting
 
     /// Activities with the same identity morph in place (padlock closing → opening) instead of transitioning.
     var identity: String {
@@ -16,6 +18,7 @@ enum LiveActivity: Equatable {
         case .locked, .unlocked: "lock"
         case .calendar(let id): "calendar-\(id)"
         case .timer: "timer"
+        case .converting: "converting"
         }
     }
 
@@ -25,6 +28,7 @@ enum LiveActivity: Equatable {
         switch self {
         case .calendar(let id): .meeting(id: id)
         case .timer: .timer
+        case .converting: .shelf
         case .nowPlaying, .locked, .unlocked: nil
         }
     }
@@ -209,6 +213,8 @@ final class NotchModel {
     var shelfItems = 0
     /// A file drag from another app is under way, so the shelf shows its drop targets.
     private(set) var isDraggingFile = false
+    /// Convert beside AirDrop on the shelf, and how many formats it shows when open.
+    var shelfConvert: ShelfConvert = .hidden
     /// A second activity beside the island's own: a timer or a meeting about to start, shown as its own
     /// drop beside the island, like the Dynamic Island's detached minimal view.
     private(set) var companion: LiveActivity?
@@ -319,7 +325,7 @@ final class NotchModel {
         case .meeting: CGSize(width: Self.cardWidth, height: 104)
         // Room for the ring with the round buttons either side.
         case .timer: CGSize(width: Self.cardWidth, height: 132)
-        case .shelf: ShelfMetrics.size(items: shelfItems, dragging: isDraggingFile)
+        case .shelf: ShelfMetrics.size(items: shelfItems, dragging: isDraggingFile, convert: shelfConvert)
         }
     }
 

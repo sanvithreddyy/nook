@@ -15,6 +15,8 @@ final class FileDragWatcher {
     private var changeCountAtPress = 0
     private var pressed = false
     private var carryingContent = false
+    /// The drag carries files, not only text, a link or a picture from a web page, so they can be converted.
+    private(set) var carriesFiles = false
     private var entered = false
     private var reportedActive = false
 
@@ -43,6 +45,7 @@ final class FileDragWatcher {
         changeCountAtPress = pasteboard.changeCount
         pressed = true
         carryingContent = false
+        carriesFiles = false
         entered = false
         // Clears a drag whose mouse-up was missed.
         report(false)
@@ -59,7 +62,9 @@ final class FileDragWatcher {
         // A drag session writes to the drag pasteboard once it starts; plain mouse drags don't.
         if !carryingContent, pasteboard.changeCount != changeCountAtPress {
             let accepted: [NSPasteboard.PasteboardType] = [.fileURL, .URL, .string, .png, .tiff]
-            carryingContent = pasteboard.types?.contains(where: accepted.contains) ?? false
+            let types = pasteboard.types ?? []
+            carryingContent = types.contains(where: accepted.contains)
+            carriesFiles = types.contains(.fileURL)
         }
         guard carryingContent else { return }
         report(true)

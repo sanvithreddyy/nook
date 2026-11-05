@@ -15,7 +15,7 @@ struct CompanionDrop: View {
             switch activity {
             case .calendar(let id): MeetingDropContent(eventID: id)
             case .timer: TimerDropContent()
-            case .nowPlaying, .locked, .unlocked: EmptyView()
+            case .nowPlaying, .locked, .unlocked, .converting: EmptyView()
             }
         }
         .frame(width: size.width, height: size.height)

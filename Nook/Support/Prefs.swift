@@ -7,7 +7,7 @@ import CoreGraphics
 enum Prefs {
     /// Every area's defaults. An area lists every key it owns here, so reset and export see it.
     static var areas: [PrefsArea] {
-        [generalArea, homeArea, mediaArea, hudsArea, timerArea, batteryArea, connectivityArea, calendarArea, lockArea, shelfArea, shortcutsArea, advancedArea]
+        [generalArea, homeArea, mediaArea, hudsArea, timerArea, batteryArea, connectivityArea, calendarArea, lockArea, shelfArea, convertArea, shortcutsArea, advancedArea]
     }
 
     static func registerDefaults() {

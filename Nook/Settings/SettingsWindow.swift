@@ -190,14 +190,14 @@ extension SettingsPane {
     /// Pages with part of the island to show on the notch while they're open.
     var hasPreview: Bool {
         switch self {
-        case .home, .nowPlaying, .calendar, .timer, .shelf, .huds, .battery, .connectivity: true
+        case .home, .nowPlaying, .calendar, .timer, .shelf, .converter, .huds, .battery, .connectivity: true
         case .general, .lock, .shortcuts, .advanced, .about, .update: false
         }
     }
 }
 
 enum SettingsPane: String, CaseIterable, Identifiable {
-    case general, home, nowPlaying, calendar, timer, shelf, huds, battery, connectivity, lock, shortcuts, advanced, about, update
+    case general, home, nowPlaying, calendar, timer, shelf, converter, huds, battery, connectivity, lock, shortcuts, advanced, about, update
     var id: String { rawValue }
 
     var title: String {
@@ -211,6 +211,7 @@ enum SettingsPane: String, CaseIterable, Identifiable {
         case .calendar: "Calendar"
         case .timer: "Timer"
         case .shelf: "Shelf"
+        case .converter: "Converter"
         case .lock: "Lock Screen"
         case .shortcuts: "Keyboard Shortcuts"
         case .advanced: "Advanced"
@@ -250,6 +251,9 @@ enum SettingsPane: String, CaseIterable, Identifiable {
         case .timer: ["Preview on the notch", "Sound when it ends", "Alarm"]
         case .shelf: ["Preview on the notch", "Open the shelf when a file is dragged to the notch", "Files", "Drop", "AirDrop", "Catch area",
                       "Tight", "Wide", "Remove files that are gone", "Share"]
+        case .converter: ["Preview on the notch", "Convert on the shelf", "Convert", "Convert To", "Format", "JPEG", "PNG", "HEIC", "PDF",
+                          "MP4", "GIF", "M4A", "Save converted files", "Next to the original", "In Downloads", "Keep the original",
+                          "Quality", "Photos", "Audio", "Smaller files"]
         case .huds: ["Preview on the notch", "Replace the volume HUD", "Replace the brightness HUD", "Accessibility access", "Style",
                      "Ledge", "Slider", "Steps", "Outline", "Show the level as a number", "Percentage", "Stays for",
                      "Duration"]
@@ -305,7 +309,7 @@ struct SettingsView: View {
                     if updates.release != nil { UpdateSidebarRow().tag(SettingsPane.update) }
                     Text(SettingsPane.general.title).tag(SettingsPane.general)
                     Section("Island") {
-                        ForEach([SettingsPane.home, .nowPlaying, .calendar, .timer, .shelf]) { Text($0.title).tag($0) }
+                        ForEach([SettingsPane.home, .nowPlaying, .calendar, .timer, .shelf, .converter]) { Text($0.title).tag($0) }
                     }
                     Section("Notices") {
                         ForEach([SettingsPane.huds, .battery, .connectivity, .lock]) { Text($0.title).tag($0) }
@@ -347,6 +351,7 @@ struct SettingsView: View {
                 case .calendar: CalendarPane()
                 case .timer: TimerPane()
                 case .shelf: ShelfPane()
+                case .converter: ConverterPane()
                 case .lock: LockPane()
                 case .shortcuts: ShortcutsPane()
                 case .advanced: AdvancedPane()

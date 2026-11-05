@@ -236,6 +236,7 @@ extension NotchModel {
         case .locked, .unlocked: return .lock
         case .calendar: return .calendar
         case .timer: return .timer
+        case .converting: return .converter
         case nil: return .general
         }
     }
