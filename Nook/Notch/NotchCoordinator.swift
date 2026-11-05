@@ -446,6 +446,8 @@ final class NotchCoordinator {
         for name in [NSWorkspace.activeSpaceDidChangeNotification, NSWorkspace.didActivateApplicationNotification] {
             observers.append(workspace.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
                 Task { @MainActor in
+                    if name == NSWorkspace.activeSpaceDidChangeNotification { self?.lastSpaceChange = .now }
+                    self?.watchSlide()
                     // Space switches finish animating after the notification; check again once settled.
                     self?.updateFullscreen()
                     try? await Task.sleep(for: .milliseconds(450))
@@ -589,29 +591,81 @@ final class NotchCoordinator {
         }
     }
 
-    /// The player filling the screen, or leaving it: the music goes into the notch, or comes back out of it.
-    /// After a space switch macOS keeps its own picture of the island, music showing, on screen for a
-    /// moment (measured Nov 5). Going in, the music waits until that picture has faded (about 230 ms), or
-    /// slivers of it show beside the island as it shrinks. Coming out, the music starts at once and covers
-    /// the picture, which doesn't fade by itself.
+    /// The player filling the screen, or leaving it: the music leaves the closed island, or comes back out of
+    /// the notch. Timed to the space switch (see `watchSlide`), measured Nov 5:
+    /// - Swipe or Control-arrow, going in: macOS's picture of the island from the space being left fades over
+    ///   about 230 ms after landing; changing the island before then shows slivers of the old one, so the
+    ///   music waits 300 ms.
+    /// - Opening the app, going in: the island is about to slide in across its own copy at the notch, so the
+    ///   music goes at once, quickly, before that copy shows (about 100 ms in).
+    /// - Coming out: once the island has landed (at once after a swipe), riding out of the notch.
     private func setPlayerFullscreen(_ full: Bool) {
         guard full != (pendingPlayerFullscreen ?? playerFullscreen) else { return }
         playerFullscreenTask?.cancel()
-        pendingPlayerFullscreen = nil
+        pendingPlayerFullscreen = full == playerFullscreen ? nil : full
         guard full != playerFullscreen else { return }
-        let apply = { [weak self] in
-            guard let self else { return }
+        playerFullscreenTask = Task { [weak self] in
+            // A swipe sends the space change a millisecond or two after the activation; let it arrive.
+            try? await Task.sleep(for: .milliseconds(20))
+            guard let self, !Task.isCancelled else { return }
+            if full {
+                if spaceJustLanded { try? await Task.sleep(for: .milliseconds(300)) }
+            } else {
+                await landed()
+            }
+            guard !Task.isCancelled else { return }
             pendingPlayerFullscreen = nil
             playerFullscreen = full
-            everyIsland { $0.passThroughNotch() }
+            // In, it goes as quickly as any closed content does; it rides only coming out.
+            everyIsland { full ? ($0.passage.throughNotch = false) : $0.passThroughNotch() }
             refreshActivity()
         }
-        guard full else { return apply() }
-        pendingPlayerFullscreen = full
-        playerFullscreenTask = Task {
-            try? await Task.sleep(for: .milliseconds(300))
-            guard !Task.isCancelled else { return }
-            apply()
+    }
+
+    // MARK: Space switches
+
+    private var slideTask: Task<Void, Never>?
+    private var lastSpaceChange: ContinuousClock.Instant?
+
+    /// macOS moves the island with each space switch, as it does every window on all spaces, and no public
+    /// window setting stops it (measured Nov 5). A swipe or Control-arrow keeps it off screen until the
+    /// space has landed, then sends the activation and the space change within a few milliseconds.
+    /// Opening an app (Dock, Command-Tab) sends the activation first; about 35 ms later the island jumps
+    /// off screen and slides back in over the last quarter second, while macOS still draws it at the notch
+    /// as part of the space being left, so for that moment it shows twice. The space change follows about
+    /// 10 ms after it's home. This watches for that slide, so changes can wait for the island to land.
+    private func watchSlide() {
+        slideTask?.cancel()
+        slideTask = Task { [weak self] in
+            let start = ContinuousClock.now
+            var moved = false
+            while let self, !Task.isCancelled {
+                let away = islands.contains { !$0.window.isHome }
+                if away {
+                    moved = true
+                } else if moved || spaceJustLanded || ContinuousClock.now - start > .milliseconds(150) {
+                    // Back from a slide, or the space had already landed, or no slide followed.
+                    break
+                }
+                if ContinuousClock.now - start > .seconds(1.5) { break }
+                try? await Task.sleep(for: .milliseconds(8))
+            }
+            guard let self, !Task.isCancelled else { return }
+            slideTask = nil
+        }
+    }
+
+    /// The space change, which comes once the island has landed, arrived just now.
+    private var spaceJustLanded: Bool {
+        lastSpaceChange.map { ContinuousClock.now - $0 < .milliseconds(300) } ?? false
+    }
+
+    /// Returns once the islands are home from a space switch, at once if none is under way.
+    private func landed() async {
+        while let task = slideTask {
+            await task.value
+            // A newer switch replaced it: wait for that one instead.
+            if slideTask == task { return }
         }
     }
 

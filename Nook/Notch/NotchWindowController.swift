@@ -53,6 +53,16 @@ final class NotchWindowController {
         }
     }
 
+    /// Whether the panel is where AppKit placed it, rather than still moving with a space switch. Asks the
+    /// window server (about 0.6 ms), since AppKit's frame doesn't move during the switch.
+    var isHome: Bool {
+        guard panel.windowNumber > 0,
+              let info = CGWindowListCopyWindowInfo([.optionIncludingWindow], CGWindowID(panel.windowNumber)) as? [[String: Any]],
+              let bounds = (info.first?[kCGWindowBounds as String] as? NSDictionary).flatMap({ CGRect(dictionaryRepresentation: $0 as CFDictionary) })
+        else { return true }
+        return abs(bounds.minX - panel.frame.minX) < 2
+    }
+
     /// The island can grow or shrink under a still pointer (a HUD ends, a swipe collapses it, the
     /// meeting drop comes and goes), so re-run hit testing whenever that changes, not only when the mouse moves.
     private func observeLayout() {
