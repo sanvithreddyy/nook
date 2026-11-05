@@ -22,6 +22,9 @@ final class MediaKeyTap {
 
     private var tap: CFMachPort?
     private var source: CFRunLoopSource?
+    /// Keys whose current press Nook took. A press goes wholly to Nook or wholly to macOS: if macOS
+    /// sees a key go down and never come up, it treats the key as held and keeps repeating it.
+    private var owned: Set<Key> = []
 
     var isRunning: Bool { tap != nil }
 
@@ -62,13 +65,17 @@ final class MediaKeyTap {
         if let source { CFRunLoopRemoveSource(CFRunLoopGetMain(), source, .commonModes) }
         tap = nil
         source = nil
+        owned.removeAll()
     }
 
     fileprivate static func instance(at address: UInt) -> MediaKeyTap? {
         UnsafeRawPointer(bitPattern: address).map { Unmanaged<MediaKeyTap>.fromOpaque($0).takeUnretainedValue() }
     }
 
-    fileprivate func reenable() {
+    /// macOS switched the tap off for a while. Keys went straight to macOS meanwhile, so a release
+    /// that arrives now may belong to a press macOS saw go down.
+    func tapWasDisabled() {
+        owned.removeAll()
         // Re-enabling after Accessibility was revoked would fight the system; drop the tap instead.
         guard Self.isTrusted else {
             stop()
@@ -78,11 +85,17 @@ final class MediaKeyTap {
         if let tap { CGEvent.tapEnable(tap: tap, enable: true) }
     }
 
-    /// Returns true when the event should be swallowed.
-    fileprivate func handle(_ event: MediaKeyEvent) -> Bool {
-        // Option alone with these keys opens Sound or Displays settings; leave that to macOS.
-        guard !event.isOptionOnly, let key = Key(rawValue: event.code), handles(key) else { return false }
-        if event.isDown { onKey?(key, event.isFine) }
+    /// Returns true when the event should be swallowed. A press is decided on its first down, and
+    /// its repeats and release follow that decision whatever changed meanwhile (the screen
+    /// unlocked, the island opened, a setting changed).
+    func handle(_ event: MediaKeyEvent) -> Bool {
+        guard let key = Key(rawValue: event.code) else { return false }
+        if event.isDown, !event.isRepeat {
+            // Option alone with these keys opens Sound or Displays settings; leave that to macOS.
+            if !event.isOptionOnly, handles(key) { owned.insert(key) } else { owned.remove(key) }
+        }
+        guard owned.contains(key) else { return false }
+        if event.isDown { onKey?(key, event.isFine) } else { owned.remove(key) }
         // Swallow both down and up so the system HUD never appears.
         return true
     }
@@ -92,6 +105,8 @@ final class MediaKeyTap {
 nonisolated struct MediaKeyEvent: Sendable {
     let code: Int
     let isDown: Bool
+    /// A down sent while the key is held, after the first.
+    let isRepeat: Bool
     let isFine: Bool
     let isOptionOnly: Bool
 
@@ -100,9 +115,11 @@ nonisolated struct MediaKeyEvent: Sendable {
               nsEvent.type == .systemDefined,
               nsEvent.subtype.rawValue == 8 // NX_SUBTYPE_AUX_CONTROL_BUTTONS
         else { return nil }
+        // data1 is key << 16 | state << 8 | repeat.
         let data = nsEvent.data1
         code = (data & 0xFFFF_0000) >> 16
         isDown = (data & 0xFF00) >> 8 == 0xA // 0xA down, 0xB up
+        isRepeat = data & 0xFF != 0
         let flags = nsEvent.modifierFlags
         isFine = flags.contains(.option) && flags.contains(.shift)
         isOptionOnly = flags.contains(.option) && !flags.contains(.shift)
@@ -114,7 +131,7 @@ nonisolated private func mediaKeyCallback(proxy: CGEventTapProxy, type: CGEventT
     let address = UInt(bitPattern: refcon)
     // The tap's run loop source is on the main run loop, so this runs on the main thread.
     if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
-        MainActor.assumeIsolated { MediaKeyTap.instance(at: address)?.reenable() }
+        MainActor.assumeIsolated { MediaKeyTap.instance(at: address)?.tapWasDisabled() }
         return Unmanaged.passUnretained(event)
     }
     guard let parsed = MediaKeyEvent(event) else { return Unmanaged.passUnretained(event) }
