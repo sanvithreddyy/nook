@@ -357,3 +357,62 @@ enum Fixtures {
         return (data[0], data[1], data[2])
     }
 }
+
+/// Convert on the shelf: when it's offered, how it opens and pages, and what puts the shelf back.
+@MainActor
+struct ConvertModelTests {
+    init() { Prefs.registerDefaults() }
+
+    private let photo = URL(fileURLWithPath: "/tmp/IMG_2063.HEIC")
+
+    @Test func offeredOnlyWhileFilesAreDragged() {
+        let convert = ConvertModel()
+        #expect(convert.shelfState(dragging: true) == .hidden, "a drag of text or a link isn't offered Convert")
+        convert.dragCarriesFiles = true
+        #expect(convert.shelfState(dragging: true) == .offered)
+        #expect(convert.shelfState(dragging: false) == .hidden)
+    }
+
+    @Test func opensFourAtATimeAndPagesRoundToTheStart() {
+        let convert = ConvertModel()
+        #expect(convert.open(with: [photo]))
+        #expect(convert.shownTargets.count == 4)
+        #expect(convert.shelfState(dragging: true) == .open(places: 5), "four formats and More")
+        var seen = Set(convert.shownTargets)
+        while !convert.isLastPage {
+            convert.nextPage()
+            seen.formUnion(convert.shownTargets)
+        }
+        #expect(seen == Set(convert.targets))
+        convert.nextPage()
+        #expect(convert.page == 0)
+    }
+
+    @Test func nothingToOfferDoesntOpen() {
+        let convert = ConvertModel()
+        #expect(!convert.open(with: [URL(fileURLWithPath: "/tmp/Archive.zip")]))
+        #expect(!convert.isOpen)
+    }
+
+    @Test func aDragEndingWithoutADropPutsTheShelfBack() {
+        let convert = ConvertModel()
+        convert.open(with: [photo])
+        convert.dragEnded()
+        #expect(!convert.isOpen)
+        // Let go on Convert: it stays open for a click.
+        convert.open(with: [photo], awaitingClick: true)
+        convert.dragEnded()
+        #expect(convert.isOpen)
+        convert.close()
+        #expect(!convert.isOpen && !convert.awaitingClick)
+    }
+
+    @Test func theShelfMakesRoomForConvert() {
+        let plain = ShelfMetrics.size(items: 3, dragging: true)
+        let offered = ShelfMetrics.size(items: 3, dragging: true, convert: .offered)
+        #expect(offered.width == plain.width + ShelfMetrics.tile)
+        let open = ShelfMetrics.size(items: 3, dragging: true, convert: .open(places: 5))
+        #expect(open.width <= ShelfMetrics.maxWidth)
+        #expect(open.width == ShelfMetrics.inset * 2 + 5 * ShelfMetrics.tile + ShelfMetrics.separator + 2 * ShelfMetrics.tile)
+    }
+}
