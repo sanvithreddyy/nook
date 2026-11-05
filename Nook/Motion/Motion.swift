@@ -161,6 +161,81 @@ extension AnyTransition {
     }
 }
 
+/// Whether what the closed band shows is going into the notch and coming back out of it, rather than
+/// changing the usual way. A reference, so content already on its way out reads the value set as the band
+/// changed, though its transition was built before.
+final class BandPassage {
+    var throughNotch = false
+}
+
+extension AnyTransition {
+    /// A live activity beside the notch. Usually as `islandSide`. While `passage.throughNotch` (a full-screen
+    /// video starting or ending), it rides the band's edge into the notch and back out, as the volume and
+    /// brightness do, so over a black menu bar, where the band itself can't be seen, it still goes in and
+    /// comes out rather than fading where it sits.
+    /// `travel`: the side's slot width, how far the island's edge moves to reach the notch.
+    static func activitySide(_ edge: HorizontalEdge, travel: CGFloat, passage: BandPassage) -> AnyTransition {
+        func part(_ kind: ActivitySidePart.Kind) -> AnyTransition {
+            .modifier(active: ActivitySidePart(amount: 1, kind: kind, edge: edge, travel: travel, passage: passage),
+                      identity: ActivitySidePart(amount: 0, kind: kind, edge: edge, travel: travel, passage: passage))
+        }
+        return .asymmetric(
+            insertion: part(.inPlace).animation(Motion.ease(.easeOut(duration: 0.2))?.delay(0.12))
+                .combined(with: part(.travel).animation(Motion.grow))
+                .combined(with: part(.fade).animation(Motion.ease(.easeOut(duration: 0.2)))),
+            removal: part(.inPlace).animation(Motion.ease(.easeOut(duration: 0.08)))
+                .combined(with: part(.travel).animation(Motion.shrink))
+                .combined(with: part(.fade).animation(Motion.ease(.timingCurve(0.77, 0, 0.175, 1, duration: 0.26))))
+        )
+    }
+}
+
+/// One part of `activitySide`, each on its own curve. A part only acts in its own mode: `inPlace` is
+/// `islandSide`'s look; `travel` and `fade` carry the content through the notch.
+private struct ActivitySidePart: ViewModifier, Animatable {
+    enum Kind { case inPlace, travel, fade }
+    /// 0 shown, 1 hidden.
+    var amount: CGFloat
+    let kind: Kind
+    let edge: HorizontalEdge
+    let travel: CGFloat
+    let passage: BandPassage
+
+    var animatableData: CGFloat {
+        get { amount }
+        set { amount = newValue }
+    }
+
+    func body(content: Content) -> some View {
+        let acts = (kind == .inPlace) != passage.throughNotch
+        let a = acts ? amount : 0
+        var scale: CGFloat = 1, blur: CGFloat = 0, opacity = 1.0, offset: CGFloat = 0
+        switch kind {
+        case .inPlace:
+            scale = 1 - 0.1 * a
+            blur = 6 * a
+            opacity = 1 - a
+        case .travel:
+            scale = 1 - 0.3 * a
+            offset = (edge == .leading ? travel : -travel) * a
+        case .fade:
+            blur = 5 * a
+            opacity = 1 - a
+        }
+        if Motion.reduceMotion {
+            scale = 1
+            offset = 0
+        }
+        return content
+            .scaleEffect(scale, anchor: edge == .leading ? .trailing : .leading)
+            .offset(x: offset)
+            .blur(radius: blur)
+            .opacity(opacity)
+            // These follow `amount` frame by frame; animating them again on top makes them lag.
+            .transaction { $0.animation = nil }
+    }
+}
+
 /// Fading and blurring together, for a fade that runs on its own curve beside a move.
 struct FadeBlur: ViewModifier {
     var opacity: Double

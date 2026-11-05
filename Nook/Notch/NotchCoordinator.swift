@@ -43,6 +43,9 @@ final class NotchCoordinator {
     /// The player's own app is full screen, as when a video plays, and Settings asks for the closed
     /// island to leave it out then.
     private var playerFullscreen = false
+    /// What `playerFullscreen` becomes once macOS's own picture of the island has gone.
+    private var pendingPlayerFullscreen: Bool?
+    private var playerFullscreenTask: Task<Void, Never>?
     /// A low-battery warning raised while the island was hidden, shown once it's back.
     private var pendingLowBattery: Int?
 
@@ -190,6 +193,16 @@ final class NotchCoordinator {
                     refreshActivity()
                 }
                 if args.contains("-preview-drag") { model.setDraggingFile(true) }
+                // -preview-player-fullscreen <s>: the player goes full screen and back every <s> seconds, as
+                // switching to and from a full-screen video does.
+                if let i = args.firstIndex(of: "-preview-player-fullscreen"), args.indices.contains(i + 1), let every = Double(args[i + 1]) {
+                    Task {
+                        while true {
+                            try? await Task.sleep(for: .seconds(every))
+                            setPlayerFullscreen(!playerFullscreen)
+                        }
+                    }
+                }
                 // -preview-next-in <s>: the sample track changes that many seconds later.
                 if let i = args.firstIndex(of: "-preview-next-in"), args.indices.contains(i + 1), let delay = Double(args[i + 1]) {
                     Task {
@@ -566,16 +579,39 @@ final class NotchCoordinator {
             island.window.setSuppressed(hide)
             if !hide { shown = true }
         }
-        if (hidesPlayer && playerFull) != playerFullscreen {
-            playerFullscreen = hidesPlayer && playerFull
-            refreshActivity()
-        }
+        setPlayerFullscreen(hidesPlayer && playerFull)
         if shown, let level = pendingLowBattery {
             pendingLowBattery = nil
             // Skip it if the Mac was plugged in, or the warning turned off, while the island was hidden.
             if battery.reading?.onAC == false, Prefs.bool(Prefs.battery), Prefs.bool(Prefs.lowBatteryWarning) {
                 warnLowBattery(level)
             }
+        }
+    }
+
+    /// The player filling the screen, or leaving it: the music goes into the notch, or comes back out of it.
+    /// After a space switch macOS keeps its own picture of the island, music showing, on screen for a
+    /// moment (measured Nov 5). Going in, the music waits until that picture has faded (about 230 ms), or
+    /// slivers of it show beside the island as it shrinks. Coming out, the music starts at once and covers
+    /// the picture, which doesn't fade by itself.
+    private func setPlayerFullscreen(_ full: Bool) {
+        guard full != (pendingPlayerFullscreen ?? playerFullscreen) else { return }
+        playerFullscreenTask?.cancel()
+        pendingPlayerFullscreen = nil
+        guard full != playerFullscreen else { return }
+        let apply = { [weak self] in
+            guard let self else { return }
+            pendingPlayerFullscreen = nil
+            playerFullscreen = full
+            everyIsland { $0.passThroughNotch() }
+            refreshActivity()
+        }
+        guard full else { return apply() }
+        pendingPlayerFullscreen = full
+        playerFullscreenTask = Task {
+            try? await Task.sleep(for: .milliseconds(300))
+            guard !Task.isCancelled else { return }
+            apply()
         }
     }
 

@@ -233,9 +233,13 @@ final class NotchModel {
     /// is shrinking toward the bare notch, to grow into the new one. What it will show is already set.
     private(set) var isHandingOff = false
 
+    /// Whether closed content is going into the notch and coming back out of it (see `activitySide`).
+    @ObservationIgnored let passage = BandPassage()
+
     @ObservationIgnored private var notificationTask: Task<Void, Never>?
     @ObservationIgnored private var peekTask: Task<Void, Never>?
     @ObservationIgnored private var handOffTask: Task<Void, Never>?
+    @ObservationIgnored private var passageTask: Task<Void, Never>?
 
     var presentation: Presentation {
         if isHandingOff, !isExpanded { return .idle }
@@ -344,6 +348,18 @@ final class NotchModel {
     func setLiveActivity(_ activity: LiveActivity?) {
         guard activity != liveActivity else { return }
         changeBand(to: notification.map { "n-\($0.kind)" } ?? activity.map { "a-\($0.identity)" }) { liveActivity = activity }
+    }
+
+    /// What the closed band shows next goes into the notch and comes back out of it, until that has
+    /// settled (a hand-over and the grow after it). Call before changing it.
+    func passThroughNotch() {
+        passage.throughNotch = !isExpanded
+        passageTask?.cancel()
+        passageTask = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(1.2))
+            guard !Task.isCancelled else { return }
+            self?.passage.throughNotch = false
+        }
     }
 
     func setCompanion(_ activity: LiveActivity?) {
@@ -479,6 +495,8 @@ final class NotchModel {
             return
         }
         peekTask?.cancel()
+        // Opening mid-passage: what's beside the notch leaves the usual way, as the artwork moves to the card.
+        passage.throughNotch = false
         expandToken &+= 1
         withAnimation(Motion.expand) {
             endHandOff()

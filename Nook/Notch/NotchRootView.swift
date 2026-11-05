@@ -36,7 +36,7 @@ private struct IslandView: View {
         ZStack(alignment: .top) {
             VStack(spacing: 0) {
                 TopRow(layout: layout, notch: model.notch.size, activity: model.liveActivity,
-                       notification: model.notification, isHidden: !closed)
+                       notification: model.notification, isHidden: !closed, passage: model.passage)
                 // A notice takes the band's place; the peek comes back under it once the notice goes.
                 if let peek = model.peek, closed, model.notification == nil {
                     PeekRow(peek: peek)
@@ -134,6 +134,7 @@ private struct TopRow: View {
     let notification: NotchNotification?
     /// The open card owns the strip, or the band is handing over between two kinds of content.
     let isHidden: Bool
+    let passage: BandPassage
 
     var body: some View {
         let half = max(0, (layout.size.width - notch.width) / 2)
@@ -166,7 +167,7 @@ private struct TopRow: View {
         } else if let activity {
             ActivitySide(activity: activity, edge: edge)
                 .id("a-\(activity.identity)")
-                .transition(.islandSide(edge))
+                .transition(.activitySide(edge, travel: slotWidth(edge), passage: passage))
         }
     }
 }
