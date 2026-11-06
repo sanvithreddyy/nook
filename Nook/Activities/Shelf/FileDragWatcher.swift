@@ -19,6 +19,9 @@ final class FileDragWatcher {
     private(set) var carriesFiles = false
     private var entered = false
     private var reportedActive = false
+    /// The drag started in Nook itself (a file off the shelf).
+    private(set) var isOwnDrag = false
+    private var ownDragEnd: Task<Void, Never>?
 
     var isActive: Bool { pressed && carryingContent }
 
@@ -39,6 +42,27 @@ final class FileDragWatcher {
     func stop() {
         monitors.forEach(NSEvent.removeMonitor)
         monitors.removeAll()
+    }
+
+    /// Nook's own drags never reach the global monitors, so the shelf says when one of its files starts
+    /// being dragged, and the button coming back up ends it, wherever it was let go.
+    func beginOwnDrag() {
+        pressed = true
+        carryingContent = true
+        carriesFiles = true
+        entered = true
+        isOwnDrag = true
+        report(true)
+        ownDragEnd?.cancel()
+        ownDragEnd = Task { [weak self] in
+            while NSEvent.pressedMouseButtons & 1 != 0 {
+                try? await Task.sleep(for: .milliseconds(30))
+            }
+            guard let self, !Task.isCancelled else { return }
+            pressed = false
+            report(false)
+            isOwnDrag = false
+        }
     }
 
     private func pressBegan() {

@@ -423,6 +423,30 @@ struct ConvertModelTests {
         #expect(open.width <= ShelfMetrics.maxWidth)
         #expect(open.width == ShelfMetrics.inset * 2 + 5 * ShelfMetrics.tile + ShelfMetrics.separator + 2 * ShelfMetrics.tile)
     }
+
+    /// A file dragged off the shelf itself gets Convert too, but no place to keep it again.
+    @Test func aShelfFileDraggedGetsConvertButNoLandingPlace() async throws {
+        let drags = FileDragWatcher()
+        var reported: [Bool] = []
+        drags.onActiveChange = { reported.append($0) }
+        drags.beginOwnDrag()
+        #expect(reported == [true])
+        #expect(drags.carriesFiles && drags.isOwnDrag)
+
+        let model = NotchModel()
+        model.setDraggingFile(true, fromShelf: drags.isOwnDrag)
+        #expect(model.isDraggingFile && model.dragIsFromShelf)
+        let convert = ConvertModel()
+        convert.dragCarriesFiles = drags.carriesFiles
+        #expect(convert.shelfState(dragging: model.isDraggingFile) == .offered)
+
+        // No button is down in a test, so the drag ends at once.
+        try await Task.sleep(for: .milliseconds(150))
+        #expect(reported == [true, false])
+        #expect(!drags.isOwnDrag)
+        model.setDraggingFile(false)
+        #expect(!model.dragIsFromShelf)
+    }
 }
 
 /// More Formats: only the exact pack Nook expects is unpacked, and it comes out again cleanly.

@@ -145,10 +145,11 @@ final class NotchCoordinator {
         fileDrags.onActiveChange = { [weak self] active in
             guard let self else { return }
             convert.dragCarriesFiles = active && fileDrags.carriesFiles
-            everyIsland { $0.setDraggingFile(active) }
+            everyIsland { $0.setDraggingFile(active, fromShelf: fileDrags.isOwnDrag) }
             if !active { convert.dragEnded() }
             convertChanged()
         }
+        shelf.onDragOut = { [weak self] in self?.fileDrags.beginOwnDrag() }
         convert.onMade = { [weak self] urls in self?.shelf.add(urls) }
         convert.onChange = { [weak self] in self?.convertChanged() }
         fileDrags.start()

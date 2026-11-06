@@ -43,7 +43,7 @@ struct ShelfPage: View {
                 if convert.isOpen {
                     ConvertFormatsRow()
                 } else {
-                    FilesRow(dragging: model.isDraggingFile)
+                    FilesRow(dragging: model.isDraggingFile && !model.dragIsFromShelf)
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -374,7 +374,10 @@ private struct ShelfTile: View {
         .onTapGesture(count: 2) { if !item.isMissing { shelf.open(item) } }
         // Absorb single clicks so they don't reach the island's tap.
         .onTapGesture {}
-        .onDrag { NSItemProvider(contentsOf: item.url) ?? NSItemProvider() }
+        .onDrag {
+            shelf.onDragOut?()
+            return NSItemProvider(contentsOf: item.url) ?? NSItemProvider()
+        }
         .contextMenu {
             Button("Open") { shelf.open(item) }
             Button("Show in Finder") { shelf.reveal(item) }

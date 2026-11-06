@@ -211,8 +211,10 @@ final class NotchModel {
     var batteryCount = 0
     /// Files on the shelf, which set its page's width.
     var shelfItems = 0
-    /// A file drag from another app is under way, so the shelf shows its drop targets.
+    /// A file drag is under way, so the shelf shows its drop targets.
     private(set) var isDraggingFile = false
+    /// The file being dragged is one of the shelf's own, so there's no place to keep it: only Convert and AirDrop.
+    private(set) var dragIsFromShelf = false
     /// Convert beside AirDrop on the shelf, and how many formats it shows when open.
     var shelfConvert: ShelfConvert = .hidden
     /// A second activity beside the island's own: a timer or a meeting about to start, shown as its own
@@ -325,7 +327,7 @@ final class NotchModel {
         case .meeting: CGSize(width: Self.cardWidth, height: 104)
         // Room for the ring with the round buttons either side.
         case .timer: CGSize(width: Self.cardWidth, height: 132)
-        case .shelf: ShelfMetrics.size(items: shelfItems, dragging: isDraggingFile, convert: shelfConvert)
+        case .shelf: ShelfMetrics.size(items: shelfItems, dragging: isDraggingFile && !dragIsFromShelf, convert: shelfConvert)
         }
     }
 
@@ -674,9 +676,12 @@ final class NotchModel {
         show(cards[index + step])
     }
 
-    func setDraggingFile(_ dragging: Bool) {
-        guard dragging != isDraggingFile else { return }
-        withAnimation(isExpanded ? Motion.reshape : nil) { isDraggingFile = dragging }
+    func setDraggingFile(_ dragging: Bool, fromShelf: Bool = false) {
+        guard dragging != isDraggingFile || (dragging && fromShelf != dragIsFromShelf) else { return }
+        withAnimation(isExpanded ? Motion.reshape : nil) {
+            isDraggingFile = dragging
+            dragIsFromShelf = dragging && fromShelf
+        }
     }
 
     /// Keeps an open island on a card that still exists: a track ending moves it to the next one.

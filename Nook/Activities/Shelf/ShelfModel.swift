@@ -26,6 +26,8 @@ final class ShelfModel {
     private(set) var items: [ShelfItem] = []
     /// A drag is over the shelf's drop area.
     var isTargeted = false
+    /// One of the shelf's files started being dragged out of it.
+    @ObservationIgnored var onDragOut: (() -> Void)?
 
     @ObservationIgnored let directory: URL
     @ObservationIgnored private let indexURL: URL
