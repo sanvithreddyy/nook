@@ -194,11 +194,13 @@ final class NotchCoordinator {
                 }
                 if args.contains("-preview-drag") { model.setDraggingFile(true) }
                 // -preview-player-fullscreen <s>: the player goes full screen and back every <s> seconds, as
-                // switching to and from a full-screen video does.
+                // switching to and from a full-screen video by opening its app does; with -preview-as-swipe,
+                // as a swipe that has just landed does.
                 if let i = args.firstIndex(of: "-preview-player-fullscreen"), args.indices.contains(i + 1), let every = Double(args[i + 1]) {
                     Task {
                         while true {
                             try? await Task.sleep(for: .seconds(every))
+                            if args.contains("-preview-as-swipe") { lastSpaceChange = .now }
                             setPlayerFullscreen(!playerFullscreen)
                         }
                     }
@@ -595,9 +597,10 @@ final class NotchCoordinator {
     /// the notch. Timed to the space switch (see `watchSlide`), measured Nov 5:
     /// - Swipe or Control-arrow, going in: macOS's picture of the island from the space being left fades over
     ///   about 230 ms after landing; changing the island before then shows slivers of the old one, so the
-    ///   music waits 300 ms.
-    /// - Opening the app, going in: the island is about to slide in across its own copy at the notch, so the
-    ///   music goes at once, quickly, before that copy shows (about 100 ms in).
+    ///   music waits 300 ms, then sinks into the notch.
+    /// - Opening the app, going in: the island is about to slide in across its own copy at the notch, which
+    ///   shows only where things end up, so the music goes at once, quickly, before that copy shows (about
+    ///   100 ms in). Anything slower would slide in with the island as a second artwork.
     /// - Coming out: once the island has landed (at once after a swipe), riding out of the notch.
     private func setPlayerFullscreen(_ full: Bool) {
         guard full != (pendingPlayerFullscreen ?? playerFullscreen) else { return }
@@ -608,16 +611,17 @@ final class NotchCoordinator {
             // A swipe sends the space change a millisecond or two after the activation; let it arrive.
             try? await Task.sleep(for: .milliseconds(20))
             guard let self, !Task.isCancelled else { return }
+            let swiped = spaceJustLanded
             if full {
-                if spaceJustLanded { try? await Task.sleep(for: .milliseconds(300)) }
+                if swiped { try? await Task.sleep(for: .milliseconds(300)) }
             } else {
                 await landed()
             }
             guard !Task.isCancelled else { return }
             pendingPlayerFullscreen = nil
             playerFullscreen = full
-            // In, it goes as quickly as any closed content does; it rides only coming out.
-            everyIsland { full ? ($0.passage.throughNotch = false) : $0.passThroughNotch() }
+            // In after opening the app, it goes as quickly as any closed content does.
+            everyIsland { full && !swiped ? ($0.passage.throughNotch = false) : $0.passThroughNotch() }
             refreshActivity()
         }
     }

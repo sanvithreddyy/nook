@@ -170,9 +170,11 @@ final class BandPassage {
 
 extension AnyTransition {
     /// A live activity beside the notch. Usually as `islandSide`. While `passage.throughNotch` (a full-screen
-    /// video starting or ending), it rides the band's edge into the notch and back out, as the volume and
-    /// brightness do, so over a black menu bar, where the band itself can't be seen, it still goes in and
-    /// comes out rather than fading where it sits.
+    /// video starting or ending) it goes into the notch and comes back out, so over a black menu bar, where
+    /// the band itself can't be seen, it still visibly goes in and comes out rather than blinking where it
+    /// sits. Out, it rides the band's edge, as the volume and brightness do. In, it sinks: it shrinks toward
+    /// the notch, drifting part of the way with the edge and softening as it goes. Riding all the way in at
+    /// full size read as a sideways slide; going in place read as a jump.
     /// `travel`: the side's slot width, how far the island's edge moves to reach the notch.
     static func activitySide(_ edge: HorizontalEdge, travel: CGFloat, passage: BandPassage) -> AnyTransition {
         func part(_ kind: ActivitySidePart.Kind) -> AnyTransition {
@@ -184,16 +186,16 @@ extension AnyTransition {
                 .combined(with: part(.travel).animation(Motion.grow))
                 .combined(with: part(.fade).animation(Motion.ease(.easeOut(duration: 0.2)))),
             removal: part(.inPlace).animation(Motion.ease(.easeOut(duration: 0.08)))
-                .combined(with: part(.travel).animation(Motion.shrink))
-                .combined(with: part(.fade).animation(Motion.ease(.timingCurve(0.77, 0, 0.175, 1, duration: 0.26))))
+                .combined(with: part(.sink).animation(Motion.shrink))
+                .combined(with: part(.soften).animation(Motion.ease(.timingCurve(0.4, 0, 0.6, 1, duration: 0.5))))
         )
     }
 }
 
 /// One part of `activitySide`, each on its own curve. A part only acts in its own mode: `inPlace` is
-/// `islandSide`'s look; `travel` and `fade` carry the content through the notch.
+/// `islandSide`'s look; `travel` and `fade` bring the content out of the notch, `sink` and `soften` take it in.
 private struct ActivitySidePart: ViewModifier, Animatable {
-    enum Kind { case inPlace, travel, fade }
+    enum Kind { case inPlace, travel, fade, sink, soften }
     /// 0 shown, 1 hidden.
     var amount: CGFloat
     let kind: Kind
@@ -220,6 +222,12 @@ private struct ActivitySidePart: ViewModifier, Animatable {
             offset = (edge == .leading ? travel : -travel) * a
         case .fade:
             blur = 5 * a
+            opacity = 1 - a
+        case .sink:
+            scale = 1 - 0.5 * a
+            offset = (edge == .leading ? travel : -travel) * 0.6 * a
+        case .soften:
+            blur = 6 * a
             opacity = 1 - a
         }
         if Motion.reduceMotion {
