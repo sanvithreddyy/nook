@@ -144,10 +144,18 @@ final class NotchCoordinator {
         }
         fileDrags.onActiveChange = { [weak self] active in
             guard let self else { return }
-            convert.dragCarriesFiles = active && fileDrags.carriesFiles
-            everyIsland { $0.setDraggingFile(active, fromShelf: fileDrags.isOwnDrag) }
-            if !active { convert.dragEnded() }
-            convertChanged()
+            dragEnd?.cancel()
+            guard !active else { return dragChanged(true) }
+            // A drop arrives just after the button comes up, and one onto the shelf then settles into its
+            // place: the shelf stays as it is until it has, so the file lands where its place was shown.
+            dragEnd = Task { [weak self] in
+                try? await Task.sleep(for: .milliseconds(60))
+                while let self, !Task.isCancelled, islands.contains(where: { $0.model.drops.isLanding }) {
+                    try? await Task.sleep(for: .milliseconds(20))
+                }
+                guard let self, !Task.isCancelled else { return }
+                dragChanged(false)
+            }
         }
         shelf.onDragOut = { [weak self] in self?.fileDrags.beginOwnDrag() }
         convert.onMade = { [weak self] urls in self?.shelf.add(urls) }
@@ -651,6 +659,15 @@ final class NotchCoordinator {
     // MARK: Space switches
 
     private var slideTask: Task<Void, Never>?
+    /// The shelf going back once a file drag has ended and any drop has settled.
+    private var dragEnd: Task<Void, Never>?
+
+    private func dragChanged(_ active: Bool) {
+        convert.dragCarriesFiles = active && fileDrags.carriesFiles
+        everyIsland { $0.setDraggingFile(active, fromShelf: fileDrags.isOwnDrag) }
+        if !active { convert.dragEnded() }
+        convertChanged()
+    }
     private var lastSpaceChange: ContinuousClock.Instant?
 
     /// macOS moves the island with each space switch, as it does every window on all spaces, and no public

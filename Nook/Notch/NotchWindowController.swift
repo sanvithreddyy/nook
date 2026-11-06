@@ -29,6 +29,7 @@ final class NotchWindowController {
         let host = NotchHostingView(rootView: AnyView(content().ignoresSafeArea()))
         host.sizingOptions = []
         host.onScroll = { [weak self] event in self?.handleScroll(event) }
+        host.drops = model.drops
         panel.contentView = host
         place(on: screen)
         panel.orderFrontRegardless()

@@ -78,15 +78,29 @@ private struct IslandView: View {
             Divider()
             AppMenuItems(pane: model.settingsPane)
         }
-        // The whole island takes drops for the shelf (the AirDrop tile inside takes its own),
+        // The whole island takes drops for the shelf (the places in its row take their own),
         // so letting go right at the notch works too.
-        .onDrop(of: shelfDropTypes, isTargeted: shelfTargeted) { providers in
+        .dropTarget(.shelf) { pasteboard in
             guard Prefs.bool(Prefs.shelf) else { return false }
-            shelf.add(providers)
-            model.setDraggingFile(false)
-            model.expand(card: .shelf)
+            let files = IslandDrops.files(on: pasteboard)
+            guard !files.isEmpty, model.drops.landing != nil else {
+                shelf.add(from: pasteboard)
+                model.setDraggingFile(false)
+                model.expand(card: .shelf)
+                return true
+            }
+            // The dragged picture is flying into the empty place; the file takes the place as it lands.
+            model.drops.isLanding = true
+            Task {
+                try? await Task.sleep(for: IslandDrops.landingTime)
+                shelf.add(files)
+                model.drops.isLanding = false
+                model.drops.landing = nil
+                model.setDraggingFile(false)
+            }
             return true
         }
+        .onChange(of: model.drops.hovered) { _, target in shelf.isTargeted = target == .shelf }
         // After the island's own gestures, so a click on the drop opens it, not the island. Placed by
         // layout (a spacer the island's width) rather than an offset: the liquid split transition wraps
         // the drop, and its liquid has to share the drop's frame.
@@ -101,10 +115,6 @@ private struct IslandView: View {
         }
         // One side can hold more than the other; the notch stays covered either way.
         .offset(x: layout.shift)
-    }
-
-    private var shelfTargeted: Binding<Bool> {
-        Binding(get: { shelf.isTargeted }, set: { shelf.isTargeted = $0 })
     }
 
 }

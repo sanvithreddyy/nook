@@ -63,15 +63,10 @@ final class ShelfModel {
         }
     }
 
-    /// Accepts files, web links, text and images from a drop.
-    func add(_ providers: [NSItemProvider]) {
-        Task {
-            var urls: [URL] = []
-            for provider in providers {
-                if let url = await Self.load(provider, into: directory) { urls.append(url) }
-            }
-            add(urls)
-        }
+    /// Accepts files, web links, text and images from a drop: the files themselves, or a file written for
+    /// a picture, link or text dragged out of another app.
+    func add(from pasteboard: NSPasteboard) {
+        add(Self.files(from: pasteboard, writingInto: directory))
     }
 
     #if DEBUG
@@ -182,43 +177,26 @@ final class ShelfModel {
 
     // MARK: Drop decoding
 
-    /// Turns one dropped item into a file URL: the file itself, or a file written for a link, text or image.
-    private static func load(_ provider: NSItemProvider, into folder: URL) async -> URL? {
-        if provider.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier),
-           let url = await loadObject(URL.self, from: provider) {
-            return url
-        }
+    /// What a drop carries, as files. Files come first: a photo dragged from Finder also carries its picture,
+    /// and it's the file that's kept, not a copy of the picture.
+    static func files(from pasteboard: NSPasteboard, writingInto folder: URL) -> [URL] {
+        let files = IslandDrops.files(on: pasteboard)
+        if !files.isEmpty { return files }
         // Images before links: a web image also carries its URL, but the picture is what was dragged.
-        if let imageType = provider.registeredTypeIdentifiers.compactMap(UTType.init).first(where: { $0.conforms(to: .image) }),
-           let data = await loadData(imageType.identifier, from: provider) {
-            return write(data, named: "Image." + (imageType.preferredFilenameExtension ?? "png"), in: folder)
+        for type in pasteboard.types ?? [] {
+            guard let kind = UTType(type.rawValue), kind.conforms(to: .image), let data = pasteboard.data(forType: type) else { continue }
+            return write(data, named: "Image." + (kind.preferredFilenameExtension ?? "png"), in: folder).map { [$0] } ?? []
         }
-        if provider.hasItemConformingToTypeIdentifier(UTType.url.identifier),
-           let link = await loadObject(URL.self, from: provider), !link.isFileURL {
-            let name = (link.host() ?? "Link") + ".webloc"
+        if let link = (pasteboard.readObjects(forClasses: [NSURL.self]) as? [URL])?.first(where: { !$0.isFileURL }) {
             let plist: [String: String] = ["URL": link.absoluteString]
-            guard let data = try? PropertyListSerialization.data(fromPropertyList: plist, format: .xml, options: 0) else { return nil }
-            return write(data, named: name, in: folder)
+            guard let data = try? PropertyListSerialization.data(fromPropertyList: plist, format: .xml, options: 0) else { return [] }
+            return write(data, named: (link.host() ?? "Link") + ".webloc", in: folder).map { [$0] } ?? []
         }
-        if provider.hasItemConformingToTypeIdentifier(UTType.plainText.identifier),
-           let text = await loadObject(String.self, from: provider) {
+        if let text = pasteboard.string(forType: .string), !text.isEmpty {
             let title = text.split(whereSeparator: \.isNewline).first.map { String($0.prefix(40)) } ?? "Text"
-            return write(Data(text.utf8), named: "\(title).txt", in: folder)
+            return write(Data(text.utf8), named: "\(title).txt", in: folder).map { [$0] } ?? []
         }
-        return nil
-    }
-
-    nonisolated private static func loadObject<T: _ObjectiveCBridgeable & Sendable>(_ type: T.Type, from provider: NSItemProvider) async -> T?
-        where T._ObjectiveCType: NSItemProviderReading {
-        await withCheckedContinuation { continuation in
-            _ = provider.loadObject(ofClass: type) { value, _ in continuation.resume(returning: value) }
-        }
-    }
-
-    nonisolated private static func loadData(_ type: String, from provider: NSItemProvider) async -> Data? {
-        await withCheckedContinuation { continuation in
-            _ = provider.loadDataRepresentation(forTypeIdentifier: type) { data, _ in continuation.resume(returning: data) }
-        }
+        return []
     }
 
     static func write(_ data: Data, named name: String, in folder: URL) -> URL? {

@@ -24,7 +24,6 @@ enum AirDrop {
     }
 }
 
-let shelfDropTypes: [UTType] = [.fileURL, .url, .image, .plainText]
 
 /// The shelf's page, laid out like a Finder window's icons: the files kept here, then AirDrop after a
 /// divider, always in the same place at the right end. While a file is dragged, a place at the end of
@@ -159,10 +158,10 @@ struct ShelfPlace<Picture: View>: View {
 private struct AirDropTarget: View {
     @Environment(ShelfModel.self) private var shelf
     @Environment(NotchModel.self) private var model
-    @State private var targeted = false
     @State private var hovering = false
 
     var body: some View {
+        let targeted = model.drops.hovered == .airDrop
         // A place like the files beside it, lit the way Finder lights a folder under a drag.
         ShelfPlace(name: "AirDrop", highlight: targeted ? 0.1 : hovering ? 0.08 : 0, ring: targeted) {
             AirDropIcon()
@@ -177,16 +176,12 @@ private struct AirDropTarget: View {
         .help(shelf.isEmpty ? "Drop files here to AirDrop them" : "AirDrop everything on the shelf")
         .accessibilityElement(children: .combine)
         .accessibilityAddTraits(.isButton)
-        // AirDrop sends files, so only file drops are offered here.
-        .onDrop(of: [.fileURL], isTargeted: $targeted) { providers in
+        // AirDrop sends files, so only file drops are taken here.
+        .dropTarget(.airDrop) { pasteboard in
+            let urls = IslandDrops.files(on: pasteboard)
+            guard !urls.isEmpty else { return false }
             model.setDraggingFile(false)
-            Task {
-                var urls: [URL] = []
-                for provider in providers {
-                    if let url = await loadFileURL(provider) { urls.append(url) }
-                }
-                AirDrop.send(urls)
-            }
+            AirDrop.send(urls)
             return true
         }
     }
@@ -212,11 +207,6 @@ private struct AirDropIcon: View {
     }
 }
 
-nonisolated private func loadFileURL(_ provider: NSItemProvider) async -> URL? {
-    await withCheckedContinuation { continuation in
-        _ = provider.loadObject(ofClass: URL.self) { url, _ in continuation.resume(returning: url) }
-    }
-}
 
 /// The files kept on the shelf, then the landing place while a file is dragged.
 private struct FilesRow: View {
@@ -344,6 +334,7 @@ private struct LandingSlot: View {
                         .font(.system(size: 18, weight: .light))
                         .foregroundStyle(.white.opacity(lit ? 0.9 : 0.5))
                 )
+                .dropLanding()
         }
         .scaleEffect(lit ? 1.03 : 1)
         .animation(Motion.press, value: lit)
@@ -465,19 +456,24 @@ struct Thumbnail: View {
     @State private var image: NSImage?
 
     var body: some View {
-        if let image {
-            Image(nsImage: image)
-                .resizable()
-                .aspectRatio(contentMode: .fit)
-                .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
-                .overlay(RoundedRectangle(cornerRadius: 6, style: .continuous).strokeBorder(.white.opacity(0.14), lineWidth: 0.5))
-                .frame(width: ShelfMetrics.thumb, height: ShelfMetrics.thumb)
-        } else {
+        // The file's icon until Quick Look has drawn its picture, then the picture fades in over it.
+        ZStack {
             Image(nsImage: NSWorkspace.shared.icon(forFile: url.path))
                 .resizable()
                 .aspectRatio(contentMode: .fit)
-                .task(id: url) { image = await Self.thumbnail(for: url) }
+                .opacity(image == nil ? 1 : 0)
+            if let image {
+                Image(nsImage: image)
+                    .resizable()
+                    .aspectRatio(contentMode: .fit)
+                    .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+                    .overlay(RoundedRectangle(cornerRadius: 6, style: .continuous).strokeBorder(.white.opacity(0.14), lineWidth: 0.5))
+                    .transition(.opacity)
+            }
         }
+        .frame(width: ShelfMetrics.thumb, height: ShelfMetrics.thumb)
+        .animation(Motion.ease(.easeOut(duration: 0.2)), value: image != nil)
+        .task(id: url) { image = await Self.thumbnail(for: url) }
     }
 
     /// Only files Quick Look draws a picture of; others keep their icon, which isn't framed.

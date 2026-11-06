@@ -9,9 +9,10 @@ import UniformTypeIdentifiers
 struct ConvertPlace: View {
     @Environment(ConvertModel.self) private var convert
     @Environment(NotchModel.self) private var model
-    @State private var targeted = false
     @State private var cannot = false
     @State private var spring: Task<Void, Never>?
+
+    private var targeted: Bool { model.drops.hovered == .convert }
 
     var body: some View {
         let lit = targeted && !cannot
@@ -27,11 +28,11 @@ struct ConvertPlace: View {
         }
         .scaleEffect(lit ? 1.03 : 1)
         .animation(Motion.press, value: lit)
-        .onDrop(of: [.fileURL], isTargeted: $targeted) { providers in
+        .dropTarget(.convert) { pasteboard in
+            let urls = IslandDrops.files(on: pasteboard)
+            guard !urls.isEmpty else { return false }
             model.setDraggingFile(false)
-            Task {
-                let urls = await providers.fileURLs()
-                if convert.isOpen { return }
+            if !convert.isOpen {
                 if convert.open(with: urls, awaitingClick: true) { Haptics.tap() } else { cannot = true }
             }
             return true
@@ -76,10 +77,10 @@ private struct FormatPlace: View {
     @Environment(ConvertModel.self) private var convert
     @Environment(NotchModel.self) private var model
     let target: ConvertTarget
-    @State private var targeted = false
     @State private var hovering = false
 
     var body: some View {
+        let targeted = model.drops.hovered == .format(target)
         let download = convert.downloads(target, for: convert.sources)
         ShelfPlace(name: target.name, highlight: targeted ? 0.1 : hovering ? 0.08 : 0, ring: targeted) {
             Image(nsImage: NSWorkspace.shared.icon(for: target.iconType))
@@ -100,13 +101,10 @@ private struct FormatPlace: View {
         .scaleEffect(targeted ? 1.03 : 1)
         .animation(Motion.press, value: targeted)
         .onHover { inside in withAnimation(.easeOut(duration: 0.15)) { hovering = inside } }
-        .onDrop(of: [.fileURL], isTargeted: $targeted) { providers in
+        .dropTarget(.format(target)) { pasteboard in
+            let dropped = IslandDrops.files(on: pasteboard)
             model.setDraggingFile(false)
-            let opened = convert.sources
-            Task {
-                let dropped = await providers.fileURLs()
-                choose(dropped.isEmpty ? opened : dropped)
-            }
+            choose(dropped.isEmpty ? convert.sources : dropped)
             return true
         }
         .onTapGesture { choose(convert.sources) }
@@ -123,9 +121,11 @@ private struct FormatPlace: View {
 /// The next four formats; on the last four, back to the first. A drag resting on it turns the page.
 private struct MoreFormatsPlace: View {
     @Environment(ConvertModel.self) private var convert
-    @State private var targeted = false
+    @Environment(NotchModel.self) private var model
     @State private var hovering = false
     @State private var spring: Task<Void, Never>?
+
+    private var targeted: Bool { model.drops.hovered == .more }
 
     var body: some View {
         let back = convert.isLastPage
@@ -140,7 +140,8 @@ private struct MoreFormatsPlace: View {
         }
         .onHover { inside in withAnimation(.easeOut(duration: 0.15)) { hovering = inside } }
         .onTapGesture { convert.nextPage() }
-        .onDrop(of: [.fileURL], isTargeted: $targeted) { _ in false }
+        // Resting here turns the page; letting go here does nothing.
+        .dropTarget(.more) { _ in false }
         .onChange(of: targeted) { _, now in
             spring?.cancel()
             guard now else { return }
@@ -272,19 +273,5 @@ private struct SmallThumbnail: View {
                 let request = QLThumbnailGenerator.Request(fileAt: url, size: CGSize(width: 24, height: 24), scale: 2, representationTypes: .thumbnail)
                 image = try? await QLThumbnailGenerator.shared.generateBestRepresentation(for: request).nsImage
             }
-    }
-}
-
-extension Array where Element == NSItemProvider {
-    /// The file URLs among dropped items.
-    func fileURLs() async -> [URL] {
-        var urls: [URL] = []
-        for provider in self where provider.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier) {
-            let url: URL? = await withCheckedContinuation { continuation in
-                _ = provider.loadObject(ofClass: URL.self) { url, _ in continuation.resume(returning: url) }
-            }
-            if let url, url.isFileURL { urls.append(url) }
-        }
-        return urls
     }
 }

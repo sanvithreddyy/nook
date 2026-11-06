@@ -237,6 +237,8 @@ final class NotchModel {
 
     /// Bumped when an expanded island should re-run its content entrance.
     private(set) var expandToken = 0
+    /// Where a drag over this island can be let go, and what's under it now.
+    @ObservationIgnored let drops = IslandDrops()
     /// The closed band is between one kind of content and the next: the old one has gone and the band
     /// is shrinking toward the bare notch, to grow into the new one. What it will show is already set.
     private(set) var isHandingOff = false
