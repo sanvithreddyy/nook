@@ -1,5 +1,5 @@
+import AppKit
 import CoreLocation
-import Foundation
 import Observation
 
 /// What the Weather module shows for one place: the weather now, today's high and low, the next hours.
@@ -53,6 +53,9 @@ final class WeatherModel: NSObject {
         manager.delegate = self
         manager.desiredAccuracy = kCLLocationAccuracyKilometer
         locationAccess = Self.access(manager.authorizationStatus)
+        #if DEBUG
+        DropLog.write("weather location access at launch \(locationAccess)")
+        #endif
     }
 
     private var usesLocation: Bool { Prefs.bool(Prefs.weatherCurrentLocation) }
@@ -220,7 +223,7 @@ final class WeatherModel: NSObject {
         }
     }
 
-    nonisolated private static func access(_ status: CLAuthorizationStatus) -> LocationAccess {
+    nonisolated static func access(_ status: CLAuthorizationStatus) -> LocationAccess {
         switch status {
         case .notDetermined: .notDetermined
         case .denied, .restricted: .denied
@@ -251,6 +254,9 @@ final class WeatherModel: NSObject {
 extension WeatherModel: @preconcurrency CLLocationManagerDelegate {
     func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
         locationAccess = Self.access(manager.authorizationStatus)
+        #if DEBUG
+        DropLog.write("weather location access \(locationAccess)")
+        #endif
         if locationAccess == .granted, usesLocation { manager.requestLocation() } else { read() }
     }
 
@@ -277,5 +283,23 @@ nonisolated enum TemperatureUnit: String, CaseIterable, Identifiable {
         case .fahrenheit: "°F"
         case .celsius: "°C"
         }
+    }
+}
+
+/// Whether macOS lets Nook know where this Mac is, for Settings: asked for there when My Location is
+/// turned on, and pointed at Privacy & Security when it's been turned down. The island's weather hears
+/// the answer through its own manager and reads again.
+enum LocationPermission {
+    /// Asking needs a manager that outlives the question.
+    private static let manager = CLLocationManager()
+
+    static var current: WeatherModel.LocationAccess { WeatherModel.access(manager.authorizationStatus) }
+
+    static func request() {
+        manager.requestWhenInUseAuthorization()
+    }
+
+    static func openSettings() {
+        NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_LocationServices")!)
     }
 }

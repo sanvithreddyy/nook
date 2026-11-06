@@ -353,6 +353,18 @@ private struct WeatherModuleOptions: View {
     @AppStorage(Prefs.weatherCurrentLocation) private var currentLocation = true
     @AppStorage(Prefs.weatherPlaces) private var places = ""
     @AppStorage(Prefs.weatherUnit) private var unit = TemperatureUnit.auto
+    @State private var access = LocationPermission.current
+    private let poll = Timer.publish(every: 1.5, on: .main, in: .common).autoconnect()
+
+    /// Says why My Location isn't showing when macOS hasn't let Nook know where the Mac is.
+    private var locationNote: String {
+        guard currentLocation else { return "The weather where this Mac is." }
+        switch access {
+        case .granted: return "The weather where this Mac is."
+        case .notDetermined: return "Nook needs your permission to know where this Mac is."
+        case .denied: return "Location is off for Nook in Privacy & Security, so only your cities show."
+        }
+    }
 
     var body: some View {
         SettingsSection("Weather", footer: "One place at a time; click its name on the island for the next. Forecasts from Open-Meteo.") {
@@ -362,8 +374,22 @@ private struct WeatherModuleOptions: View {
                 }
                 .segmentedStyle()
             }
-            SettingsToggle("My Location", description: "The weather where this Mac is.", isOn: $currentLocation)
+            SettingsRow("My Location", description: locationNote) {
+                HStack(spacing: 10) {
+                    if currentLocation, access == .notDetermined {
+                        Button("Allow…") { LocationPermission.request() }
+                    } else if currentLocation, access == .denied {
+                        Button("Open Privacy & Security…") { LocationPermission.openSettings() }
+                    }
+                    Toggle("My Location", isOn: $currentLocation).toggleStyle(.switch).labelsHidden()
+                }
+            }
             PlaceList(json: $places, limit: 8)
+        }
+        .onReceive(poll) { _ in access = LocationPermission.current }
+        // Turning it on asks, as a feature that needs the location does when it's switched on.
+        .onChange(of: currentLocation) { _, on in
+            if on, access == .notDetermined { LocationPermission.request() }
         }
     }
 }
