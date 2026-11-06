@@ -367,9 +367,16 @@ private struct ShelfTile: View {
         .onTapGesture(count: 2) { if !item.isMissing { shelf.open(item) } }
         // Absorb single clicks so they don't reach the island's tap.
         .onTapGesture {}
+        // Dragged out, the file's picture alone, not the place under the pointer with its remove button.
         .onDrag {
             shelf.onDragOut?()
             return NSItemProvider(contentsOf: item.url) ?? NSItemProvider()
+        } preview: {
+            // Read when the place is drawn: SwiftUI builds the preview ahead of the drag and keeps it.
+            Image(nsImage: Thumbnail.drawn.object(forKey: item.url as NSURL) ?? NSWorkspace.shared.icon(forFile: item.url.path))
+                .resizable()
+                .aspectRatio(contentMode: .fit)
+                .frame(width: ShelfMetrics.thumb, height: ShelfMetrics.thumb)
         }
         .contextMenu {
             Button("Open") { shelf.open(item) }
@@ -457,6 +464,15 @@ struct Thumbnail: View {
     let url: URL
     @State private var image: NSImage?
 
+    /// Pictures already drawn, so a file's picture shows at once wherever it appears again, a drag's
+    /// preview included.
+    static let drawn = NSCache<NSURL, NSImage>()
+
+    init(url: URL) {
+        self.url = url
+        _image = State(initialValue: Self.drawn.object(forKey: url as NSURL))
+    }
+
     var body: some View {
         // The file's icon until Quick Look has drawn its picture, then the picture fades in over it.
         ZStack {
@@ -475,7 +491,11 @@ struct Thumbnail: View {
         }
         .frame(width: ShelfMetrics.thumb, height: ShelfMetrics.thumb)
         .animation(Motion.ease(.easeOut(duration: 0.2)), value: image != nil)
-        .task(id: url) { image = await Self.thumbnail(for: url) }
+        .task(id: url) {
+            guard image == nil, let drawn = await Self.thumbnail(for: url) else { return }
+            Self.drawn.setObject(drawn, forKey: url as NSURL)
+            image = drawn
+        }
     }
 
     /// Only files Quick Look draws a picture of; others keep their icon, which isn't framed.

@@ -316,6 +316,8 @@ private struct FlyingPicture: View {
             .aspectRatio(contentMode: .fit)
             .frame(width: from.width, height: from.height)
             .scaleEffect(landed ? scale : 1)
+            // macOS draws a dragged picture a little see-through; it firms up as it settles.
+            .opacity(landed ? 1 : 0.75)
             .offset(x: landed ? to.midX - from.midX : 0, y: landed ? to.midY - from.midY : 0)
             .position(x: from.midX, y: from.midY)
             .onAppear {
