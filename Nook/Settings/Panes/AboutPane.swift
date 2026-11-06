@@ -7,6 +7,14 @@ struct AboutPane: View {
         SettingsPage(title: "About") {
             SettingsSection {
                 SettingsRow("Version", value: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "")
+                SettingsRow("Updates", description: updateStatus) {
+                    if updates.release != nil {
+                        Button("Show Update") { updates.checkNow() }
+                    } else {
+                        Button("Check Now") { updates.checkNow() }
+                            .disabled(!updates.canCheck || updates.check == .checking)
+                    }
+                }
                 SettingsToggle("Check for updates automatically", description: "Once a day.",
                                isOn: $updates.checksAutomatically)
             }
@@ -19,6 +27,19 @@ struct AboutPane: View {
                         .padding(.vertical, 11)
                 }
             }
+        }
+        .onAppear { updates.refreshLastChecked() }
+    }
+
+    private var updateStatus: String? {
+        if let release = updates.release { return "Nook \(release.version) is available." }
+        switch updates.check {
+        case .checking: return "Checking…"
+        case .upToDate: return "Nook is up to date."
+        case .failed: return "Couldn't check. Try again in a moment."
+        case .idle:
+            guard let date = updates.lastChecked else { return nil }
+            return "Last checked \(date.formatted(.relative(presentation: .named)))."
         }
     }
 }

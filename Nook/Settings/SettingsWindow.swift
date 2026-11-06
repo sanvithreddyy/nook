@@ -264,7 +264,8 @@ enum SettingsPane: String, CaseIterable, Identifiable {
         case .lock: ["Show lock and unlock"]
         case .shortcuts: ["Shortcut", "Keyboard", "Hotkey", "Record Shortcut"] + ShortcutAction.allCases.map(\.title)
         case .advanced: ["Export Settings", "Import Settings", "Reset All Settings", "Backup"]
-        case .about: ["Version", "Acknowledgements", "Check for updates automatically", "Updates"]
+        case .about: ["Version", "Acknowledgements", "Check for updates automatically", "Updates", "Check Now",
+                      "Check for updates"]
         case .update: ["Update", "Update Now", "New version"]
         }
     }

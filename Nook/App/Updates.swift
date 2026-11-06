@@ -20,9 +20,21 @@ final class Updates {
         case failed
     }
 
+    /// A check asked for with Check Now, and how it went.
+    enum Check: Equatable {
+        case idle
+        case checking
+        case upToDate
+        case failed
+    }
+
     /// The newer version, while there is one.
     private(set) var release: Release?
     private(set) var phase = Phase.ready
+    private(set) var check = Check.idle
+    private(set) var lastChecked: Date?
+    /// Test copies without a feed have no updater, so nothing to check.
+    var canCheck: Bool { updater != nil }
 
     /// The daily check, on unless turned off on About. Sparkle keeps the choice.
     var checksAutomatically = true {
@@ -60,9 +72,33 @@ final class Updates {
         }
         self.updater = updater
         checksAutomatically = updater.automaticallyChecksForUpdates
+        lastChecked = updater.lastUpdateCheckDate
         #if DEBUG
         if CommandLine.arguments.contains("-update-check-now") { updater.checkForUpdatesInBackground() }
+        if let delay = UpdateDebug.checkAfter {
+            Task { @MainActor in
+                try? await Task.sleep(for: .seconds(delay))
+                self.checkNow()
+            }
+        }
         #endif
+    }
+
+    /// Check Now: looks for a newer version straight away. One already found opens its page.
+    func checkNow() {
+        guard let updater, check != .checking else { return }
+        if release != nil {
+            SettingsNavigation.shared.pane = .update
+            return
+        }
+        guard updater.canCheckForUpdates else { return }
+        check = .checking
+        updater.checkForUpdates()
+    }
+
+    /// The daily check runs on its own, so About reads its time when it shows.
+    func refreshLastChecked() {
+        if let date = updater?.lastUpdateCheckDate { lastChecked = date }
     }
 
     func install() {
@@ -107,6 +143,11 @@ final class Updates {
         }
         release = Release(version: item.displayVersionString, size: Int64(item.contentLength),
                           notes: Self.notes(from: item.itemDescription))
+        refreshLastChecked()
+        if check == .checking {
+            check = .idle
+            SettingsNavigation.shared.pane = .update
+        }
         if installWhenFound {
             installWhenFound = false
             reply(.install)
@@ -151,11 +192,14 @@ final class Updates {
     /// A failed check in the background, with nothing found yet, isn't worth a word.
     fileprivate func failed() {
         installWhenFound = false
+        if check == .checking { check = .failed }
         if release != nil { phase = .failed }
     }
 
     fileprivate func notFound() {
         installWhenFound = false
+        if check == .checking { check = .upToDate }
+        refreshLastChecked()
         release = nil
         phase = .ready
     }
@@ -278,12 +322,14 @@ extension Updates {
 /// -update-feed <url>: check this feed (test copies check nothing otherwise); -update-check-now: at launch;
 /// -update-show-page-after, -update-press-after <seconds>: go to the update's page and press Update Now that
 /// long after an update is found, as a click would, for recordings;
+/// -update-check-after <seconds>: press Check Now that long after launch;
 /// -update-no-relaunch: leave the installed copy closed; -preview-update ready|downloading|installing|failed:
 /// the page with a made-up update, nothing checked.
 enum UpdateDebug {
     static var feed: String? { value(after: "-update-feed") }
     static var pressAfter: Double? { value(after: "-update-press-after").flatMap(Double.init) }
     static var showPageAfter: Double? { value(after: "-update-show-page-after").flatMap(Double.init) }
+    static var checkAfter: Double? { value(after: "-update-check-after").flatMap(Double.init) }
 
     static var previewPhase: Updates.Phase? {
         switch value(after: "-preview-update") {
