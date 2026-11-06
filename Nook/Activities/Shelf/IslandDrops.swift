@@ -28,8 +28,21 @@ final class IslandDrops {
 
     @ObservationIgnored private var targets: [DropTarget: Entry] = [:]
 
-    /// How long macOS takes to fly a dropped picture into its place.
-    static let landingTime: Duration = .milliseconds(220)
+    /// A file let go on the shelf: its picture flying from where the button came up into its place.
+    var flight: Flight?
+    /// The dragged picture and where it was when the button came up, for the flight.
+    @ObservationIgnored var arriving: (image: NSImage, frame: CGRect)?
+
+    struct Flight: Equatable {
+        let id = UUID()
+        let image: NSImage
+        let from: CGRect
+        let to: CGRect
+        static func == (a: Flight, b: Flight) -> Bool { a.id == b.id }
+    }
+
+    /// How long the picture takes to settle into its place; the file takes the place as it does.
+    static let landingTime: Duration = .milliseconds(300)
 
     private struct Entry {
         var frame: CGRect

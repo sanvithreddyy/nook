@@ -253,8 +253,10 @@ private struct FilesRow: View {
                         .transition(.scale(scale: 0.8).combined(with: .opacity))
                 }
                 if dragging {
+                    // In, it grows out of the row; out, it goes at once, as a dropped file takes its place.
                     LandingSlot()
-                        .transition(.scale(scale: 0.6, anchor: .leading).combined(with: .opacity))
+                        .transition(.asymmetric(insertion: .scale(scale: 0.6, anchor: .leading).combined(with: .opacity),
+                                                removal: .opacity.animation(Motion.ease(.easeOut(duration: 0.08)))))
                 }
             }
             .animation(Motion.peekIn, value: shelf.items.map(\.id))

@@ -11,6 +11,8 @@ struct NotchRootView: View {
             .animation(.easeOut(duration: 0.2), value: model.isSuppressed)
             .preferredColorScheme(.dark)
             .animation(.easeOut(duration: 0.2), value: isHiddenIdle)
+            // A file let go on the shelf flies into its place over everything else.
+            .overlay(alignment: .topLeading) { DropFlightView() }
     }
 
     /// Hidden on a screen without a notch: nothing shows until there's something to, or the pointer is there.
@@ -89,18 +91,25 @@ private struct IslandView: View {
                 model.expand(card: .shelf)
                 return true
             }
-            // The dragged picture is flying into the empty place; the file takes the place as it lands.
-            model.drops.isLanding = true
-            Task {
-                try? await Task.sleep(for: IslandDrops.landingTime)
-                shelf.add(files)
-                model.drops.isLanding = false
-                model.drops.landing = nil
-                model.setDraggingFile(false)
-            }
+            land(files)
             return true
         }
         .onChange(of: model.drops.hovered) { _, target in shelf.isTargeted = target == .shelf }
+        #if DEBUG
+        // -preview-drop <file>: that file let go on the shelf two seconds in, as a drag ends there.
+        .task {
+            let args = CommandLine.arguments
+            guard let i = args.firstIndex(of: "-preview-drop"), args.indices.contains(i + 1), !Self.previewDropped else { return }
+            Self.previewDropped = true
+            try? await Task.sleep(for: .seconds(2))
+            let url = URL(fileURLWithPath: args[i + 1])
+            if let landing = model.drops.landing {
+                model.drops.arriving = (NSWorkspace.shared.icon(forFile: url.path),
+                                        CGRect(x: landing.midX + 150, y: landing.midY - 32, width: 64, height: 64))
+            }
+            land([url])
+        }
+        #endif
         // After the island's own gestures, so a click on the drop opens it, not the island. Placed by
         // layout (a spacer the island's width) rather than an offset: the liquid split transition wraps
         // the drop, and its liquid has to share the drop's frame.
@@ -115,6 +124,38 @@ private struct IslandView: View {
         }
         // One side can hold more than the other; the notch stays covered either way.
         .offset(x: layout.shift)
+    }
+
+    #if DEBUG
+    /// The island's task starts again as it opens; the preview drop happens once.
+    private static var previewDropped = false
+    #endif
+
+    /// Files let go on the shelf: their picture flies from where the button came up into the empty place,
+    /// and they take the place as it lands. The drag's end waits for that (see `IslandDrops.isLanding`).
+    private func land(_ files: [URL]) {
+        guard let landing = model.drops.landing else {
+            shelf.add(files)
+            model.setDraggingFile(false)
+            return
+        }
+        model.drops.isLanding = true
+        #if DEBUG
+        DropLog.write("landing \(files.map(\.lastPathComponent)) flight=\(model.drops.arriving != nil)")
+        #endif
+        if let arriving = model.drops.arriving {
+            model.drops.flight = IslandDrops.Flight(image: arriving.image, from: arriving.frame, to: landing)
+        }
+        model.drops.arriving = nil
+        Task {
+            try? await Task.sleep(for: IslandDrops.landingTime)
+            shelf.add(files)
+            model.setDraggingFile(false)
+            model.drops.isLanding = false
+            model.drops.landing = nil
+            // The flown picture fades out over the file's place as that comes in beneath it.
+            withAnimation(Motion.ease(.easeOut(duration: 0.2))) { model.drops.flight = nil }
+        }
     }
 
 }
@@ -238,6 +279,50 @@ struct EdgeOutline: View {
                     Color.clear.frame(height: alongTop ? 0 : 1)
                     Rectangle()
                 }
+            }
+    }
+}
+
+/// The picture of a file let go on the shelf, flying into its place. In the hosting view's own
+/// coordinates, which the drop targets report theirs in.
+private struct DropFlightView: View {
+    @Environment(NotchModel.self) private var model
+
+    var body: some View {
+        ZStack(alignment: .topLeading) {
+            if let flight = model.drops.flight {
+                FlyingPicture(flight: flight)
+                    .id(flight.id)
+                    // It fades out over the file's place as that comes in beneath it.
+                    .transition(.asymmetric(insertion: .identity, removal: .opacity))
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .allowsHitTesting(false)
+    }
+}
+
+private struct FlyingPicture: View {
+    let flight: IslandDrops.Flight
+    @State private var landed = false
+
+    var body: some View {
+        // Drawn once at its starting size and moved by transforms alone: a changing frame redraws the image,
+        // and SwiftUI crossfades the two drawings, which left a fading copy where it started.
+        let from = flight.from, to = flight.to
+        let scale = from.width > 0 ? min(to.width / from.width, to.height / max(from.height, 1)) : 1
+        Image(nsImage: flight.image)
+            .resizable()
+            .aspectRatio(contentMode: .fit)
+            .frame(width: from.width, height: from.height)
+            .scaleEffect(landed ? scale : 1)
+            .offset(x: landed ? to.midX - from.midX : 0, y: landed ? to.midY - from.midY : 0)
+            .position(x: from.midX, y: from.midY)
+            .onAppear {
+                #if DEBUG
+                DropLog.write("flight appears \(flight.id.uuidString.prefix(4)) from \(flight.from) to \(flight.to)")
+                #endif
+                withAnimation(Motion.flight) { landed = true }
             }
     }
 }

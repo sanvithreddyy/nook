@@ -21,6 +21,8 @@ enum Motion {
     /// As in the reference, it turns a little before it reaches the bare notch (290–380 ms there).
     static let handOff: Duration = .milliseconds(320)
     static var peekIn: Animation? { spring(439, 36) }
+    /// A dropped file's picture settling into its place on the shelf.
+    static var flight: Animation? { spring(385, 34) }
     static var peekOut: Animation? { spring(816, 57) }
     /// Content sharpening into the open island: quicker than the shape, done before its overshoot.
     static var content: Animation? { spring(987, 63) }
@@ -279,8 +281,10 @@ struct CardTurn: ViewModifier, Animatable {
             .offset(x: Motion.reduceMotion ? 0 : (1 - progress) * 16 * side)
             .blur(radius: (1 - progress) * 6)
             .opacity(Double(progress))
-            // These follow `progress` frame by frame; animating them again on top makes them lag.
-            .transaction { $0.animation = nil }
+            // These follow `progress` frame by frame; animating them again on top makes them lag. Only while
+            // the page turns: applied always, it took every animation from what's on the page too, so a change
+            // there (Convert coming in on the shelf) snapped instead.
+            .transaction(value: progress) { $0.animation = nil }
     }
 }
 

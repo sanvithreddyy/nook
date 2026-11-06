@@ -79,13 +79,10 @@ final class NotchHostingView<Content: View>: NSHostingView<Content> {
 
     override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
         guard let drops, let target = drops.target(at: islandPoint(sender)) else { return false }
-        // Onto the shelf, the dragged picture flies into the place the file takes, as Finder settles an icon.
-        if target == .shelf, let landing = drops.landing, !IslandDrops.files(on: sender.draggingPasteboard).isEmpty {
-            sender.animatesToDestination = true
-            let frame = viewRect(landing)
-            sender.enumerateDraggingItems(options: [], for: self, classes: [NSPasteboardItem.self], searchOptions: [:]) { item, _, _ in
-                item.draggingFrame = frame
-            }
+        // Onto the shelf, the island flies the dragged picture into the place the file takes, from where the
+        // button came up: macOS drops the picture there.
+        if target == .shelf, drops.landing != nil {
+            drops.arriving = draggedPicture(sender)
         }
         #if DEBUG
         DropLog.write("drop on \(target) at \(islandPoint(sender)) landing=\(drops.landing.map { "\($0)" } ?? "none") animates=\(sender.animatesToDestination)")
@@ -98,6 +95,25 @@ final class NotchHostingView<Content: View>: NSHostingView<Content> {
 
     override func draggingEnded(_ sender: NSDraggingInfo) {
         drops?.hover(nil)
+    }
+
+    /// The first dragged item's icon and its frame, in SwiftUI's coordinates.
+    private func draggedPicture(_ sender: NSDraggingInfo) -> (image: NSImage, frame: CGRect)? {
+        var found: (image: NSImage, frame: CGRect)?
+        sender.enumerateDraggingItems(options: [], for: self, classes: [NSPasteboardItem.self], searchOptions: [:]) { item, _, stop in
+            let components = item.imageComponents ?? []
+            let icon = components.first { $0.key == .icon } ?? components.first
+            if let icon, let image = icon.contents as? NSImage {
+                let frame = icon.frame.offsetBy(dx: item.draggingFrame.minX, dy: item.draggingFrame.minY)
+                found = (image, self.viewRect(frame))
+            }
+            stop.pointee = true
+        }
+        if found == nil, let url = IslandDrops.files(on: sender.draggingPasteboard).first {
+            let point = islandPoint(sender)
+            found = (NSWorkspace.shared.icon(forFile: url.path), CGRect(x: point.x - 32, y: point.y - 32, width: 64, height: 64))
+        }
+        return found
     }
 }
 

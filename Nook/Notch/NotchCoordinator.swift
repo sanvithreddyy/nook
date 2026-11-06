@@ -268,6 +268,17 @@ final class NotchCoordinator {
                         convert.dragCarriesFiles = true
                         model.setDraggingFile(true)
                     }
+                    // -preview-convert-blink: Convert taken away and offered again every 1.2 s, as a drag of
+                    // files, then of text, would.
+                    if args.contains("-preview-convert-blink") {
+                        Task { @MainActor in
+                            while true {
+                                try? await Task.sleep(for: .seconds(1.2))
+                                convert.dragCarriesFiles.toggle()
+                                convertChanged()
+                            }
+                        }
+                    }
                     if let i = args.firstIndex(of: "-convert-open"), args.indices.contains(i + 1) {
                         convert.debugOpen([URL(fileURLWithPath: args[i + 1])])
                     }
